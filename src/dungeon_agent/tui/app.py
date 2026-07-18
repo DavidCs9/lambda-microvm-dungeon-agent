@@ -114,6 +114,7 @@ class DungeonApp(App[None]):
             with Horizontal(id="game-body"):
                 with Vertical(id="story-pane"):
                     yield RichLog(id="story", wrap=True, markup=True, auto_scroll=True)
+                    yield Static("", id="dice-result", classes="hidden")
                     yield Input(id="command-input")
                 with Vertical(id="sidebar"):
                     yield Static("", id="world-state", classes="side-section")
@@ -236,9 +237,17 @@ class DungeonApp(App[None]):
             assert isinstance(turn, TurnView)
             if turn.roll is not None:
                 result = "OK" if turn.success else "FAIL"
+                dice = self.query_one("#dice-result", Static)
+                dice.remove_class("hidden")
+                dice.set_class(turn.success, "dice-success")
+                dice.set_class(not turn.success, "dice-failure")
+                dice.update(f"d20  {turn.roll}  vs  {turn.difficulty}   {result}")
+                self.audio.play_dice_roll()
                 story.write(
                     f"[bold yellow]d20: {turn.roll} / {turn.difficulty} — {result}[/bold yellow]"
                 )
+            else:
+                self.query_one("#dice-result", Static).add_class("hidden")
             story.write(f"[bold cyan]{self.locale.narrator_label}[/bold cyan]")
             story.write(turn.narration)
             if turn.suggestions and not finished:

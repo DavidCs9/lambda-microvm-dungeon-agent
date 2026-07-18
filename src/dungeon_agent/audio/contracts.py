@@ -16,6 +16,8 @@ class AudioPort(Protocol):
 
     def narrate(self, text: str, language: LanguageCode) -> None: ...
 
+    def play_dice_roll(self) -> None: ...
+
     def toggle_voice(self) -> bool: ...
 
     def toggle_music(self) -> bool: ...
@@ -44,6 +46,9 @@ class SilentAudio:
         return None
 
     def narrate(self, text: str, language: LanguageCode) -> None:
+        return None
+
+    def play_dice_roll(self) -> None:
         return None
 
     def toggle_voice(self) -> bool:

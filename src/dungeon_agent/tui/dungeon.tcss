@@ -43,6 +43,20 @@ Header, Footer {
 #story-pane { width: 1fr; padding: 1; }
 #story { height: 1fr; padding: 1 2; scrollbar-color: #334155; }
 
+#dice-result {
+    height: 3;
+    margin: 0 1;
+    padding: 1 2;
+    text-align: center;
+    text-style: bold;
+    border: round #facc15;
+    background: #17140b;
+    color: #fde68a;
+}
+
+#dice-result.dice-success { border: round #86efac; color: #86efac; }
+#dice-result.dice-failure { border: round #f87171; color: #fca5a5; }
+
 #command-input {
     margin: 1 1 0 1;
     border: tall #334155;

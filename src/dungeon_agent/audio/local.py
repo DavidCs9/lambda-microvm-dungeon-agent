@@ -76,6 +76,7 @@ class LocalAudioExperience:
         self._music_thread: threading.Thread | None = None
         self._music_process: subprocess.Popen[bytes] | None = None
         self._voice_process: subprocess.Popen[bytes] | None = None
+        self._effect_process: subprocess.Popen[bytes] | None = None
         self._process_lock = threading.Lock()
         self._narration_lock = threading.Lock()
 
@@ -119,6 +120,13 @@ class LocalAudioExperience:
             self._stop_voice_process()
         return self.voice_enabled
 
+    def play_dice_roll(self) -> None:
+        if not self.player.available or self._shutdown.is_set():
+            return
+        process = self.player.start(str(self._create_dice_sound()), 0.75)
+        with self._process_lock:
+            self._effect_process = process
+
     def toggle_music(self) -> bool:
         self._music_enabled = not self._music_enabled
         if self._music_enabled:
@@ -131,6 +139,7 @@ class LocalAudioExperience:
         self._shutdown.set()
         self._stop_voice_process()
         self._stop_music_process()
+        self._stop_effect_process()
         if self._music_thread is not None:
             self._music_thread.join(timeout=1)
 
@@ -172,6 +181,12 @@ class LocalAudioExperience:
             self._voice_process = None
         self._terminate(process)
 
+    def _stop_effect_process(self) -> None:
+        with self._process_lock:
+            process = self._effect_process
+            self._effect_process = None
+        self._terminate(process)
+
     @staticmethod
     def _terminate(process: subprocess.Popen[bytes] | None) -> None:
         if process is not None and process.poll() is None:
@@ -204,6 +219,39 @@ class LocalAudioExperience:
                 pulse = 0.07 * math.sin(2 * math.pi * (note * 2) * time)
                 envelope = 0.72 + 0.28 * math.sin(2 * math.pi * time / duration_seconds)
                 value = max(-1.0, min(1.0, (drone + harmony + pulse) * envelope))
+                frames.extend(struct.pack("<h", round(value * 32767)))
+            audio.writeframes(frames)
+        temporary.replace(output)
+        return output
+
+    def _create_dice_sound(self) -> Path:
+        output = self.cache_dir / "original-dice-roll.wav"
+        if output.is_file():
+            return output
+        self.cache_dir.mkdir(parents=True, exist_ok=True)
+        sample_rate = 22_050
+        duration_seconds = 0.9
+        frame_count = round(sample_rate * duration_seconds)
+        impacts = (0.04, 0.13, 0.22, 0.34, 0.49, 0.68)
+        temporary = output.with_suffix(".tmp")
+        with wave.open(str(temporary), "wb") as audio:
+            audio.setnchannels(1)
+            audio.setsampwidth(2)
+            audio.setframerate(sample_rate)
+            frames = bytearray()
+            for index in range(frame_count):
+                time = index / sample_rate
+                value = 0.0
+                for impact_index, impact in enumerate(impacts):
+                    elapsed = time - impact
+                    if 0 <= elapsed < 0.09:
+                        envelope = math.exp(-48 * elapsed)
+                        frequency = 720 + impact_index * 83
+                        value += 0.7 * envelope * math.sin(2 * math.pi * frequency * elapsed)
+                        value += (
+                            0.25 * envelope * math.sin(2 * math.pi * (frequency * 1.73) * elapsed)
+                        )
+                value = max(-1.0, min(1.0, value))
                 frames.extend(struct.pack("<h", round(value * 32767)))
             audio.writeframes(frames)
         temporary.replace(output)

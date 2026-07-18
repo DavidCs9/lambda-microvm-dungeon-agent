@@ -143,9 +143,10 @@ The following typed commands work in both the TUI and plain interface:
 
 ### Voice and ambience
 
-The TUI speaks Dungeon Master narration with Amazon Polly and plays a quiet, original tavern
-ambience loop generated locally by the application. Audio is a presentation adapter: it runs on
-the player's computer and is not part of the MicroVM image or game rules.
+The TUI speaks Dungeon Master narration with Amazon Polly, plays quiet original fantasy ambience,
+and gives every d20 roll its own locally generated dice sound. Rolls also appear in a prominent
+success/failure panel. Audio is a presentation adapter: it runs on the player's computer and is
+not part of the MicroVM image or game rules.
 
 - `F4` — toggle Dungeon Master voice
 - `F5` — toggle ambience

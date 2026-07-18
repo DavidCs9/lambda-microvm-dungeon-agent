@@ -49,6 +49,7 @@ class FakeAudio:
         self.started = False
         self.stopped = False
         self.narrations: list[tuple[str, LanguageCode]] = []
+        self.dice_rolls = 0
 
     def start(self) -> None:
         self.started = True
@@ -59,6 +60,9 @@ class FakeAudio:
     def toggle_voice(self) -> bool:
         self.voice_enabled = not self.voice_enabled
         return self.voice_enabled
+
+    def play_dice_roll(self) -> None:
+        self.dice_rolls += 1
 
     def toggle_music(self) -> bool:
         self.music_enabled = not self.music_enabled
@@ -99,6 +103,7 @@ def test_tui_runs_game_through_presentation_port() -> None:
     assert audio.started
     assert audio.stopped
     assert audio.narrations[0][1] == "es"
+    assert audio.dice_rolls == 1
 
 
 def test_tui_starts_with_blank_language_selection() -> None:
