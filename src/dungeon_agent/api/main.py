@@ -2,7 +2,7 @@ from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from typing import Annotated
 
-from fastapi import Depends, FastAPI, Request
+from fastapi import Depends, FastAPI, HTTPException, Request
 
 from dungeon_agent.api.config import Settings, get_settings
 from dungeon_agent.api.models import (
@@ -60,7 +60,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     @app.post("/v1/turns", response_model=WorldState, tags=["world"])
     async def apply_turn(payload: TurnRequest, store: StoreDependency) -> WorldState:
-        return await store.apply_turn(payload.action, payload.proposal)
+        try:
+            return await store.apply_turn(payload.action, payload.proposal)
+        except ValueError as error:
+            raise HTTPException(status_code=409, detail=str(error)) from error
 
     return app
 

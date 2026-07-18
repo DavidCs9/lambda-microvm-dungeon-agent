@@ -58,3 +58,23 @@ def test_invalid_payload_is_rejected(client: TestClient, path: str) -> None:
 
 def test_unknown_route_returns_not_found(client: TestClient) -> None:
     assert client.get("/missing").status_code == 404
+
+
+def test_invalid_dm_state_change_returns_explainable_conflict(client: TestClient) -> None:
+    client.put(
+        "/v1/adventure",
+        json={"language": "en", "plan": sample_plan().model_dump(mode="json")},
+    )
+    invalid = proposal(
+        requires_roll=False,
+        difficulty=None,
+        success_changes={"add_items": ["imaginary_sword"]},
+    )
+
+    response = client.post(
+        "/v1/turns",
+        json={"action": "summon a sword", "proposal": invalid.model_dump(mode="json")},
+    )
+
+    assert response.status_code == 409
+    assert "unknown item" in response.json()["detail"]

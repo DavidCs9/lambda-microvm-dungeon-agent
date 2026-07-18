@@ -41,7 +41,13 @@ class DungeonOrchestrator:
             raise ValueError(self.locale.long_action)
         world = self._current_world()
         proposal = self.dungeon_master.adjudicate(normalized, world)
-        self._world = self.session.apply_turn(normalized, proposal)
+        try:
+            self._world = self.session.apply_turn(normalized, proposal)
+        except RuntimeError as error:
+            if "apply turn returned HTTP 409" not in str(error):
+                raise
+            proposal = self.dungeon_master.adjudicate(normalized, world, str(error))
+            self._world = self.session.apply_turn(normalized, proposal)
         result = self._world.get("last_result")
         if not isinstance(result, dict):
             raise RuntimeError("MicroVM returned no turn result")

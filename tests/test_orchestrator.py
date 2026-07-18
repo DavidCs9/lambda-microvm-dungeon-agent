@@ -77,6 +77,23 @@ def test_free_form_action_is_adjudicated_then_validated_by_microvm() -> None:
     )
 
 
+def test_rejected_model_change_is_repaired_once() -> None:
+    orchestrator, session, _, dungeon_master, _ = orchestrator_with_mocks()
+    session.read_world.return_value = world_data()
+    first, repaired = proposal(), proposal(requires_roll=False, difficulty=None)
+    dungeon_master.adjudicate.side_effect = [first, repaired]
+    session.apply_turn.side_effect = [
+        RuntimeError("apply turn returned HTTP 409: unknown item"),
+        world_data(),
+    ]
+
+    turn = orchestrator.take_turn("improvise something unexpected")
+
+    assert turn.success
+    assert dungeon_master.adjudicate.call_count == 2
+    assert session.apply_turn.call_count == 2
+
+
 def test_generated_state_summary_is_human_readable() -> None:
     orchestrator, session, _, _, _ = orchestrator_with_mocks()
     session.read_world.return_value = world_data()

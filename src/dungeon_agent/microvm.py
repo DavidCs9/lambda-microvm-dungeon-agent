@@ -60,7 +60,13 @@ def request_json(
     finally:
         connection.close()
     latency_ms = (time.perf_counter() - started) * 1_000
-    decoded: object = json.loads(response_body) if response_body else None
+    if not response_body:
+        decoded: object = None
+    else:
+        try:
+            decoded = json.loads(response_body)
+        except json.JSONDecodeError:
+            decoded = response_body.decode(errors="replace")
     return HttpResult(status=response.status, body=decoded, latency_ms=latency_ms)
 
 

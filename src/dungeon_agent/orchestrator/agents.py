@@ -111,7 +111,12 @@ class DungeonMaster:
         self.agent = agent
         self.language = language
 
-    def adjudicate(self, action: str, world: dict[str, object]) -> TurnProposal:
+    def adjudicate(
+        self,
+        action: str,
+        world: dict[str, object],
+        rejection_feedback: str | None = None,
+    ) -> TurnProposal:
         language_name = "Spanish" if self.language == "es" else "English"
         return self.agent.invoke(
             system=(
@@ -131,6 +136,7 @@ class DungeonMaster:
                     "instruction": f"Resolve this turn entirely in {language_name}.",
                     "playerAction": action,
                     "world": world,
+                    "previousProposalRejection": rejection_feedback,
                 },
                 ensure_ascii=False,
                 separators=(",", ":"),
