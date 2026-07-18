@@ -15,21 +15,29 @@ concurrency:
 
 jobs:
   test:
-    name: Node.js ${{ matrix.node-version }}
+    name: Python ${{ matrix.python-version }}
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
-        node-version: [20, 24]
+        python-version: ["3.12", "3.13"]
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
-      - name: Set up Node.js
-        uses: actions/setup-node@v4
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v6
         with:
-          node-version: ${{ matrix.node-version }}
+          version: "0.8.22"
+          python-version: ${{ matrix.python-version }}
+          enable-cache: true
+      - name: Install dependencies
+        run: uv sync --locked --all-groups
       - name: Run checks
-        run: npm run check
+        run: |
+          uv run ruff check .
+          uv run ruff format --check .
+          uv run mypy
+          uv run pytest
 
   container:
     name: Build ARM64 container

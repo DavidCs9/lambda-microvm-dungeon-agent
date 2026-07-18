@@ -21,7 +21,7 @@ body:
     id: environment
     attributes:
       label: Environment
-      placeholder: Node version, OS, AWS region
+      placeholder: Python version, OS, AWS region
     validations:
       required: true
   - type: textarea

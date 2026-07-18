@@ -8,7 +8,7 @@ Summarize the implementation.
 
 ## Verification
 
-- [ ] `npm run check` passes
+- [ ] Formatting, linting, type checks, and tests pass
 - [ ] Tests cover behavior changes
 - [ ] Documentation is current
 - [ ] No credentials, tokens, account IDs, or session data are committed

@@ -1,9 +1,14 @@
 .git
 .github
-node_modules
-coverage
+.venv
+__pycache__
+.pytest_cache
+.mypy_cache
+.ruff_cache
+.coverage
+htmlcov
 docs
 infra
-test
+tests
 *.log
 *.zip

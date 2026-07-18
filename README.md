@@ -7,11 +7,12 @@ A small, stateful AI-agent lab for testing AWS Lambda MicroVM isolation, authent
 
 ## Status
 
-The repository currently contains a dependency-free sandbox API and tests. AWS deployment and arbitrary code execution are intentionally not enabled yet.
+The repository currently contains a FastAPI backend and tests. AWS deployment and arbitrary code execution are intentionally not enabled yet. A separate web client may be added later; this repository currently focuses on the backend API.
 
 ## Prerequisites
 
-- Node.js 24 (Node.js 20 also works for current local tests)
+- Python 3.13
+- [uv](https://docs.astral.sh/uv/)
 - Docker with ARM64 build support
 - AWS CLI with Lambda MicroVM support
 - An AWS account able to create lab-scoped resources in `us-east-2`
@@ -19,32 +20,32 @@ The repository currently contains a dependency-free sandbox API and tests. AWS d
 ## Local development
 
 ```sh
-nvm use
-npm test
-WORKSPACE_DIR="$(mktemp -d)" npm start
+uv sync
+uv run pytest
+DUNGEON_WORKSPACE_DIR="$(mktemp -d)" uv run uvicorn app.main:app --reload
 ```
 
 In another terminal:
 
 ```sh
-curl http://127.0.0.1:8080/health
-curl http://127.0.0.1:8080/state
-curl -X POST http://127.0.0.1:8080/action \
+curl http://127.0.0.1:8000/health
+curl http://127.0.0.1:8000/v1/world
+curl -X POST http://127.0.0.1:8000/v1/actions \
   -H 'content-type: application/json' \
   -d '{"action":"Open the snapshot door"}'
 ```
 
 ## Repository layout
 
-- `src/` — MicroVM HTTP application and state store
-- `test/` — dependency-free Node test suite
+- `app/` — FastAPI application, settings, schemas, and state store
+- `tests/` — API and persistence tests
 - `docs/` — architecture and security decisions
 - `infra/` — deployment automation placeholder
 - `scripts/` — future build, benchmark, and cleanup helpers
 
 ## Planned milestones
 
-1. Validate the local API and ARM64 container.
+1. Validate the FastAPI backend and ARM64 container.
 2. Add repeatable AWS bootstrap and cleanup automation.
 3. Create and launch the MicroVM image in Ohio (`us-east-2`).
 4. Measure launch, warm-request, suspend, and resume latency.
