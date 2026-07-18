@@ -1,0 +1,1071 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: Standard Step Functions skeleton for asynchronous Dungeon Agent session creation.
+
+Parameters:
+  LogRetentionDays:
+    Type: Number
+    Default: 30
+    AllowedValues: [7, 14, 30, 60, 90]
+    Description: Retention period for workflow and Lambda operational logs.
+
+Resources:
+  WorkflowTaskRole:
+    Type: AWS::IAM::Role
+    Properties:
+      Description: Writes logs for the create-session workflow stub tasks.
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: WriteWorkflowTaskLogs
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                Resource: !Sub >-
+                  arn:${AWS::Partition}:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/${AWS::StackName}-workflow-stub:*
+
+  WorkflowTaskFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      Description: Contract-preserving stub replaced by focused adapters in later waves.
+      FunctionName: !Sub "${AWS::StackName}-workflow-stub"
+      Runtime: python3.14
+      Handler: index.handler
+      MemorySize: 256
+      Timeout: 30
+      Role: !GetAtt WorkflowTaskRole.Arn
+      Code:
+        ZipFile: |
+          import copy
+          import json
+          from datetime import UTC, datetime
+
+
+          class ValidationError(Exception):
+              pass
+
+
+          class AuthorizationError(Exception):
+              pass
+
+
+          class RetriableDependencyError(Exception):
+              pass
+
+
+          def _now() -> str:
+              return datetime.now(UTC).isoformat().replace("+00:00", "Z")
+
+
+          def _append_event(state: dict, event_type: str, payload: dict) -> None:
+              events = state.setdefault("eventStubs", [])
+              events.append({"type": event_type, "occurredAt": _now(), "payload": payload})
+
+
+          def handler(event: dict, _context: object) -> dict:
+              operation = event["operation"]
+              retry_count = int(event.get("retryCount", 0))
+              input_state = event.get("state", {})
+
+              if input_state.get("forceValidationFailureAt") == operation:
+                  raise ValidationError(f"forced validation failure at {operation}")
+              if input_state.get("forceAuthorizationFailureAt") == operation:
+                  raise AuthorizationError(f"forced authorization failure at {operation}")
+              transient_operation = input_state.get("forceRetriableFailureAt")
+              transient_attempts = int(input_state.get("forceRetriableAttempts", 1))
+              if transient_operation == operation and retry_count < transient_attempts:
+                  raise RetriableDependencyError(
+                      f"forced dependency failure at {operation}; retry={retry_count}"
+                  )
+
+              state = copy.deepcopy(input_state)
+              entered_at = event["stateEnteredAt"]
+              state["workflowExecutionArn"] = event["workflowExecutionArn"]
+              state["updatedAt"] = _now()
+              state.setdefault("taskTimestamps", {})[operation] = {
+                  "startedAt": entered_at,
+                  "completedAt": state["updatedAt"],
+              }
+
+              phase = event.get("phase")
+              if phase:
+                  state["phase"] = phase
+                  state.setdefault("phaseTimestamps", {})[phase] = entered_at
+                  _append_event(
+                      state,
+                      "session.phase.changed",
+                      {"phase": phase, "elapsedMs": 0},
+                  )
+
+              if operation == "CreateSessionRecord":
+                  state["status"] = "creating"
+                  _append_event(
+                      state,
+                      "session.creation.started",
+                      {"language": state.get("language")},
+                  )
+              elif operation == "LaunchMicrovm":
+                  state["microvmRef"] = "stub-microvm"
+              elif operation == "GenerateAdventure":
+                  state["adventureRef"] = "stub://adventures/generated"
+              elif operation == "GenerateCharacter":
+                  state["characterRef"] = "stub://characters/generated"
+              elif operation == "InitializeMicrovmGame":
+                  state["stateRevision"] = 0
+              elif operation == "MarkSessionReady":
+                  state["status"] = "ready"
+                  state["phase"] = "ready"
+                  state.setdefault("phaseTimestamps", {})["ready"] = entered_at
+              elif operation == "EmitSessionReady":
+                  _append_event(state, "session.ready", {"revision": 0})
+              elif operation == "MarkSessionFailed":
+                  failure = state.get("failure", {})
+                  state["status"] = "failed"
+                  state["phase"] = "failed"
+                  state.setdefault("phaseTimestamps", {})["failed"] = entered_at
+                  state["normalizedFailure"] = {
+                      "error": failure.get("Error", "UnknownWorkflowError"),
+                      "retryable": False,
+                  }
+              elif operation == "EmitSessionCreationFailed":
+                  failure = state.get("normalizedFailure", {})
+                  _append_event(
+                      state,
+                      "session.creation.failed",
+                      {
+                          "code": "session_creation_failed",
+                          "retryable": bool(failure.get("retryable", False)),
+                      },
+                  )
+
+              print(json.dumps({
+                  "operation": operation,
+                  "sessionId": state.get("sessionId"),
+                  "workflowExecutionArn": state.get("workflowExecutionArn"),
+              }))
+              return state
+
+  WorkflowTaskLogGroup:
+    Type: AWS::Logs::LogGroup
+    DeletionPolicy: Delete
+    UpdateReplacePolicy: Delete
+    Properties:
+      LogGroupName: !Sub "/aws/lambda/${AWS::StackName}-workflow-stub"
+      RetentionInDays: !Ref LogRetentionDays
+
+  CreateSessionStateMachineRole:
+    Type: AWS::IAM::Role
+    Properties:
+      Description: Invokes only the create-session workflow task stub and publishes telemetry.
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: states.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: InvokeWorkflowTask
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action: lambda:InvokeFunction
+                Resource: !GetAtt WorkflowTaskFunction.Arn
+        - PolicyName: DeliverWorkflowLogs
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - logs:CreateLogDelivery
+                  - logs:GetLogDelivery
+                  - logs:UpdateLogDelivery
+                  - logs:DeleteLogDelivery
+                  - logs:ListLogDeliveries
+                  - logs:PutResourcePolicy
+                  - logs:DescribeResourcePolicies
+                  - logs:DescribeLogGroups
+                Resource: "*"
+        - PolicyName: PublishWorkflowTraces
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - xray:PutTraceSegments
+                  - xray:PutTelemetryRecords
+                  - xray:GetSamplingRules
+                  - xray:GetSamplingTargets
+                Resource: "*"
+
+  CreateSessionWorkflowLogGroup:
+    Type: AWS::Logs::LogGroup
+    DeletionPolicy: Delete
+    UpdateReplacePolicy: Delete
+    Properties:
+      LogGroupName: !Sub "/aws/vendedlogs/states/${AWS::StackName}-create-session"
+      RetentionInDays: !Ref LogRetentionDays
+
+  CreateSessionStateMachine:
+    Type: AWS::StepFunctions::StateMachine
+    DependsOn:
+      - CreateSessionWorkflowLogGroup
+      - WorkflowTaskLogGroup
+    Properties:
+      StateMachineName: !Sub "${AWS::StackName}-create-session"
+      StateMachineType: STANDARD
+      RoleArn: !GetAtt CreateSessionStateMachineRole.Arn
+      LoggingConfiguration:
+        Destinations:
+          - CloudWatchLogsLogGroup:
+              LogGroupArn: !GetAtt CreateSessionWorkflowLogGroup.Arn
+        IncludeExecutionData: false
+        Level: ALL
+      TracingConfiguration:
+        Enabled: true
+      Definition:
+        Comment: Creates a session through replaceable, independently observable phases.
+        StartAt: ValidateSession
+        TimeoutSeconds: 900
+        States:
+          ValidateSession:
+            Type: Task
+            Resource: !Sub "arn:${AWS::Partition}:states:::lambda:invoke"
+            TimeoutSeconds: 30
+            Parameters:
+              FunctionName: !GetAtt WorkflowTaskFunction.Arn
+              Payload:
+                operation: ValidateSession
+                state.$: "$"
+                workflowExecutionArn.$: "$$.Execution.Id"
+                stateEnteredAt.$: "$$.State.EnteredTime"
+                retryCount.$: "$$.State.RetryCount"
+            OutputPath: "$.Payload"
+            Retry:
+              - ErrorEquals:
+                  - RetriableDependencyError
+                  - Lambda.ServiceException
+                  - Lambda.AWSLambdaException
+                  - Lambda.SdkClientException
+                  - Lambda.TooManyRequestsException
+                  - States.Timeout
+                IntervalSeconds: 2
+                MaxAttempts: 3
+                BackoffRate: 2.0
+                MaxDelaySeconds: 30
+                JitterStrategy: FULL
+            Catch:
+              - ErrorEquals:
+                  - ValidationError
+                  - AuthorizationError
+                ResultPath: "$.failure"
+                Next: MarkSessionFailed
+              - ErrorEquals:
+                  - States.ALL
+                ResultPath: "$.failure"
+                Next: MarkSessionFailed
+            Next: CreateSessionRecord
+
+          CreateSessionRecord:
+            Type: Task
+            Resource: !Sub "arn:${AWS::Partition}:states:::lambda:invoke"
+            TimeoutSeconds: 30
+            Parameters:
+              FunctionName: !GetAtt WorkflowTaskFunction.Arn
+              Payload:
+                operation: CreateSessionRecord
+                state.$: "$"
+                workflowExecutionArn.$: "$$.Execution.Id"
+                stateEnteredAt.$: "$$.State.EnteredTime"
+                retryCount.$: "$$.State.RetryCount"
+            OutputPath: "$.Payload"
+            Retry:
+              - ErrorEquals:
+                  - RetriableDependencyError
+                  - Lambda.ServiceException
+                  - Lambda.AWSLambdaException
+                  - Lambda.SdkClientException
+                  - Lambda.TooManyRequestsException
+                  - States.Timeout
+                IntervalSeconds: 2
+                MaxAttempts: 3
+                BackoffRate: 2.0
+                MaxDelaySeconds: 30
+                JitterStrategy: FULL
+            Catch:
+              - ErrorEquals:
+                  - ValidationError
+                  - AuthorizationError
+                ResultPath: "$.failure"
+                Next: MarkSessionFailed
+              - ErrorEquals:
+                  - States.ALL
+                ResultPath: "$.failure"
+                Next: MarkSessionFailed
+            Next: EmitStartingMicrovm
+
+          EmitStartingMicrovm:
+            Type: Task
+            Resource: !Sub "arn:${AWS::Partition}:states:::lambda:invoke"
+            TimeoutSeconds: 30
+            Parameters:
+              FunctionName: !GetAtt WorkflowTaskFunction.Arn
+              Payload:
+                operation: EmitStartingMicrovm
+                phase: starting_microvm
+                state.$: "$"
+                workflowExecutionArn.$: "$$.Execution.Id"
+                stateEnteredAt.$: "$$.State.EnteredTime"
+                retryCount.$: "$$.State.RetryCount"
+            OutputPath: "$.Payload"
+            Retry:
+              - ErrorEquals:
+                  - RetriableDependencyError
+                  - Lambda.ServiceException
+                  - Lambda.AWSLambdaException
+                  - Lambda.SdkClientException
+                  - Lambda.TooManyRequestsException
+                  - States.Timeout
+                IntervalSeconds: 2
+                MaxAttempts: 3
+                BackoffRate: 2.0
+                MaxDelaySeconds: 30
+                JitterStrategy: FULL
+            Catch:
+              - ErrorEquals:
+                  - ValidationError
+                  - AuthorizationError
+                ResultPath: "$.failure"
+                Next: MarkSessionFailed
+              - ErrorEquals:
+                  - States.ALL
+                ResultPath: "$.failure"
+                Next: MarkSessionFailed
+            Next: LaunchMicrovm
+
+          LaunchMicrovm:
+            Type: Task
+            Resource: !Sub "arn:${AWS::Partition}:states:::lambda:invoke"
+            TimeoutSeconds: 120
+            Parameters:
+              FunctionName: !GetAtt WorkflowTaskFunction.Arn
+              Payload:
+                operation: LaunchMicrovm
+                state.$: "$"
+                workflowExecutionArn.$: "$$.Execution.Id"
+                stateEnteredAt.$: "$$.State.EnteredTime"
+                retryCount.$: "$$.State.RetryCount"
+            OutputPath: "$.Payload"
+            Retry:
+              - ErrorEquals:
+                  - RetriableDependencyError
+                  - Lambda.ServiceException
+                  - Lambda.AWSLambdaException
+                  - Lambda.SdkClientException
+                  - Lambda.TooManyRequestsException
+                  - States.Timeout
+                IntervalSeconds: 2
+                MaxAttempts: 3
+                BackoffRate: 2.0
+                MaxDelaySeconds: 30
+                JitterStrategy: FULL
+            Catch:
+              - ErrorEquals:
+                  - ValidationError
+                  - AuthorizationError
+                ResultPath: "$.failure"
+                Next: MarkSessionFailed
+              - ErrorEquals:
+                  - States.ALL
+                ResultPath: "$.failure"
+                Next: MarkSessionFailed
+            Next: WaitForMicrovm
+
+          WaitForMicrovm:
+            Type: Task
+            Resource: !Sub "arn:${AWS::Partition}:states:::lambda:invoke"
+            TimeoutSeconds: 300
+            Parameters:
+              FunctionName: !GetAtt WorkflowTaskFunction.Arn
+              Payload:
+                operation: WaitForMicrovm
+                phase: waiting_for_microvm
+                state.$: "$"
+                workflowExecutionArn.$: "$$.Execution.Id"
+                stateEnteredAt.$: "$$.State.EnteredTime"
+                retryCount.$: "$$.State.RetryCount"
+            OutputPath: "$.Payload"
+            Retry:
+              - ErrorEquals:
+                  - RetriableDependencyError
+                  - Lambda.ServiceException
+                  - Lambda.AWSLambdaException
+                  - Lambda.SdkClientException
+                  - Lambda.TooManyRequestsException
+                  - States.Timeout
+                IntervalSeconds: 2
+                MaxAttempts: 3
+                BackoffRate: 2.0
+                MaxDelaySeconds: 30
+                JitterStrategy: FULL
+            Catch:
+              - ErrorEquals:
+                  - ValidationError
+                  - AuthorizationError
+                ResultPath: "$.failure"
+                Next: MarkSessionFailed
+              - ErrorEquals:
+                  - States.ALL
+                ResultPath: "$.failure"
+                Next: MarkSessionFailed
+            Next: EmitCreatingAdventure
+
+          EmitCreatingAdventure:
+            Type: Task
+            Resource: !Sub "arn:${AWS::Partition}:states:::lambda:invoke"
+            TimeoutSeconds: 30
+            Parameters:
+              FunctionName: !GetAtt WorkflowTaskFunction.Arn
+              Payload:
+                operation: EmitCreatingAdventure
+                phase: creating_adventure
+                state.$: "$"
+                workflowExecutionArn.$: "$$.Execution.Id"
+                stateEnteredAt.$: "$$.State.EnteredTime"
+                retryCount.$: "$$.State.RetryCount"
+            OutputPath: "$.Payload"
+            Retry:
+              - ErrorEquals:
+                  - RetriableDependencyError
+                  - Lambda.ServiceException
+                  - Lambda.AWSLambdaException
+                  - Lambda.SdkClientException
+                  - Lambda.TooManyRequestsException
+                  - States.Timeout
+                IntervalSeconds: 2
+                MaxAttempts: 3
+                BackoffRate: 2.0
+                MaxDelaySeconds: 30
+                JitterStrategy: FULL
+            Catch:
+              - ErrorEquals:
+                  - ValidationError
+                  - AuthorizationError
+                ResultPath: "$.failure"
+                Next: MarkSessionFailed
+              - ErrorEquals:
+                  - States.ALL
+                ResultPath: "$.failure"
+                Next: MarkSessionFailed
+            Next: GenerateAdventure
+
+          GenerateAdventure:
+            Type: Task
+            Resource: !Sub "arn:${AWS::Partition}:states:::lambda:invoke"
+            TimeoutSeconds: 180
+            Parameters:
+              FunctionName: !GetAtt WorkflowTaskFunction.Arn
+              Payload:
+                operation: GenerateAdventure
+                state.$: "$"
+                workflowExecutionArn.$: "$$.Execution.Id"
+                stateEnteredAt.$: "$$.State.EnteredTime"
+                retryCount.$: "$$.State.RetryCount"
+            OutputPath: "$.Payload"
+            Retry:
+              - ErrorEquals:
+                  - RetriableDependencyError
+                  - Lambda.ServiceException
+                  - Lambda.AWSLambdaException
+                  - Lambda.SdkClientException
+                  - Lambda.TooManyRequestsException
+                  - States.Timeout
+                IntervalSeconds: 2
+                MaxAttempts: 3
+                BackoffRate: 2.0
+                MaxDelaySeconds: 30
+                JitterStrategy: FULL
+            Catch:
+              - ErrorEquals:
+                  - ValidationError
+                  - AuthorizationError
+                ResultPath: "$.failure"
+                Next: MarkSessionFailed
+              - ErrorEquals:
+                  - States.ALL
+                ResultPath: "$.failure"
+                Next: MarkSessionFailed
+            Next: PersistAdventure
+
+          PersistAdventure:
+            Type: Task
+            Resource: !Sub "arn:${AWS::Partition}:states:::lambda:invoke"
+            TimeoutSeconds: 30
+            Parameters:
+              FunctionName: !GetAtt WorkflowTaskFunction.Arn
+              Payload:
+                operation: PersistAdventure
+                state.$: "$"
+                workflowExecutionArn.$: "$$.Execution.Id"
+                stateEnteredAt.$: "$$.State.EnteredTime"
+                retryCount.$: "$$.State.RetryCount"
+            OutputPath: "$.Payload"
+            Retry:
+              - ErrorEquals:
+                  - RetriableDependencyError
+                  - Lambda.ServiceException
+                  - Lambda.AWSLambdaException
+                  - Lambda.SdkClientException
+                  - Lambda.TooManyRequestsException
+                  - States.Timeout
+                IntervalSeconds: 2
+                MaxAttempts: 3
+                BackoffRate: 2.0
+                MaxDelaySeconds: 30
+                JitterStrategy: FULL
+            Catch:
+              - ErrorEquals:
+                  - ValidationError
+                  - AuthorizationError
+                ResultPath: "$.failure"
+                Next: MarkSessionFailed
+              - ErrorEquals:
+                  - States.ALL
+                ResultPath: "$.failure"
+                Next: MarkSessionFailed
+            Next: EmitCreatingCharacter
+
+          EmitCreatingCharacter:
+            Type: Task
+            Resource: !Sub "arn:${AWS::Partition}:states:::lambda:invoke"
+            TimeoutSeconds: 30
+            Parameters:
+              FunctionName: !GetAtt WorkflowTaskFunction.Arn
+              Payload:
+                operation: EmitCreatingCharacter
+                phase: creating_character
+                state.$: "$"
+                workflowExecutionArn.$: "$$.Execution.Id"
+                stateEnteredAt.$: "$$.State.EnteredTime"
+                retryCount.$: "$$.State.RetryCount"
+            OutputPath: "$.Payload"
+            Retry:
+              - ErrorEquals:
+                  - RetriableDependencyError
+                  - Lambda.ServiceException
+                  - Lambda.AWSLambdaException
+                  - Lambda.SdkClientException
+                  - Lambda.TooManyRequestsException
+                  - States.Timeout
+                IntervalSeconds: 2
+                MaxAttempts: 3
+                BackoffRate: 2.0
+                MaxDelaySeconds: 30
+                JitterStrategy: FULL
+            Catch:
+              - ErrorEquals:
+                  - ValidationError
+                  - AuthorizationError
+                ResultPath: "$.failure"
+                Next: MarkSessionFailed
+              - ErrorEquals:
+                  - States.ALL
+                ResultPath: "$.failure"
+                Next: MarkSessionFailed
+            Next: GenerateCharacter
+
+          GenerateCharacter:
+            Type: Task
+            Resource: !Sub "arn:${AWS::Partition}:states:::lambda:invoke"
+            TimeoutSeconds: 180
+            Parameters:
+              FunctionName: !GetAtt WorkflowTaskFunction.Arn
+              Payload:
+                operation: GenerateCharacter
+                state.$: "$"
+                workflowExecutionArn.$: "$$.Execution.Id"
+                stateEnteredAt.$: "$$.State.EnteredTime"
+                retryCount.$: "$$.State.RetryCount"
+            OutputPath: "$.Payload"
+            Retry:
+              - ErrorEquals:
+                  - RetriableDependencyError
+                  - Lambda.ServiceException
+                  - Lambda.AWSLambdaException
+                  - Lambda.SdkClientException
+                  - Lambda.TooManyRequestsException
+                  - States.Timeout
+                IntervalSeconds: 2
+                MaxAttempts: 3
+                BackoffRate: 2.0
+                MaxDelaySeconds: 30
+                JitterStrategy: FULL
+            Catch:
+              - ErrorEquals:
+                  - ValidationError
+                  - AuthorizationError
+                ResultPath: "$.failure"
+                Next: MarkSessionFailed
+              - ErrorEquals:
+                  - States.ALL
+                ResultPath: "$.failure"
+                Next: MarkSessionFailed
+            Next: PersistCharacter
+
+          PersistCharacter:
+            Type: Task
+            Resource: !Sub "arn:${AWS::Partition}:states:::lambda:invoke"
+            TimeoutSeconds: 30
+            Parameters:
+              FunctionName: !GetAtt WorkflowTaskFunction.Arn
+              Payload:
+                operation: PersistCharacter
+                state.$: "$"
+                workflowExecutionArn.$: "$$.Execution.Id"
+                stateEnteredAt.$: "$$.State.EnteredTime"
+                retryCount.$: "$$.State.RetryCount"
+            OutputPath: "$.Payload"
+            Retry:
+              - ErrorEquals:
+                  - RetriableDependencyError
+                  - Lambda.ServiceException
+                  - Lambda.AWSLambdaException
+                  - Lambda.SdkClientException
+                  - Lambda.TooManyRequestsException
+                  - States.Timeout
+                IntervalSeconds: 2
+                MaxAttempts: 3
+                BackoffRate: 2.0
+                MaxDelaySeconds: 30
+                JitterStrategy: FULL
+            Catch:
+              - ErrorEquals:
+                  - ValidationError
+                  - AuthorizationError
+                ResultPath: "$.failure"
+                Next: MarkSessionFailed
+              - ErrorEquals:
+                  - States.ALL
+                ResultPath: "$.failure"
+                Next: MarkSessionFailed
+            Next: EmitInitializingGame
+
+          EmitInitializingGame:
+            Type: Task
+            Resource: !Sub "arn:${AWS::Partition}:states:::lambda:invoke"
+            TimeoutSeconds: 30
+            Parameters:
+              FunctionName: !GetAtt WorkflowTaskFunction.Arn
+              Payload:
+                operation: EmitInitializingGame
+                phase: initializing_game
+                state.$: "$"
+                workflowExecutionArn.$: "$$.Execution.Id"
+                stateEnteredAt.$: "$$.State.EnteredTime"
+                retryCount.$: "$$.State.RetryCount"
+            OutputPath: "$.Payload"
+            Retry:
+              - ErrorEquals:
+                  - RetriableDependencyError
+                  - Lambda.ServiceException
+                  - Lambda.AWSLambdaException
+                  - Lambda.SdkClientException
+                  - Lambda.TooManyRequestsException
+                  - States.Timeout
+                IntervalSeconds: 2
+                MaxAttempts: 3
+                BackoffRate: 2.0
+                MaxDelaySeconds: 30
+                JitterStrategy: FULL
+            Catch:
+              - ErrorEquals:
+                  - ValidationError
+                  - AuthorizationError
+                ResultPath: "$.failure"
+                Next: MarkSessionFailed
+              - ErrorEquals:
+                  - States.ALL
+                ResultPath: "$.failure"
+                Next: MarkSessionFailed
+            Next: InitializeMicrovmGame
+
+          InitializeMicrovmGame:
+            Type: Task
+            Resource: !Sub "arn:${AWS::Partition}:states:::lambda:invoke"
+            TimeoutSeconds: 120
+            Parameters:
+              FunctionName: !GetAtt WorkflowTaskFunction.Arn
+              Payload:
+                operation: InitializeMicrovmGame
+                state.$: "$"
+                workflowExecutionArn.$: "$$.Execution.Id"
+                stateEnteredAt.$: "$$.State.EnteredTime"
+                retryCount.$: "$$.State.RetryCount"
+            OutputPath: "$.Payload"
+            Retry:
+              - ErrorEquals:
+                  - RetriableDependencyError
+                  - Lambda.ServiceException
+                  - Lambda.AWSLambdaException
+                  - Lambda.SdkClientException
+                  - Lambda.TooManyRequestsException
+                  - States.Timeout
+                IntervalSeconds: 2
+                MaxAttempts: 3
+                BackoffRate: 2.0
+                MaxDelaySeconds: 30
+                JitterStrategy: FULL
+            Catch:
+              - ErrorEquals:
+                  - ValidationError
+                  - AuthorizationError
+                ResultPath: "$.failure"
+                Next: MarkSessionFailed
+              - ErrorEquals:
+                  - States.ALL
+                ResultPath: "$.failure"
+                Next: MarkSessionFailed
+            Next: MarkSessionReady
+
+          MarkSessionReady:
+            Type: Task
+            Resource: !Sub "arn:${AWS::Partition}:states:::lambda:invoke"
+            TimeoutSeconds: 30
+            Parameters:
+              FunctionName: !GetAtt WorkflowTaskFunction.Arn
+              Payload:
+                operation: MarkSessionReady
+                state.$: "$"
+                workflowExecutionArn.$: "$$.Execution.Id"
+                stateEnteredAt.$: "$$.State.EnteredTime"
+                retryCount.$: "$$.State.RetryCount"
+            OutputPath: "$.Payload"
+            Retry:
+              - ErrorEquals:
+                  - RetriableDependencyError
+                  - Lambda.ServiceException
+                  - Lambda.AWSLambdaException
+                  - Lambda.SdkClientException
+                  - Lambda.TooManyRequestsException
+                  - States.Timeout
+                IntervalSeconds: 2
+                MaxAttempts: 3
+                BackoffRate: 2.0
+                MaxDelaySeconds: 30
+                JitterStrategy: FULL
+            Catch:
+              - ErrorEquals:
+                  - ValidationError
+                  - AuthorizationError
+                ResultPath: "$.failure"
+                Next: MarkSessionFailed
+              - ErrorEquals:
+                  - States.ALL
+                ResultPath: "$.failure"
+                Next: MarkSessionFailed
+            Next: EmitSessionReady
+
+          EmitSessionReady:
+            Type: Task
+            Resource: !Sub "arn:${AWS::Partition}:states:::lambda:invoke"
+            TimeoutSeconds: 30
+            Parameters:
+              FunctionName: !GetAtt WorkflowTaskFunction.Arn
+              Payload:
+                operation: EmitSessionReady
+                state.$: "$"
+                workflowExecutionArn.$: "$$.Execution.Id"
+                stateEnteredAt.$: "$$.State.EnteredTime"
+                retryCount.$: "$$.State.RetryCount"
+            OutputPath: "$.Payload"
+            Retry:
+              - ErrorEquals:
+                  - RetriableDependencyError
+                  - Lambda.ServiceException
+                  - Lambda.AWSLambdaException
+                  - Lambda.SdkClientException
+                  - Lambda.TooManyRequestsException
+                  - States.Timeout
+                IntervalSeconds: 2
+                MaxAttempts: 3
+                BackoffRate: 2.0
+                MaxDelaySeconds: 30
+                JitterStrategy: FULL
+            Catch:
+              - ErrorEquals:
+                  - ValidationError
+                  - AuthorizationError
+                ResultPath: "$.failure"
+                Next: MarkSessionFailed
+              - ErrorEquals:
+                  - States.ALL
+                ResultPath: "$.failure"
+                Next: MarkSessionFailed
+            Next: SessionCreated
+
+          SessionCreated:
+            Type: Succeed
+
+          MarkSessionFailed:
+            Type: Task
+            Resource: !Sub "arn:${AWS::Partition}:states:::lambda:invoke"
+            TimeoutSeconds: 30
+            Parameters:
+              FunctionName: !GetAtt WorkflowTaskFunction.Arn
+              Payload:
+                operation: MarkSessionFailed
+                state.$: "$"
+                workflowExecutionArn.$: "$$.Execution.Id"
+                stateEnteredAt.$: "$$.State.EnteredTime"
+                retryCount.$: "$$.State.RetryCount"
+            OutputPath: "$.Payload"
+            Retry:
+              - ErrorEquals:
+                  - RetriableDependencyError
+                  - Lambda.ServiceException
+                  - Lambda.AWSLambdaException
+                  - Lambda.SdkClientException
+                  - Lambda.TooManyRequestsException
+                  - States.Timeout
+                IntervalSeconds: 2
+                MaxAttempts: 3
+                BackoffRate: 2.0
+                MaxDelaySeconds: 30
+                JitterStrategy: FULL
+            Catch:
+              - ErrorEquals: [States.ALL]
+                ResultPath: "$.failureHandlerFailure"
+                Next: WorkflowFailureHandlerFailed
+            Next: EmitSessionCreationFailed
+
+          EmitSessionCreationFailed:
+            Type: Task
+            Resource: !Sub "arn:${AWS::Partition}:states:::lambda:invoke"
+            TimeoutSeconds: 30
+            Parameters:
+              FunctionName: !GetAtt WorkflowTaskFunction.Arn
+              Payload:
+                operation: EmitSessionCreationFailed
+                state.$: "$"
+                workflowExecutionArn.$: "$$.Execution.Id"
+                stateEnteredAt.$: "$$.State.EnteredTime"
+                retryCount.$: "$$.State.RetryCount"
+            OutputPath: "$.Payload"
+            Retry:
+              - ErrorEquals:
+                  - RetriableDependencyError
+                  - Lambda.ServiceException
+                  - Lambda.AWSLambdaException
+                  - Lambda.SdkClientException
+                  - Lambda.TooManyRequestsException
+                  - States.Timeout
+                IntervalSeconds: 2
+                MaxAttempts: 3
+                BackoffRate: 2.0
+                MaxDelaySeconds: 30
+                JitterStrategy: FULL
+            Catch:
+              - ErrorEquals: [States.ALL]
+                ResultPath: "$.failureHandlerFailure"
+                Next: WorkflowFailureHandlerFailed
+            Next: SessionCreationFailed
+
+          SessionCreationFailed:
+            Type: Fail
+            Error: SessionCreationFailed
+            Cause: The workflow marked the session failed and emitted a durable-event stub.
+
+          WorkflowFailureHandlerFailed:
+            Type: Fail
+            Error: WorkflowFailureHandlerFailed
+            Cause: The terminal failure handler could not record the workflow failure.
+
+  WorkflowMonitorRole:
+    Type: AWS::IAM::Role
+    Properties:
+      Description: Writes sanitized terminal workflow status events to operational logs.
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: WriteWorkflowMonitorLogs
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                Resource: !Sub >-
+                  arn:${AWS::Partition}:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/${AWS::StackName}-workflow-monitor:*
+
+  WorkflowMonitorFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      Description: Operational sink for failed, timed-out, and aborted workflow executions.
+      FunctionName: !Sub "${AWS::StackName}-workflow-monitor"
+      Runtime: python3.14
+      Handler: index.handler
+      MemorySize: 128
+      Timeout: 10
+      Role: !GetAtt WorkflowMonitorRole.Arn
+      Code:
+        ZipFile: |
+          import json
+
+
+          def handler(event: dict, _context: object) -> dict:
+              detail = event.get("detail", {})
+              record = {
+                  "detailType": event.get("detail-type"),
+                  "executionArn": detail.get("executionArn"),
+                  "stateMachineArn": detail.get("stateMachineArn"),
+                  "status": detail.get("status"),
+                  "startDate": detail.get("startDate"),
+                  "stopDate": detail.get("stopDate"),
+              }
+              print(json.dumps(record))
+              return record
+
+  WorkflowMonitorLogGroup:
+    Type: AWS::Logs::LogGroup
+    DeletionPolicy: Delete
+    UpdateReplacePolicy: Delete
+    Properties:
+      LogGroupName: !Sub "/aws/lambda/${AWS::StackName}-workflow-monitor"
+      RetentionInDays: !Ref LogRetentionDays
+
+  WorkflowMonitorDeadLetterQueue:
+    Type: AWS::SQS::Queue
+    Properties:
+      MessageRetentionPeriod: 1209600
+      SqsManagedSseEnabled: true
+
+  WorkflowTerminalStatusRule:
+    Type: AWS::Events::Rule
+    Properties:
+      Description: Routes abnormal terminal create-session executions to operational monitoring.
+      EventPattern:
+        source:
+          - aws.states
+        detail-type:
+          - Step Functions Execution Status Change
+        detail:
+          stateMachineArn:
+            - !GetAtt CreateSessionStateMachine.Arn
+          status:
+            - FAILED
+            - TIMED_OUT
+            - ABORTED
+      State: ENABLED
+      Targets:
+        - Arn: !GetAtt WorkflowMonitorFunction.Arn
+          Id: WorkflowMonitor
+          DeadLetterConfig:
+            Arn: !GetAtt WorkflowMonitorDeadLetterQueue.Arn
+          RetryPolicy:
+            MaximumEventAgeInSeconds: 3600
+            MaximumRetryAttempts: 3
+
+  WorkflowMonitorInvokePermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      Action: lambda:InvokeFunction
+      FunctionName: !Ref WorkflowMonitorFunction
+      Principal: events.amazonaws.com
+      SourceArn: !GetAtt WorkflowTerminalStatusRule.Arn
+
+  WorkflowMonitorDeadLetterQueuePolicy:
+    Type: AWS::SQS::QueuePolicy
+    Properties:
+      Queues:
+        - !Ref WorkflowMonitorDeadLetterQueue
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: events.amazonaws.com
+            Action: sqs:SendMessage
+            Resource: !GetAtt WorkflowMonitorDeadLetterQueue.Arn
+            Condition:
+              ArnEquals:
+                aws:SourceArn: !GetAtt WorkflowTerminalStatusRule.Arn
+
+  WorkflowFailedAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmDescription: Create-session workflow executions failed.
+      Namespace: AWS/States
+      MetricName: ExecutionsFailed
+      Dimensions:
+        - Name: StateMachineArn
+          Value: !GetAtt CreateSessionStateMachine.Arn
+      Statistic: Sum
+      Period: 60
+      EvaluationPeriods: 1
+      DatapointsToAlarm: 1
+      Threshold: 1
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      TreatMissingData: notBreaching
+
+  WorkflowTimedOutAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmDescription: Create-session workflow executions timed out.
+      Namespace: AWS/States
+      MetricName: ExecutionsTimedOut
+      Dimensions:
+        - Name: StateMachineArn
+          Value: !GetAtt CreateSessionStateMachine.Arn
+      Statistic: Sum
+      Period: 60
+      EvaluationPeriods: 1
+      DatapointsToAlarm: 1
+      Threshold: 1
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      TreatMissingData: notBreaching
+
+  WorkflowAbortedAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmDescription: Create-session workflow executions were aborted.
+      Namespace: AWS/States
+      MetricName: ExecutionsAborted
+      Dimensions:
+        - Name: StateMachineArn
+          Value: !GetAtt CreateSessionStateMachine.Arn
+      Statistic: Sum
+      Period: 60
+      EvaluationPeriods: 1
+      DatapointsToAlarm: 1
+      Threshold: 1
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      TreatMissingData: notBreaching
+
+Outputs:
+  CreateSessionStateMachineArn:
+    Description: ARN used by the control plane to start Standard create-session executions.
+    Value: !GetAtt CreateSessionStateMachine.Arn
+  CreateSessionStateMachineName:
+    Description: Generated name of the Standard create-session state machine.
+    Value: !GetAtt CreateSessionStateMachine.Name
+  WorkflowLogGroupName:
+    Description: Log group containing sanitized Step Functions execution history.
+    Value: !Ref CreateSessionWorkflowLogGroup
+  WorkflowMonitorDeadLetterQueueUrl:
+    Description: Queue containing terminal workflow events that operational monitoring could not consume.
+    Value: !Ref WorkflowMonitorDeadLetterQueue

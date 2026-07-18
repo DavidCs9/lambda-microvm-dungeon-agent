@@ -92,6 +92,9 @@ payload logic, Textual, or a frontend framework.
 
 Start these work packages in parallel after Wave 0:
 
+Status: completed on 2026-07-18. The four packages landed together after isolated adapter tests;
+Integration checkpoint 1 remains the next merge barrier.
+
 | Package | Scope | Depends on | Integration output |
 |---|---|---|---|
 | W1-A Persistence | Slice 1 | Wave 0 | in-memory and DynamoDB repositories |

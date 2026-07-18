@@ -1,0 +1,189 @@
+"""Thin AWS API Gateway HTTP API v2 transport adapter."""
+
+import base64
+import json
+import re
+from collections.abc import Mapping
+from typing import Any
+from uuid import uuid4
+
+from pydantic import TypeAdapter, ValidationError
+
+from dungeon_agent.control_plane.domain.enums import ErrorCode
+from dungeon_agent.control_plane.domain.models import SessionId
+from dungeon_agent.control_plane.http.handlers import SessionHttpHandlers
+from dungeon_agent.control_plane.http.models import (
+    AuthenticatedIdentity,
+    CreateSessionRequest,
+    HttpResult,
+)
+
+SESSION_ID_ADAPTER = TypeAdapter(SessionId)
+SAFE_CORRELATION_ID = re.compile(r"^[A-Za-z0-9._:-]{8,100}$")
+
+
+class ApiGatewayHttpAdapter:
+    """Map HTTP API v2 proxy events onto framework-neutral session handlers."""
+
+    def __init__(self, handlers: SessionHttpHandlers) -> None:
+        self._handlers = handlers
+
+    def __call__(self, event: Mapping[str, Any], _context: object = None) -> dict[str, Any]:
+        headers = _normalized_headers(event.get("headers"))
+        correlation_id = _correlation_id(headers, event)
+        identity = _identity(event)
+        if identity is None:
+            return self._serialize(
+                self._handlers.error(
+                    status_code=401,
+                    code=ErrorCode.NOT_AUTHENTICATED,
+                    message="Authentication is required.",
+                    retryable=False,
+                    correlation_id=correlation_id,
+                )
+            )
+
+        route_key = str(event.get("routeKey", ""))
+        try:
+            if route_key == "POST /sessions":
+                result = self._create(event, headers, identity, correlation_id)
+            elif route_key == "GET /sessions/{sessionId}":
+                result = self._get_session(event, identity, correlation_id)
+            elif route_key == "GET /sessions/{sessionId}/events":
+                result = self._list_events(event, identity, correlation_id)
+            else:
+                result = self._handlers.error(
+                    status_code=404,
+                    code=ErrorCode.SESSION_NOT_FOUND,
+                    message="Route not found.",
+                    retryable=False,
+                    correlation_id=correlation_id,
+                )
+        except TypeError, ValueError, ValidationError, json.JSONDecodeError:
+            result = self._handlers.error(
+                status_code=400,
+                code=ErrorCode.VALIDATION_FAILED,
+                message="The request is invalid.",
+                retryable=False,
+                correlation_id=correlation_id,
+            )
+        return self._serialize(result)
+
+    def _create(
+        self,
+        event: Mapping[str, Any],
+        headers: Mapping[str, str],
+        identity: AuthenticatedIdentity,
+        correlation_id: str,
+    ) -> HttpResult:
+        idempotency_key = headers.get("idempotency-key", "")
+        payload = _json_body(event)
+        request = CreateSessionRequest.model_validate(payload)
+        return self._handlers.create_session(
+            identity,
+            request,
+            idempotency_key=idempotency_key,
+            correlation_id=correlation_id,
+        )
+
+    def _get_session(
+        self,
+        event: Mapping[str, Any],
+        identity: AuthenticatedIdentity,
+        correlation_id: str,
+    ) -> HttpResult:
+        session_id = _session_id(event)
+        return self._handlers.get_session(
+            identity,
+            session_id,
+            correlation_id=correlation_id,
+        )
+
+    def _list_events(
+        self,
+        event: Mapping[str, Any],
+        identity: AuthenticatedIdentity,
+        correlation_id: str,
+    ) -> HttpResult:
+        session_id = _session_id(event)
+        query = event.get("queryStringParameters") or {}
+        if not isinstance(query, Mapping):
+            raise ValueError("queryStringParameters must be an object")
+        after = int(query.get("after", 0))
+        if after < 0:
+            raise ValueError("after must be non-negative")
+        return self._handlers.list_events(
+            identity,
+            session_id,
+            after=after,
+            correlation_id=correlation_id,
+        )
+
+    @staticmethod
+    def _serialize(result: HttpResult) -> dict[str, Any]:
+        return {
+            "statusCode": result.status_code,
+            "headers": result.headers(),
+            "body": result.body.model_dump_json(by_alias=True),
+            "isBase64Encoded": False,
+        }
+
+
+def _normalized_headers(value: object) -> dict[str, str]:
+    if not isinstance(value, Mapping):
+        return {}
+    return {str(key).lower(): str(header) for key, header in value.items()}
+
+
+def _correlation_id(headers: Mapping[str, str], event: Mapping[str, Any]) -> str:
+    candidates = [headers.get("x-correlation-id"), _request_id(event)]
+    for candidate in candidates:
+        if candidate is not None and SAFE_CORRELATION_ID.fullmatch(candidate):
+            return candidate
+    return f"corr_{uuid4().hex}"
+
+
+def _request_id(event: Mapping[str, Any]) -> str | None:
+    request_context = event.get("requestContext")
+    if not isinstance(request_context, Mapping):
+        return None
+    request_id = request_context.get("requestId")
+    return str(request_id) if request_id is not None else None
+
+
+def _identity(event: Mapping[str, Any]) -> AuthenticatedIdentity | None:
+    request_context = event.get("requestContext")
+    if not isinstance(request_context, Mapping):
+        return None
+    authorizer = request_context.get("authorizer")
+    if not isinstance(authorizer, Mapping):
+        return None
+    jwt = authorizer.get("jwt")
+    if not isinstance(jwt, Mapping):
+        return None
+    claims = jwt.get("claims")
+    if not isinstance(claims, Mapping):
+        return None
+    subject = claims.get("sub")
+    if not isinstance(subject, str):
+        return None
+    try:
+        return AuthenticatedIdentity(owner_id=subject)
+    except ValidationError:
+        return None
+
+
+def _json_body(event: Mapping[str, Any]) -> object:
+    body = event.get("body")
+    if not isinstance(body, str):
+        raise ValueError("body must be a string")
+    if event.get("isBase64Encoded") is True:
+        body = base64.b64decode(body, validate=True).decode("utf-8")
+    return json.loads(body)
+
+
+def _session_id(event: Mapping[str, Any]) -> SessionId:
+    parameters = event.get("pathParameters")
+    if not isinstance(parameters, Mapping):
+        raise ValueError("pathParameters must be an object")
+    return SESSION_ID_ADAPTER.validate_python(parameters.get("sessionId"))
