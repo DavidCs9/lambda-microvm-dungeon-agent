@@ -40,14 +40,36 @@ curl -X POST http://127.0.0.1:8000/v1/actions \
 - `app/` — FastAPI application, settings, schemas, and state store
 - `tests/` — API and persistence tests
 - `docs/` — architecture and security decisions
-- `infra/` — deployment automation placeholder
-- `scripts/` — future build, benchmark, and cleanup helpers
+- `infra/` — secure CloudFormation bootstrap resources
+- `scripts/` — typed packaging and MicroVM image build tooling
+
+## Build a Lambda MicroVM image
+
+Authenticate with a short-lived AWS profile, then bootstrap the private artifact bucket and least-privilege build role:
+
+```sh
+AWS_PROFILE=personal AWS_REGION=us-east-2 aws cloudformation deploy \
+  --stack-name lambda-microvm-dungeon-agent-bootstrap \
+  --template-file infra/bootstrap.yaml \
+  --capabilities CAPABILITY_IAM \
+  --no-fail-on-empty-changeset
+```
+
+Package the backend deterministically, upload it to S3, and create the snapshot-backed image:
+
+```sh
+uv run --group tooling python -m scripts.microvm_image \
+  --profile personal \
+  --region us-east-2
+```
+
+The command prints the local artifact path, SHA-256 digest, S3 URI, and MicroVM image ARN. It waits for the image to reach `CREATED` unless `--no-wait` is provided. It does not launch a billable MicroVM.
 
 ## Planned milestones
 
 1. Validate the FastAPI backend and ARM64 container.
-2. Add repeatable AWS bootstrap and cleanup automation.
-3. Create and launch the MicroVM image in Ohio (`us-east-2`).
+2. Bootstrap the build resources and create the MicroVM image in Ohio (`us-east-2`).
+3. Add launch, benchmark, and cleanup automation.
 4. Measure launch, warm-request, suspend, and resume latency.
 5. Add a constrained code-execution tool inside the MicroVM.
 6. Connect an AI model and run the dungeon experiment.

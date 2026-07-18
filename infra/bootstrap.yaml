@@ -1,0 +1,99 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: Bootstrap resources for building Lambda MicroVM images for the dungeon-agent lab.
+
+Parameters:
+  ArtifactRetentionDays:
+    Type: Number
+    Default: 7
+    MinValue: 1
+    MaxValue: 30
+    Description: Number of days to retain uploaded source artifacts.
+
+Resources:
+  ArtifactBucket:
+    Type: AWS::S3::Bucket
+    DeletionPolicy: Delete
+    UpdateReplacePolicy: Delete
+    Properties:
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+            BucketKeyEnabled: false
+      LifecycleConfiguration:
+        Rules:
+          - Id: DeleteLabArtifacts
+            Status: Enabled
+            Prefix: artifacts/
+            ExpirationInDays: !Ref ArtifactRetentionDays
+            NoncurrentVersionExpiration:
+              NoncurrentDays: 1
+      OwnershipControls:
+        Rules:
+          - ObjectOwnership: BucketOwnerEnforced
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      VersioningConfiguration:
+        Status: Enabled
+
+  ArtifactBucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref ArtifactBucket
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Sid: DenyInsecureTransport
+            Effect: Deny
+            Principal: "*"
+            Action: s3:*
+            Resource:
+              - !GetAtt ArtifactBucket.Arn
+              - !Sub "${ArtifactBucket.Arn}/*"
+            Condition:
+              Bool:
+                aws:SecureTransport: false
+
+  MicrovmBuildRole:
+    Type: AWS::IAM::Role
+    Properties:
+      Description: Least-privilege role assumed by Lambda while building MicroVM images.
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action:
+              - sts:AssumeRole
+              - sts:TagSession
+      Policies:
+        - PolicyName: ReadMicrovmSourceArtifact
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Sid: ReadArtifactObjects
+                Effect: Allow
+                Action:
+                  - s3:GetObject
+                  - s3:GetObjectVersion
+                Resource: !Sub "${ArtifactBucket.Arn}/artifacts/*"
+              - Sid: WriteBuildLogs
+                Effect: Allow
+                Action:
+                  - logs:CreateLogGroup
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                Resource: !Sub "arn:${AWS::Partition}:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/microvms/*"
+
+Outputs:
+  ArtifactBucketName:
+    Description: Private S3 bucket used for MicroVM source bundles.
+    Value: !Ref ArtifactBucket
+  MicrovmBuildRoleArn:
+    Description: Role Lambda assumes while building a MicroVM image.
+    Value: !GetAtt MicrovmBuildRole.Arn
+
