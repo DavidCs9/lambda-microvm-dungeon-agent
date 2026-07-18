@@ -5,6 +5,7 @@ from dataclasses import dataclass
 from mypy_boto3_bedrock_runtime import BedrockRuntimeClient
 
 from dungeon_agent.orchestrator.locales import Locale
+from dungeon_agent.orchestrator.observability import SessionMetrics
 
 
 @dataclass(frozen=True)
@@ -22,6 +23,7 @@ class BedrockNarrator:
         self.client = client
         self.model_id = model_id
         self.locale = locale
+        self.metrics = SessionMetrics.start(model_id)
 
     def narrate(self, action: str, world: dict[str, object]) -> str:
         return self.narrate_with_metrics(action, world).text
@@ -46,9 +48,15 @@ class BedrockNarrator:
         if not narration:
             raise RuntimeError("Bedrock returned an empty narration")
         usage = response["usage"]
-        return NarrationResult(
+        result = NarrationResult(
             text=narration,
             latency_ms=(time.perf_counter() - started) * 1_000,
             input_tokens=usage["inputTokens"],
             output_tokens=usage["outputTokens"],
         )
+        self.metrics.record(
+            input_tokens=result.input_tokens,
+            output_tokens=result.output_tokens,
+            latency_ms=result.latency_ms,
+        )
+        return result

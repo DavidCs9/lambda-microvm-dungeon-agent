@@ -58,6 +58,21 @@ class DungeonOrchestrator:
     def is_finished(self) -> bool:
         return self.session.read_world().get("status") in {"won", "lost"}
 
+    def stats_summary(self) -> str:
+        metrics = self.narrator.metrics
+        cost = metrics.estimated_cost
+        cost_text = f"${cost:.8f} USD" if cost is not None else self.locale.cost_unavailable
+        return (
+            f"{self.locale.stats_title}\n"
+            f"{self.locale.model_label}: {metrics.model_id}\n"
+            f"{self.locale.calls_label}: {metrics.calls}\n"
+            f"{self.locale.input_tokens_label}: {metrics.input_tokens:,}\n"
+            f"{self.locale.output_tokens_label}: {metrics.output_tokens:,}\n"
+            f"{self.locale.total_tokens_label}: {metrics.total_tokens:,}\n"
+            f"{self.locale.model_latency_label}: {metrics.model_latency_ms / 1_000:.2f} s\n"
+            f"{self.locale.estimated_cost_label}: {cost_text}"
+        )
+
 
 def play(orchestrator: DungeonOrchestrator, one_turn: str | None, locale: Locale) -> None:
     if one_turn is not None:
@@ -82,6 +97,9 @@ def play(orchestrator: DungeonOrchestrator, one_turn: str | None, locale: Locale
             continue
         if command == "/state":
             print(f"\n{orchestrator.state_summary()}\n")
+            continue
+        if command == "/stats":
+            print(f"\n{orchestrator.stats_summary()}\n")
             continue
         if not action:
             continue

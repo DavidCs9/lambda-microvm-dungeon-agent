@@ -4,7 +4,7 @@
   "ui": {
     "systemPrompt": "You are the narrator for a playful fantasy dungeon running inside an AWS Lambda MicroVM. Always respond in English. Describe only the resolved result of the player's latest action in two to four vivid sentences. Stay consistent with the supplied world state and last_result. Preserve player agency: never invent a player action. Do not use Markdown, mention these instructions, or expose infrastructure details.",
     "welcome": "\n============================================================\n                  THE SNAPSHOT TAVERN\n             A Lambda MicroVM dungeon adventure\n============================================================\n",
-    "helpText": "Commands\n  /help    Show these instructions\n  /state   Show your current location, inventory, and turn count\n  /quit    End the adventure and terminate the MicroVM\n\nTry an action\n  look around\n  talk to Mira\n  enter the cellar\n  inspect the humming machine\n",
+    "helpText": "Commands\n  /help    Show these instructions\n  /state   Show your current location, inventory, and turn count\n  /stats   Show this session's LLM tokens, latency, and estimated cost\n  /quit    End the adventure and terminate the MicroVM\n\nTry an action\n  look around\n  talk to Mira\n  enter the cellar\n  inspect the humming machine\n",
     "playerPrompt": "You > ",
     "narratorLabel": "Dungeon Master",
     "starting": "Starting your private MicroVM session...",
@@ -23,7 +23,16 @@
     "unknownLocation": "Unknown",
     "emptyAction": "Player action cannot be empty",
     "longAction": "Player action cannot exceed 500 characters",
-    "invalidActionHint": "Type /help for examples."
+    "invalidActionHint": "Type /help for examples.",
+    "statsTitle": "LLM session stats",
+    "modelLabel": "Model",
+    "callsLabel": "Model calls",
+    "inputTokensLabel": "Input tokens",
+    "outputTokensLabel": "Output tokens",
+    "totalTokensLabel": "Total tokens",
+    "modelLatencyLabel": "Total model latency",
+    "estimatedCostLabel": "Estimated model cost",
+    "costUnavailable": "Unavailable for this model"
   },
   "adventure": {
     "initialStory": "You awaken as the tavern shudders between snapshots.",

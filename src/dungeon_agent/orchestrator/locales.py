@@ -31,6 +31,15 @@ class Locale:
     empty_action: str
     long_action: str
     invalid_action_hint: str
+    stats_title: str
+    model_label: str
+    calls_label: str
+    input_tokens_label: str
+    output_tokens_label: str
+    total_tokens_label: str
+    model_latency_label: str
+    estimated_cost_label: str
+    cost_unavailable: str
 
 
 def _ui_text(ui: dict[str, object], key: str, language: LanguageCode) -> str:
@@ -75,6 +84,15 @@ def load_locale(language: LanguageCode) -> Locale:
         empty_action=text("emptyAction"),
         long_action=text("longAction"),
         invalid_action_hint=text("invalidActionHint"),
+        stats_title=text("statsTitle"),
+        model_label=text("modelLabel"),
+        calls_label=text("callsLabel"),
+        input_tokens_label=text("inputTokensLabel"),
+        output_tokens_label=text("outputTokensLabel"),
+        total_tokens_label=text("totalTokensLabel"),
+        model_latency_label=text("modelLatencyLabel"),
+        estimated_cost_label=text("estimatedCostLabel"),
+        cost_unavailable=text("costUnavailable"),
     )
 
 

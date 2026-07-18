@@ -1,6 +1,7 @@
 import argparse
 import sys
 from collections.abc import Sequence
+from pathlib import Path
 
 import boto3
 from botocore.config import Config
@@ -45,6 +46,12 @@ def create_parser() -> argparse.ArgumentParser:
         + ", ".join(f"{code} ({LOCALES[code].name})" for code in sorted(LOCALES)),
     )
     parser.add_argument("--turn", help="Run one player turn non-interactively, then terminate.")
+    parser.add_argument(
+        "--metrics-output",
+        type=Path,
+        default=Path("dist/session-metrics.jsonl"),
+        help="Append privacy-safe session metrics as JSONL.",
+    )
     return parser
 
 
@@ -62,7 +69,11 @@ def main(argv: Sequence[str] | None = None) -> int:
                 BedrockNarrator(bedrock, args.model_id, locale),
                 locale,
             )
-            play(orchestrator, args.turn, locale)
+            try:
+                play(orchestrator, args.turn, locale)
+            finally:
+                orchestrator.narrator.metrics.append_jsonl(args.metrics_output)
+                print(f"\n{orchestrator.stats_summary()}")
         print(locale.terminated)
     except (BotoCoreError, ClientError, OSError, RuntimeError, ValueError) as error:
         print(f"Error: {error}", file=sys.stderr)

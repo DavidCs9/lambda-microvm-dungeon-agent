@@ -123,9 +123,17 @@ The CLI opens with a narrated scene, example actions, and visible controls:
 
 - `/help` — show instructions and action examples
 - `/state` — show location, inventory, and turn count
+- `/stats` — show model calls, token usage, latency, and estimated session cost
 - `/quit` — terminate the MicroVM and exit
 
 Ctrl+C also terminates the session cleanly. For a non-interactive smoke test, add `--turn "Inspect the humming machine"`. The Bedrock Converse request explicitly caps output at 180 tokens per turn.
+
+Each completed or failed CLI session appends privacy-safe LLM telemetry to
+`dist/session-metrics.jsonl`. Override the path with `--metrics-output`. Records include the
+session ID, model, calls, input/output tokens, aggregate model latency, and estimated USD cost;
+they never include prompts, player actions, narration, endpoints, or authentication tokens.
+Pricing is loaded from `src/dungeon_agent/resources/model_pricing.json` so it can be reviewed and
+updated independently of Python code.
 
 ### Languages
 

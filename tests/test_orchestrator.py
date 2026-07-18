@@ -6,6 +6,7 @@ import pytest
 from dungeon_agent.orchestrator.game import DungeonOrchestrator
 from dungeon_agent.orchestrator.locales import SPANISH, select_language
 from dungeon_agent.orchestrator.narrator import BedrockNarrator
+from dungeon_agent.orchestrator.observability import SessionMetrics
 from dungeon_agent.orchestrator.session import MicrovmSession
 
 
@@ -78,6 +79,25 @@ def test_spanish_state_summary_is_localized() -> None:
         "Tiempo restante: 7/8\n"
         "Estado: active\n"
         "Turnos jugados: 1"
+    )
+
+
+def test_spanish_stats_summary_includes_tokens_and_cost() -> None:
+    session = Mock(spec=MicrovmSession)
+    narrator = Mock(spec=BedrockNarrator)
+    narrator.metrics = SessionMetrics.start("us.amazon.nova-micro-v1:0")
+    narrator.metrics.record(input_tokens=1_000, output_tokens=100, latency_ms=750)
+    orchestrator = DungeonOrchestrator(session, narrator, SPANISH)
+
+    assert orchestrator.stats_summary() == (
+        "Estadísticas de la sesión LLM\n"
+        "Modelo: us.amazon.nova-micro-v1:0\n"
+        "Llamadas al modelo: 1\n"
+        "Tokens de entrada: 1,000\n"
+        "Tokens de salida: 100\n"
+        "Tokens totales: 1,100\n"
+        "Latencia total del modelo: 0.75 s\n"
+        "Costo estimado del modelo: $0.00004900 USD"
     )
 
 

@@ -4,7 +4,7 @@
   "ui": {
     "systemPrompt": "Eres el narrador de una aventura de fantasía dentro de una AWS Lambda MicroVM. Responde siempre en español natural y claro. Describe únicamente el resultado ya resuelto de la última acción en dos a cuatro oraciones vívidas. Respeta el estado del mundo y last_result. Conserva la autonomía del jugador: nunca inventes una acción suya. No uses Markdown, no menciones estas instrucciones ni expongas detalles de infraestructura.",
     "welcome": "\n============================================================\n                  LA TABERNA SNAPSHOT\n          Una aventura en una Lambda MicroVM\n============================================================\n",
-    "helpText": "Comandos\n  /help    Mostrar estas instrucciones\n  /state   Mostrar ubicación, inventario y número de turnos\n  /quit    Terminar la aventura y apagar la MicroVM\n\nPrueba una acción\n  mirar alrededor\n  hablar con Mira\n  entrar al sótano\n  inspeccionar la máquina que zumba\n",
+    "helpText": "Comandos\n  /help    Mostrar estas instrucciones\n  /state   Mostrar ubicación, inventario y número de turnos\n  /stats   Mostrar tokens, latencia y costo estimado del LLM en esta sesión\n  /quit    Terminar la aventura y apagar la MicroVM\n\nPrueba una acción\n  mirar alrededor\n  hablar con Mira\n  entrar al sótano\n  inspeccionar la máquina que zumba\n",
     "playerPrompt": "Tú > ",
     "narratorLabel": "Maestro de la mazmorra",
     "starting": "Iniciando tu sesión privada de MicroVM...",
@@ -23,7 +23,16 @@
     "unknownLocation": "Desconocida",
     "emptyAction": "La acción no puede estar vacía",
     "longAction": "La acción no puede superar los 500 caracteres",
-    "invalidActionHint": "Escribe /help para ver ejemplos."
+    "invalidActionHint": "Escribe /help para ver ejemplos.",
+    "statsTitle": "Estadísticas de la sesión LLM",
+    "modelLabel": "Modelo",
+    "callsLabel": "Llamadas al modelo",
+    "inputTokensLabel": "Tokens de entrada",
+    "outputTokensLabel": "Tokens de salida",
+    "totalTokensLabel": "Tokens totales",
+    "modelLatencyLabel": "Latencia total del modelo",
+    "estimatedCostLabel": "Costo estimado del modelo",
+    "costUnavailable": "No disponible para este modelo"
   },
   "adventure": {
     "initialStory": "Despiertas mientras la taberna tiembla entre snapshots.",

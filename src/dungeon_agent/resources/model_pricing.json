@@ -1,0 +1,11 @@
+{
+  "currency": "USD",
+  "pricesPerMillionTokens": {
+    "us.amazon.nova-micro-v1:0": {
+      "input": "0.035",
+      "output": "0.14"
+    }
+  },
+  "source": "https://aws.amazon.com/bedrock/pricing/",
+  "verifiedAt": "2026-07-18"
+}
