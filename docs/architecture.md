@@ -1,5 +1,9 @@
 # Architecture
 
+The current local architecture is documented below. The accepted direction for the web control
+plane and durable sessions is [RFC 0001](rfcs/0001-web-control-plane.md), with executable slices in
+the [web control plane implementation plan](plans/web-control-plane.md).
+
 The lab separates orchestration from untrusted execution:
 
 1. A local Adventure Architect generates one small, structured one-shot per session.
