@@ -3,7 +3,7 @@ import json
 import os
 from pathlib import Path
 
-from app.models import WorldState
+from dungeon_agent.api.models import WorldState
 
 INITIAL_WORLD = WorldState(
     revision=0,

@@ -3,10 +3,10 @@ from unittest.mock import Mock
 
 import pytest
 
-from scripts.dungeon.game import DungeonOrchestrator
-from scripts.dungeon.locales import SPANISH, select_language
-from scripts.dungeon.narrator import BedrockNarrator
-from scripts.dungeon.session import MicrovmSession
+from dungeon_agent.orchestrator.game import DungeonOrchestrator
+from dungeon_agent.orchestrator.locales import SPANISH, select_language
+from dungeon_agent.orchestrator.narrator import BedrockNarrator
+from dungeon_agent.orchestrator.session import MicrovmSession
 
 
 def test_orchestrator_persists_action_before_narration() -> None:

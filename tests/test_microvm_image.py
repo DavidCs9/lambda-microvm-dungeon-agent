@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pytest
 
-from scripts.microvm_image import SOURCE_FILES, package_source
+from dungeon_agent.operations.image_builder import SOURCE_FILES, package_source
 
 
 def create_project(root: Path) -> None:
@@ -12,9 +12,9 @@ def create_project(root: Path) -> None:
         target = root / relative_path
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_text(f"content for {relative_path}\n", encoding="utf-8")
-    app_dir = root / "app"
-    app_dir.mkdir()
-    (app_dir / "main.py").write_text("app = None\n", encoding="utf-8")
+    api_dir = root / "src" / "dungeon_agent" / "api"
+    api_dir.mkdir(parents=True)
+    (api_dir / "main.py").write_text("app = None\n", encoding="utf-8")
 
 
 def test_package_source_is_deterministic(tmp_path: Path) -> None:
@@ -33,7 +33,7 @@ def test_package_source_is_deterministic(tmp_path: Path) -> None:
             "README.md",
             "pyproject.toml",
             "uv.lock",
-            "app/main.py",
+            "src/dungeon_agent/api/main.py",
         ]
 
 

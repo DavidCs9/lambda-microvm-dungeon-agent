@@ -59,10 +59,11 @@ def create_clients(
 
 
 def package_source(project_root: Path, output_path: Path) -> Artifact:
-    app_members = sorted(
-        path.relative_to(project_root) for path in (project_root / "app").glob("*.py")
+    package_members = sorted(
+        path.relative_to(project_root)
+        for path in (project_root / "src" / "dungeon_agent").rglob("*.py")
     )
-    members = [*SOURCE_FILES, *app_members]
+    members = [*SOURCE_FILES, *package_members]
     missing = [str(member) for member in members if not (project_root / member).is_file()]
     if missing:
         raise FileNotFoundError(f"Missing source files: {', '.join(missing)}")

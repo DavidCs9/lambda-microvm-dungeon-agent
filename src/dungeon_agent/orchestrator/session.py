@@ -3,7 +3,7 @@ from typing import Self, cast
 
 from mypy_boto3_lambda_microvms import LambdaMicroVMsClient
 
-from scripts.microvm_session import request_json, require_success, wait_for_state
+from dungeon_agent.microvm import request_json, require_success, wait_for_state
 
 
 class MicrovmSession:

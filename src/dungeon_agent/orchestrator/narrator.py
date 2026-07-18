@@ -2,7 +2,7 @@ import json
 
 from mypy_boto3_bedrock_runtime import BedrockRuntimeClient
 
-from scripts.dungeon.locales import Locale
+from dungeon_agent.orchestrator.locales import Locale
 
 
 class BedrockNarrator:

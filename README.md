@@ -22,7 +22,7 @@ The repository currently contains a FastAPI backend and tests. AWS deployment an
 ```sh
 uv sync
 uv run pytest
-DUNGEON_WORKSPACE_DIR="$(mktemp -d)" uv run uvicorn app.main:app --reload
+DUNGEON_WORKSPACE_DIR="$(mktemp -d)" uv run uvicorn dungeon_agent.api.main:app --reload
 ```
 
 In another terminal:
@@ -37,11 +37,13 @@ curl -X POST http://127.0.0.1:8000/v1/actions \
 
 ## Repository layout
 
-- `app/` — FastAPI application, settings, schemas, and state store
+- `src/dungeon_agent/api/` — FastAPI application hosted inside the MicroVM
+- `src/dungeon_agent/orchestrator/` — game loop, localization, narration, and session lifecycle
+- `src/dungeon_agent/cli.py` — installed player CLI and dependency composition
 - `tests/` — API and persistence tests
 - `docs/` — architecture and security decisions
 - `infra/` — secure CloudFormation bootstrap resources
-- `scripts/` — typed packaging and MicroVM image build tooling
+- `scripts/` — small operational image-build and benchmark entrypoints
 
 ## Build a Lambda MicroVM image
 
@@ -58,7 +60,7 @@ AWS_PROFILE=personal AWS_REGION=us-east-2 aws cloudformation deploy \
 Package the backend deterministically, upload it to S3, and create the snapshot-backed image:
 
 ```sh
-uv run --group tooling python -m scripts.microvm_image \
+uv run --group tooling python -m scripts.build_microvm_image \
   --profile personal \
   --region us-east-2
 ```
@@ -70,7 +72,7 @@ The command prints the local artifact path, SHA-256 digest, S3 URI, and MicroVM 
 Launch an authenticated MicroVM, exercise the FastAPI API, suspend and resume it, verify state preservation, and terminate it in a guaranteed cleanup path:
 
 ```sh
-uv run --group tooling python -m scripts.microvm_session \
+uv run --group tooling python -m scripts.benchmark_microvm \
   --profile personal \
   --region us-east-2 \
   --image-arn <microvm-image-arn>
@@ -83,7 +85,7 @@ The harness prints launch, warm request, suspend, resume, and post-resume latenc
 The orchestrator launches one MicroVM session, persists each player action in the FastAPI backend, uses Amazon Bedrock Nova Micro for narration, and terminates the MicroVM on exit:
 
 ```sh
-uv run --group tooling python -m scripts.orchestrator \
+uv run --group tooling dungeon-agent \
   --profile personal \
   --region us-east-2 \
   --image-arn <microvm-image-arn>

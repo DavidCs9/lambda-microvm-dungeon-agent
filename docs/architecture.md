@@ -11,10 +11,16 @@ The FastAPI backend intentionally implements state operations only. Its OpenAPI 
 
 The master orchestrator runs outside the MicroVM. It owns the Bedrock conversation, MicroVM lifecycle, short-lived endpoint token, and player loop. The MicroVM remains a narrow state and tool-execution boundary rather than receiving model credentials.
 
-The orchestrator is split by responsibility:
+Application code uses an installable `src` layout and is split by responsibility:
 
-- `scripts/orchestrator.py` — CLI parsing and dependency composition
-- `scripts/dungeon/locales.py` — official languages and selection
-- `scripts/dungeon/session.py` — MicroVM lifecycle and authenticated API adapter
-- `scripts/dungeon/narrator.py` — bounded Bedrock Converse adapter
-- `scripts/dungeon/game.py` — provider-independent game rules and terminal loop
+- `src/dungeon_agent/api/` — FastAPI backend hosted inside the MicroVM
+- `src/dungeon_agent/cli.py` — CLI parsing and dependency composition
+- `src/dungeon_agent/orchestrator/locales.py` — official languages and selection
+- `src/dungeon_agent/orchestrator/session.py` — MicroVM lifecycle and API adapter
+- `src/dungeon_agent/orchestrator/narrator.py` — bounded Bedrock Converse adapter
+- `src/dungeon_agent/orchestrator/game.py` — provider-independent rules and terminal loop
+- `src/dungeon_agent/microvm.py` — shared authenticated HTTP and lifecycle primitives
+- `src/dungeon_agent/operations/` — image-building and benchmark workflows
+
+The `scripts/` directory contains only operational entrypoints for building an image and running
+the lifecycle benchmark. Reusable behavior remains in the `dungeon_agent` package.

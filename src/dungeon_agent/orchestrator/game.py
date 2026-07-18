@@ -1,6 +1,6 @@
-from scripts.dungeon.locales import ENGLISH, Locale
-from scripts.dungeon.narrator import BedrockNarrator
-from scripts.dungeon.session import MicrovmSession
+from dungeon_agent.orchestrator.locales import ENGLISH, Locale
+from dungeon_agent.orchestrator.narrator import BedrockNarrator
+from dungeon_agent.orchestrator.session import MicrovmSession
 
 
 class DungeonOrchestrator:

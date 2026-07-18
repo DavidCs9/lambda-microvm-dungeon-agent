@@ -4,8 +4,8 @@ from pathlib import Path
 import pytest
 from fastapi.testclient import TestClient
 
-from app.config import Settings
-from app.main import create_app
+from dungeon_agent.api.config import Settings
+from dungeon_agent.api.main import create_app
 
 
 @pytest.fixture

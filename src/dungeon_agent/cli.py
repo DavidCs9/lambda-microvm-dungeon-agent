@@ -8,10 +8,10 @@ from botocore.exceptions import BotoCoreError, ClientError
 from mypy_boto3_bedrock_runtime import BedrockRuntimeClient
 from mypy_boto3_lambda_microvms import LambdaMicroVMsClient
 
-from scripts.dungeon.game import DungeonOrchestrator, play
-from scripts.dungeon.locales import LOCALES, select_language
-from scripts.dungeon.narrator import BedrockNarrator
-from scripts.dungeon.session import MicrovmSession
+from dungeon_agent.orchestrator.game import DungeonOrchestrator, play
+from dungeon_agent.orchestrator.locales import LOCALES, select_language
+from dungeon_agent.orchestrator.narrator import BedrockNarrator
+from dungeon_agent.orchestrator.session import MicrovmSession
 
 DEFAULT_REGION = "us-east-2"
 DEFAULT_MODEL_ID = "us.amazon.nova-micro-v1:0"

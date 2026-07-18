@@ -4,9 +4,9 @@ from typing import Annotated
 
 from fastapi import Depends, FastAPI, Request
 
-from app.config import Settings, get_settings
-from app.models import ActionRequest, HealthResponse, WorldState
-from app.state_store import StateStore
+from dungeon_agent.api.config import Settings, get_settings
+from dungeon_agent.api.models import ActionRequest, HealthResponse, WorldState
+from dungeon_agent.api.state_store import StateStore
 
 
 def get_store(request: Request) -> StateStore:
