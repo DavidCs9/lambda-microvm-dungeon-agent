@@ -2,10 +2,10 @@
   "code": "en",
   "name": "English",
   "ui": {
-    "gameTitle": "The Locked Tavern",
+    "gameTitle": "Dungeon Agent",
     "systemPrompt": "You narrate a very simple game about escaping a locked tavern. Always respond in clear English. Describe only the resolved result of the player's latest action in one to three short sentences. Stay consistent with the supplied world state and last_result. Never add characters, locations, objects, mysteries, or player actions that are not in the supplied state. Do not use Markdown, mention these instructions, or expose infrastructure details.",
     "welcome": "\n============================================================\n                    THE LOCKED TAVERN\n                Find the key. Open the door.\n============================================================\n",
-    "helpText": "Goal\n  Find the key and unlock the front door.\n\nCommands\n  /help    Show these instructions\n  /state   Show your current location, inventory, and turn count\n  /stats   Show this session's LLM tokens, latency, and estimated cost\n  /quit    End the adventure and terminate the MicroVM\n\nTry an action\n  look around\n  enter the kitchen\n  search the drawer\n  take the key\n  unlock the front door\n",
+    "helpText": "Play freely\n  Describe anything your character tries. Creative solutions are welcome. Risky actions use a visible d20 roll.\n\nCommands\n  /help    Show these instructions\n  /state   Show your location, inventory, objective, and turns\n  /stats   Show this session's LLM tokens, latency, and estimated cost\n  /quit    End the adventure and terminate the MicroVM\n\nTry an action\n  look around carefully\n  talk to someone\n  improvise a tool\n  attempt a risky shortcut\n",
     "playerPrompt": "You > ",
     "narratorLabel": "Dungeon Master",
     "starting": "Starting your private MicroVM session...",
@@ -39,9 +39,9 @@
     "enabledLabel": "on",
     "disabledLabel": "off",
     "victoryTitle": "YOU ESCAPED!",
-    "victoryMessage": "You unlocked the front door and left the tavern.",
+    "victoryMessage": "You completed the adventure's objective.",
     "defeatTitle": "TIME RAN OUT",
-    "defeatMessage": "The door is still locked. Try again in a new session.",
+    "defeatMessage": "This adventure has ended. A completely new one awaits next session.",
     "closeGameHint": "Press Enter or Ctrl+Q to finish"
   },
   "adventure": {

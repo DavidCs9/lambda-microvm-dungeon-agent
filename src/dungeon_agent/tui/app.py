@@ -11,7 +11,7 @@ from textual.widgets import Footer, Header, Input, Label, RichLog, Select, Stati
 
 from dungeon_agent.api.models import LanguageCode
 from dungeon_agent.audio.contracts import AudioPort, SilentAudio
-from dungeon_agent.orchestrator.contracts import GamePort, GameSnapshot, UsageSnapshot
+from dungeon_agent.orchestrator.contracts import GamePort, GameSnapshot, TurnView, UsageSnapshot
 from dungeon_agent.orchestrator.locales import LOCALES, Locale
 
 RuntimeFactory = Callable[[Locale], AbstractContextManager[GamePort]]
@@ -69,7 +69,7 @@ class DungeonApp(App[None]):
     """Full-screen, bilingual terminal client for one isolated game session."""
 
     CSS_PATH = "dungeon.tcss"
-    TITLE = "The Locked Tavern"
+    TITLE = "Dungeon Agent"
     BINDINGS: ClassVar = [
         Binding("f1", "help", "Help"),
         Binding("f2", "state", "State"),
@@ -97,7 +97,7 @@ class DungeonApp(App[None]):
         yield Header(show_clock=True)
         with Vertical(id="language-view"):
             yield Static("◆", id="crest")
-            yield Label("THE LOCKED TAVERN · LA TABERNA CERRADA", id="tavern-title")
+            yield Label("DUNGEON AGENT · A NEW ADVENTURE EVERY SESSION", id="tavern-title")
             yield Label("Choose your language · Elige tu idioma", id="language-prompt")
             yield Select(
                 ((locale.name, locale.code) for locale in LOCALES.values()),
@@ -185,6 +185,8 @@ class DungeonApp(App[None]):
         story = self.query_one("#story", RichLog)
         story.write(f"[bold cyan]{self.locale.narrator_label}[/bold cyan]")
         story.write(opening)
+        if self.game is not None:
+            self.title = self.game.snapshot().title
         self.audio.start()
         self.speak(opening)
         command_input = self.query_one("#command-input", Input)
@@ -218,22 +220,30 @@ class DungeonApp(App[None]):
     def take_turn(self, action: str) -> None:
         assert self.game is not None
         try:
-            narration = self.game.take_turn(action)
+            turn = self.game.take_turn(action)
             finished = self.game.is_finished()
         except (OSError, RuntimeError, ValueError) as error:
             self.call_from_thread(self._finish_turn, str(error), False, True)
             return
-        self.call_from_thread(self._finish_turn, narration, finished, False)
+        self.call_from_thread(self._finish_turn, turn, finished, False)
 
-    def _finish_turn(self, text: str, finished: bool, is_error: bool) -> None:
+    def _finish_turn(self, turn: TurnView | str, finished: bool, is_error: bool) -> None:
         assert self.locale is not None
         story = self.query_one("#story", RichLog)
         if is_error:
-            story.write(f"[bold red]{text}[/bold red]\n{self.locale.invalid_action_hint}")
+            story.write(f"[bold red]{turn}[/bold red]\n{self.locale.invalid_action_hint}")
         else:
+            assert isinstance(turn, TurnView)
+            if turn.roll is not None:
+                result = "OK" if turn.success else "FAIL"
+                story.write(
+                    f"[bold yellow]d20: {turn.roll} / {turn.difficulty} — {result}[/bold yellow]"
+                )
             story.write(f"[bold cyan]{self.locale.narrator_label}[/bold cyan]")
-            story.write(text)
-            self.speak(text)
+            story.write(turn.narration)
+            if turn.suggestions and not finished:
+                story.write("[dim]" + "  ·  ".join(turn.suggestions) + "[/dim]")
+            self.speak(turn.narration)
         self._refresh_sidebar()
         command_input = self.query_one("#command-input", Input)
         command_input.disabled = finished
@@ -264,7 +274,7 @@ class DungeonApp(App[None]):
             f"{self.locale.inventory_label}: {inventory}\n"
             f"{self.locale.objective_label}: {state.objective}\n"
             f"{self.locale.health_label}: {state.health}/3\n"
-            f"{self.locale.danger_label}: {state.danger}/8\n"
+            f"{self.locale.danger_label}: {state.turns_remaining}\n"
             f"{self.locale.status_label}: {state.status}\n"
             f"{self.locale.turns_label}: {state.turns}"
         )

@@ -3,7 +3,7 @@ from typing import Self, cast
 
 from mypy_boto3_lambda_microvms import LambdaMicroVMsClient
 
-from dungeon_agent.api.models import LanguageCode
+from dungeon_agent.api.models import AdventurePlan, LanguageCode, TurnProposal
 from dungeon_agent.microvm import request_json, require_success, wait_for_state
 
 
@@ -73,11 +73,26 @@ class MicrovmSession:
         require_success(result, "set language")
         return self._world_from(result.body)
 
-    def apply_action(self, action: str) -> dict[str, object]:
+    def start_adventure(self, language: LanguageCode, plan: AdventurePlan) -> dict[str, object]:
         result = request_json(
-            self._endpoint(), self._token(), "POST", "/v1/actions", {"action": action}
+            self._endpoint(),
+            self._token(),
+            "PUT",
+            "/v1/adventure",
+            {"language": language, "plan": plan.model_dump(mode="json")},
         )
-        require_success(result, "apply action")
+        require_success(result, "start adventure")
+        return self._world_from(result.body)
+
+    def apply_turn(self, action: str, proposal: TurnProposal) -> dict[str, object]:
+        result = request_json(
+            self._endpoint(),
+            self._token(),
+            "POST",
+            "/v1/turns",
+            {"action": action, "proposal": proposal.model_dump(mode="json")},
+        )
+        require_success(result, "apply turn")
         return self._world_from(result.body)
 
     @staticmethod

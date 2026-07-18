@@ -7,13 +7,26 @@ from typing import Protocol
 class GameSnapshot:
     """Presentation-neutral view of the current adventure state."""
 
+    title: str
     location: str
     inventory: tuple[str, ...]
     objective: str
     health: int
-    danger: int
+    turns_remaining: int
     status: str
     turns: int
+    facts: tuple[str, ...] = ()
+
+
+@dataclass(frozen=True)
+class TurnView:
+    """Presentation-neutral result of one adjudicated player action."""
+
+    narration: str
+    success: bool
+    roll: int | None
+    difficulty: int | None
+    suggestions: tuple[str, ...]
 
 
 @dataclass(frozen=True)
@@ -34,7 +47,7 @@ class GamePort(Protocol):
 
     def opening_scene(self) -> str: ...
 
-    def take_turn(self, action: str) -> str: ...
+    def take_turn(self, action: str) -> TurnView: ...
 
     def snapshot(self) -> GameSnapshot: ...
 

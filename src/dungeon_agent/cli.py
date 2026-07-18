@@ -14,14 +14,20 @@ from mypy_boto3_polly.literals import VoiceIdType
 from dungeon_agent.api.models import LanguageCode
 from dungeon_agent.audio.local import LocalAudioExperience
 from dungeon_agent.audio.polly import PollySpeechSynthesizer
+from dungeon_agent.orchestrator.agents import (
+    AdventureArchitect,
+    DungeonMaster,
+    StructuredBedrockAgent,
+)
 from dungeon_agent.orchestrator.game import DungeonOrchestrator, play
 from dungeon_agent.orchestrator.locales import LOCALES, Locale, select_language
-from dungeon_agent.orchestrator.narrator import BedrockNarrator
+from dungeon_agent.orchestrator.observability import SessionMetrics
 from dungeon_agent.orchestrator.session import MicrovmSession
 from dungeon_agent.tui.app import DungeonApp
 
 DEFAULT_REGION = "us-east-2"
-DEFAULT_MODEL_ID = "us.amazon.nova-micro-v1:0"
+# Sonnet 5 is supported via --model-id once account access is granted.
+DEFAULT_MODEL_ID = "us.anthropic.claude-sonnet-4-6"
 DEFAULT_POLLY_REGION = "us-east-1"
 
 
@@ -103,15 +109,19 @@ def create_runtime(args: argparse.Namespace, locale: Locale) -> Iterator[Dungeon
     microvms, bedrock = create_clients(args.profile, args.region)
     with MicrovmSession(microvms, args.image_arn, args.image_version) as microvm_session:
         microvm_session.set_language(locale.code)
+        metrics = SessionMetrics.start(args.model_id)
+        agent = StructuredBedrockAgent(bedrock, args.model_id, metrics)
         orchestrator = DungeonOrchestrator(
             microvm_session,
-            BedrockNarrator(bedrock, args.model_id, locale),
+            AdventureArchitect(agent),
+            DungeonMaster(agent, locale.code),
+            metrics,
             locale,
         )
         try:
             yield orchestrator
         finally:
-            orchestrator.narrator.metrics.append_jsonl(args.metrics_output)
+            metrics.append_jsonl(args.metrics_output)
 
 
 def main(argv: Sequence[str] | None = None) -> int:
@@ -131,15 +141,19 @@ def main(argv: Sequence[str] | None = None) -> int:
         with MicrovmSession(microvms, args.image_arn, args.image_version) as microvm_session:
             microvm_session.set_language(locale.code)
             print(f"{locale.ready}\n", flush=True)
+            metrics = SessionMetrics.start(args.model_id)
+            agent = StructuredBedrockAgent(bedrock, args.model_id, metrics)
             orchestrator = DungeonOrchestrator(
                 microvm_session,
-                BedrockNarrator(bedrock, args.model_id, locale),
+                AdventureArchitect(agent),
+                DungeonMaster(agent, locale.code),
+                metrics,
                 locale,
             )
             try:
                 play(orchestrator, args.turn, locale)
             finally:
-                orchestrator.narrator.metrics.append_jsonl(args.metrics_output)
+                metrics.append_jsonl(args.metrics_output)
                 print(f"\n{orchestrator.stats_summary()}")
         print(locale.terminated)
     except (BotoCoreError, ClientError, OSError, RuntimeError, ValueError) as error:

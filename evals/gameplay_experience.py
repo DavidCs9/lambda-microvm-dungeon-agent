@@ -1,288 +1,119 @@
-"""Original black-box evaluation for deterministic gameplay quality."""
+"""Deterministic safety evaluation for generated adventure state transitions."""
 
 import argparse
 import json
-import os
-import socket
-import subprocess
-import sys
-import tempfile
-import time
-import urllib.error
-import urllib.request
-from collections.abc import Sequence
-from dataclasses import asdict, dataclass
-from itertools import pairwise
 from pathlib import Path
 
-
-@dataclass(frozen=True)
-class Journey:
-    name: str
-    actions: tuple[str, ...]
-
-
-@dataclass(frozen=True)
-class JourneyEvidence:
-    name: str
-    actions: tuple[str, ...]
-    states: tuple[dict[str, object], ...]
-
-
-JOURNEYS = (
-    Journey(
-        "clear_escape",
-        (
-            "look around",
-            "enter the kitchen",
-            "search the drawer",
-            "take the key",
-            "return",
-            "open door",
-        ),
-    ),
-    Journey(
-        "recover_from_locked_door",
-        ("open door", "enter kitchen", "take key", "return to main room", "use key on door"),
-    ),
-    Journey("ignore_the_warning", tuple(f"wait and do nothing {turn}" for turn in range(1, 10))),
+from dungeon_agent.api.adventure import resolve_turn, start_adventure
+from dungeon_agent.api.models import (
+    AdventurePlan,
+    Character,
+    Item,
+    Location,
+    StateChanges,
+    TurnProposal,
 )
 
-REQUIRED_WORLD_FIELDS = {
-    "health",
-    "danger",
-    "objective",
-    "discovered_clues",
-    "npc_relationships",
-    "completed_events",
-    "status",
-    "last_result",
-}
+
+def _plan() -> AdventurePlan:
+    return AdventurePlan(
+        title="The Storm Bell",
+        premise="A magical storm approaches a village whose warning bell is missing.",
+        objective="Recover the storm bell and ring it from the old tower.",
+        opening="Rain floods the square. Find and ring the stolen bell before the storm arrives.",
+        starting_location_id="square",
+        locations=[
+            Location(
+                id="square",
+                name="Square",
+                description="A flooded village square.",
+                exits=["mill", "tower"],
+            ),
+            Location(
+                id="mill",
+                name="Mill",
+                description="A dark abandoned mill nearby.",
+                exits=["square"],
+            ),
+            Location(
+                id="tower",
+                name="Tower",
+                description="The warning tower above town.",
+                exits=["square"],
+            ),
+        ],
+        characters=[
+            Character(
+                id="mara",
+                name="Mara",
+                description="A worried miller.",
+                motivation="Save the village.",
+            )
+        ],
+        items=[
+            Item(id="bell", name="Storm Bell", description="A rune-covered warning bell."),
+            Item(id="rope", name="Rope", description="A sturdy coil of rope."),
+        ],
+        secrets=["Mara knows the bell is hidden in the mill."],
+        max_turns=8,
+    )
 
 
-def evaluate(project_root: Path) -> dict[str, object]:
-    evidence = tuple(_run_journey(project_root, journey) for journey in JOURNEYS)
-    return _score(evidence)
+def _proposal(*, success: StateChanges, failure: StateChanges) -> TurnProposal:
+    return TurnProposal(
+        intent="Attempt a creative solution",
+        requires_roll=True,
+        difficulty=12,
+        success_narration="The improvised solution works and changes the situation.",
+        failure_narration="The attempt fails, but reveals useful information.",
+        success_changes=success,
+        failure_changes=failure,
+        suggestions=["Try another approach", "Ask Mara for help"],
+    )
 
 
-def evaluate_microvm(
-    profile: str,
-    region: str,
-    image_arn: str,
-    image_version: str,
-) -> dict[str, object]:
-    from dungeon_agent.cli import create_clients
-    from dungeon_agent.orchestrator.session import MicrovmSession
-
-    microvms, _ = create_clients(profile, region)
-    collected: list[JourneyEvidence] = []
-    for journey in JOURNEYS:
-        with MicrovmSession(microvms, image_arn, image_version) as session:
-            states: list[dict[str, object]] = []
-            for action in journey.actions:
-                state = session.apply_action(action)
-                states.append(state)
-                if state.get("status") in {"won", "lost"}:
-                    break
-        collected.append(JourneyEvidence(journey.name, journey.actions, tuple(states)))
-    return _score(tuple(collected))
-
-
-def _score(evidence: tuple[JourneyEvidence, ...]) -> dict[str, object]:
+def evaluate() -> dict[str, object]:
+    initial = start_adventure("en", _plan())
+    proposal = _proposal(
+        success=StateChanges(add_items=["rope"], add_facts=["A safe crossing exists"]),
+        failure=StateChanges(health_delta=-1, add_facts=["The flood is dangerous"]),
+    )
+    success = resolve_turn(initial, "build a bridge", proposal, roll=18)
+    failure = resolve_turn(initial, "build a bridge", proposal, roll=4)
+    victory = resolve_turn(
+        success,
+        "ring the bell",
+        TurnProposal(
+            intent="Complete the objective",
+            requires_roll=False,
+            difficulty=None,
+            success_narration="The bell rings and the village prepares for the storm.",
+            failure_narration="The bell remains silent for now.",
+            success_changes=StateChanges(objective_complete=True),
+            failure_changes=StateChanges(),
+            suggestions=["Celebrate", "Help the villagers"],
+        ),
+    )
     dimensions = {
-        "player_agency": _agency_score(evidence),
-        "guidance_and_information": _guidance_score(evidence),
-        "danger_and_challenge": _challenge_score(evidence),
-        "state_consistency": _consistency_score(evidence),
-        "world_depth": _world_depth_score(evidence),
+        "validated_generated_world": 20 if initial.plan is not None else 0,
+        "d20_branching": 20 if success.health == 3 and failure.health == 2 else 0,
+        "creative_state_progress": 20 if "A safe crossing exists" in success.facts else 0,
+        "authoritative_victory": 20 if victory.status == "won" else 0,
+        "state_consistency": 20 if victory.revision == 2 and "rope" in victory.inventory else 0,
     }
     return {
-        "rubricVersion": "1.0",
-        "evaluationGoals": [
-            "keep one simple goal reachable through natural player phrasing",
-            "communicate goals and consequences clearly",
-            "create fair urgency and reachable failure",
-            "preserve consistent state across turns",
-            "provide enough structured world state for grounded narration",
-        ],
+        "rubricVersion": "2.0",
         "score": sum(dimensions.values()),
         "maximumScore": 100,
         "dimensions": dimensions,
-        "journeys": [asdict(item) for item in evidence],
     }
 
 
-def _run_journey(project_root: Path, journey: Journey) -> JourneyEvidence:
-    port = _available_port()
-    target, python_path = _application_target(project_root)
-    with tempfile.TemporaryDirectory(prefix="dungeon-eval-") as workspace:
-        environment = os.environ.copy()
-        environment["DUNGEON_WORKSPACE_DIR"] = workspace
-        environment["PYTHONPATH"] = python_path
-        command = [
-            sys.executable,
-            "-m",
-            "uvicorn",
-            target,
-            "--host",
-            "127.0.0.1",
-            "--port",
-            str(port),
-            "--no-access-log",
-        ]
-        process = subprocess.Popen(
-            command,
-            cwd=project_root,
-            env=environment,
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.PIPE,
-            text=True,
-        )
-        try:
-            _wait_until_ready(process, port)
-            collected: list[dict[str, object]] = []
-            for action in journey.actions:
-                state = _post_action(port, action)
-                collected.append(state)
-                if state.get("status") in {"won", "lost"}:
-                    break
-            states = tuple(collected)
-        finally:
-            process.terminate()
-            try:
-                process.wait(timeout=5)
-            except subprocess.TimeoutExpired:
-                process.kill()
-                process.wait(timeout=5)
-    return JourneyEvidence(journey.name, journey.actions, states)
-
-
-def _application_target(project_root: Path) -> tuple[str, str]:
-    source = project_root / "src"
-    if source.is_dir():
-        return "dungeon_agent.api.main:app", str(source)
-    return "app.main:app", str(project_root)
-
-
-def _available_port() -> int:
-    with socket.socket() as server:
-        server.bind(("127.0.0.1", 0))
-        return int(server.getsockname()[1])
-
-
-def _wait_until_ready(process: subprocess.Popen[str], port: int) -> None:
-    deadline = time.monotonic() + 10
-    while time.monotonic() < deadline:
-        if process.poll() is not None:
-            detail = process.stderr.read() if process.stderr is not None else ""
-            raise RuntimeError(f"Evaluation server stopped unexpectedly: {detail}")
-        try:
-            _request(port, "GET", "/health")
-            return
-        except OSError, urllib.error.URLError:
-            time.sleep(0.05)
-    raise TimeoutError("Evaluation server did not become ready")
-
-
-def _post_action(port: int, action: str) -> dict[str, object]:
-    response = _request(port, "POST", "/v1/actions", {"action": action})
-    if not isinstance(response, dict):
-        raise TypeError("Action endpoint returned a non-object response")
-    return response
-
-
-def _request(
-    port: int,
-    method: str,
-    path: str,
-    payload: dict[str, str] | None = None,
-) -> object:
-    body = json.dumps(payload).encode() if payload is not None else None
-    request = urllib.request.Request(
-        f"http://127.0.0.1:{port}{path}",
-        data=body,
-        method=method,
-        headers={"Content-Type": "application/json"} if body is not None else {},
-    )
-    with urllib.request.urlopen(request, timeout=2) as response:
-        return json.loads(response.read())
-
-
-def _agency_score(evidence: tuple[JourneyEvidence, ...]) -> int:
-    completed = sum(
-        any(state.get("status") == "won" for state in journey.states)
-        for journey in evidence
-        if journey.name != "ignore_the_warning"
-    )
-    return 10 * completed
-
-
-def _guidance_score(evidence: tuple[JourneyEvidence, ...]) -> int:
-    states = [state for journey in evidence for state in journey.states]
-    guided = sum(
-        bool(state.get("objective"))
-        and isinstance(state.get("last_result"), dict)
-        and bool(state["last_result"].get("consequence"))
-        and bool(state["last_result"].get("suggestions"))
-        for state in states
-    )
-    return round(20 * guided / len(states)) if states else 0
-
-
-def _challenge_score(evidence: tuple[JourneyEvidence, ...]) -> int:
-    danger_changes = any(
-        len({state.get("danger") for state in journey.states}) > 1 for journey in evidence
-    )
-    loss_reachable = any(
-        state.get("status") == "lost" for journey in evidence for state in journey.states
-    )
-    return (10 if danger_changes else 0) + (10 if loss_reachable else 0)
-
-
-def _consistency_score(evidence: tuple[JourneyEvidence, ...]) -> int:
-    checks = 0
-    passed = 0
-    for journey in evidence:
-        for index, state in enumerate(journey.states, start=1):
-            checks += 1
-            passed += state.get("revision") == index
-        inventories = [state.get("inventory") for state in journey.states]
-        for before, after in pairwise(inventories):
-            if isinstance(before, list) and isinstance(after, list):
-                checks += 1
-                passed += set(before).issubset(after)
-    return round(20 * passed / checks) if checks else 0
-
-
-def _world_depth_score(evidence: tuple[JourneyEvidence, ...]) -> int:
-    states = [state for journey in evidence for state in journey.states]
-    if not states:
-        return 0
-    coverage = sum(len(REQUIRED_WORLD_FIELDS.intersection(state)) for state in states)
-    return round(20 * coverage / (len(states) * len(REQUIRED_WORLD_FIELDS)))
-
-
-def create_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description="Evaluate deterministic gameplay quality.")
-    parser.add_argument("--project-root", type=Path, default=Path.cwd())
+def main() -> int:
+    parser = argparse.ArgumentParser(description="Evaluate generated-adventure state safety.")
     parser.add_argument("--output", type=Path)
-    parser.add_argument("--profile", default="personal")
-    parser.add_argument("--region", default="us-east-2")
-    parser.add_argument("--image-arn")
-    parser.add_argument("--image-version")
-    return parser
-
-
-def main(argv: Sequence[str] | None = None) -> int:
-    args = create_parser().parse_args(argv)
-    if bool(args.image_arn) != bool(args.image_version):
-        raise SystemExit("--image-arn and --image-version must be provided together")
-    report = (
-        evaluate_microvm(args.profile, args.region, args.image_arn, args.image_version)
-        if args.image_arn is not None and args.image_version is not None
-        else evaluate(args.project_root.resolve())
-    )
-    serialized = json.dumps(report, indent=2, sort_keys=True) + "\n"
+    args = parser.parse_args()
+    serialized = json.dumps(evaluate(), indent=2, sort_keys=True) + "\n"
     if args.output is not None:
         args.output.parent.mkdir(parents=True, exist_ok=True)
         args.output.write_text(serialized, encoding="utf-8")

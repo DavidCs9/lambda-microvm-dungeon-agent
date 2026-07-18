@@ -40,7 +40,7 @@ def request_json(
     token: str,
     method: str,
     path: str,
-    payload: dict[str, str] | None = None,
+    payload: dict[str, object] | None = None,
 ) -> HttpResult:
     body = json.dumps(payload).encode() if payload is not None else None
     headers = {

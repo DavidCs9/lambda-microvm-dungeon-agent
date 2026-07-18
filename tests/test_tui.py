@@ -6,7 +6,7 @@ from decimal import Decimal
 from textual.widgets import Label
 
 from dungeon_agent.api.models import LanguageCode
-from dungeon_agent.orchestrator.contracts import GamePort, GameSnapshot, UsageSnapshot
+from dungeon_agent.orchestrator.contracts import GamePort, GameSnapshot, TurnView, UsageSnapshot
 from dungeon_agent.orchestrator.locales import Locale
 from dungeon_agent.tui.app import DungeonApp
 
@@ -19,12 +19,21 @@ class FakeGame:
     def opening_scene(self) -> str:
         return "Una puerta espera entre las sombras."
 
-    def take_turn(self, action: str) -> str:
+    def take_turn(self, action: str) -> TurnView:
         self.actions.append(action)
-        return "La puerta se abre."
+        return TurnView("La puerta se abre.", True, 16, 12, ("Salir", "Celebrar"))
 
     def snapshot(self) -> GameSnapshot:
-        return GameSnapshot("Taberna", ("Llave",), "Escapar", 3, 2, self.status, 1)
+        return GameSnapshot(
+            title="La Campana Perdida",
+            location="Taberna",
+            inventory=("Llave",),
+            objective="Escapar",
+            health=3,
+            turns_remaining=7,
+            status=self.status,
+            turns=1,
+        )
 
     def usage_snapshot(self) -> UsageSnapshot:
         return UsageSnapshot("test-model", 1, 10, 5, 15, 20.0, Decimal("0.0001"))

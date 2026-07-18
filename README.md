@@ -7,7 +7,9 @@ A small, stateful AI-agent lab for testing AWS Lambda MicroVM isolation, authent
 
 ## Status
 
-The repository currently contains a FastAPI backend and tests. AWS deployment and arbitrary code execution are intentionally not enabled yet. A separate web client may be added later; this repository currently focuses on the backend API.
+The project is a playable bilingual terminal game. Every session gets a newly generated fantasy
+one-shot, while a validated rules service inside a dedicated MicroVM protects game state. A
+separate web client can reuse the same presentation-neutral orchestration contract later.
 
 ## Prerequisites
 
@@ -25,20 +27,19 @@ uv run pytest
 DUNGEON_WORKSPACE_DIR="$(mktemp -d)" uv run uvicorn dungeon_agent.api.main:app --reload
 ```
 
-In another terminal:
+The backend needs a generated `AdventurePlan` before it accepts turns. The easiest complete
+experience is the CLI described below; API examples are available through `/docs` while running.
 
 ```sh
 curl http://127.0.0.1:8000/health
 curl http://127.0.0.1:8000/v1/world
-curl -X POST http://127.0.0.1:8000/v1/actions \
-  -H 'content-type: application/json' \
-  -d '{"action":"Open the snapshot door"}'
+open http://127.0.0.1:8000/docs
 ```
 
 ## Repository layout
 
 - `src/dungeon_agent/api/` — FastAPI application hosted inside the MicroVM
-- `src/dungeon_agent/orchestrator/` — presentation-neutral game contract, game loop, narration, and session lifecycle
+- `src/dungeon_agent/orchestrator/` — generated-adventure agents, presentation-neutral game loop, and session lifecycle
 - `src/dungeon_agent/tui/` — Textual terminal presentation client and styling
 - `src/dungeon_agent/cli.py` — installed player CLI and dependency composition
 - `tests/` — API and persistence tests
@@ -110,7 +111,10 @@ The harness prints launch, warm request, suspend, resume, and post-resume latenc
 
 ## Play through the master orchestrator
 
-The orchestrator launches one MicroVM session, persists each player action in the FastAPI backend, uses Amazon Bedrock Nova Micro for narration, and terminates the MicroVM on exit:
+The orchestrator launches one MicroVM session, asks Claude to design a fresh one-shot, and starts
+that validated plan inside the MicroVM. For every free-form player action, Claude returns typed
+success and failure branches; the MicroVM rolls the d20, validates all proposed changes, applies
+one branch, and remains the authority on victory and defeat.
 
 ```sh
 uv run --group tooling dungeon-agent \
@@ -126,6 +130,8 @@ transcript, command input, current world state, session usage, and keyboard shor
 - `F1` — show localized help and action examples
 - `F2` — refresh current state
 - `F3` — refresh token usage, latency, and estimated cost
+- `F4` — toggle Dungeon Master voice
+- `F5` — toggle original fantasy ambience
 - `Ctrl+Q` — terminate the MicroVM and exit
 
 The following typed commands work in both the TUI and plain interface:
@@ -153,12 +159,19 @@ generative engine. The AWS identity running the local CLI needs `polly:Synthesiz
 Gameplay remains fully functional if audio is disabled or the host has no supported player.
 
 Ctrl+C also terminates the session cleanly. Add `--plain` for the stream-based interface used by
-basic terminals and debugging. A non-interactive `--turn "Look around"` run
-automatically uses plain mode. The Bedrock Converse request explicitly caps output at 180 tokens
-per turn.
+basic terminals and debugging. A non-interactive `--turn "Look around"` run automatically uses
+plain mode. Bedrock calls use required typed tools and explicit output limits: 3,000 tokens for
+one-time adventure design and 1,200 tokens per turn.
 
-Presentation clients depend on `GamePort`, which exposes structured `GameSnapshot` and
-`UsageSnapshot` values. AWS client construction and metrics persistence remain in the CLI
+Claude Sonnet 4.6 is the working default. Sonnet 5 can be selected without code changes once the
+AWS account has model access:
+
+```sh
+play-dungeon --model-id us.anthropic.claude-sonnet-5
+```
+
+Presentation clients depend on `GamePort`, which exposes structured `GameSnapshot`, `TurnView`,
+and `UsageSnapshot` values. AWS client construction and metrics persistence remain in the CLI
 composition root. A future web client can therefore reuse the orchestration layer without
 importing Textual or parsing terminal-formatted strings.
 
@@ -176,39 +189,30 @@ Before launching the MicroVM, the CLI asks the player to choose an official lang
 1. Español
 2. English
 
-The choice localizes the opening scene, narration, commands, prompts, state, errors, and shutdown messages. Press Enter to choose Español, or skip the menu with `--language es` or `--language en`.
+The choice asks the architect and DM to create all session-specific content in that language and
+localizes commands, prompts, state, errors, and shutdown messages. Press Enter to choose Español,
+or skip the menu with `--language es` or `--language en`.
 
-Language content and action vocabulary live in packaged JSON resources under
-`src/dungeon_agent/resources/locales/`. Adding a language does not require embedding translated
-game text in Python code.
+Presentation language lives in packaged JSON resources under `src/dungeon_agent/resources/locales/`.
+Adding a language does not require embedding translated UI text in Python code.
 
 ## Gameplay evaluation
 
-Run the deterministic black-box gameplay evaluation:
+Run the deterministic generated-world safety evaluation:
 
 ```sh
 uv run python evals/gameplay_experience.py
 ```
 
-Evaluate a released image with the same rubric:
-
-```sh
-uv run --group tooling python evals/gameplay_experience.py \
-  --profile personal \
-  --region us-east-2 \
-  --image-arn <microvm-image-arn> \
-  --image-version <microvm-image-version>
-```
-
-It checks player agency, guidance, danger, state consistency, and structured world depth across
-multiple playthroughs. Model selection is evaluated separately so narration cannot hide weak game
-rules. Compare one or more Bedrock models on identical English and Spanish scenes:
+It checks d20 resolution, terminal conditions, state consistency, and rejection of model-proposed
+unknown locations and items. Model selection is evaluated separately on identical English and
+Spanish adventure tasks.
 
 ```sh
 uv run --group tooling python evals/narration_models.py \
   --profile personal \
   --region us-east-2 \
-  --model-id us.amazon.nova-micro-v1:0
+  --model-id us.anthropic.claude-sonnet-4-6
 ```
 
 ## Planned milestones

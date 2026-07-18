@@ -1,1 +1,1 @@
-"""Player loop, narration, localization, and MicroVM session orchestration."""
+"""Generated adventures, adjudication, localization, and session orchestration."""

@@ -6,6 +6,7 @@ from fastapi.testclient import TestClient
 
 from dungeon_agent.api.config import Settings
 from dungeon_agent.api.main import create_app
+from tests.test_adventure import proposal, sample_plan
 
 
 @pytest.fixture
@@ -16,51 +17,43 @@ def client(tmp_path: Path) -> Iterator[TestClient]:
 
 
 def test_health_reports_ready(client: TestClient) -> None:
-    response = client.get("/health")
-
-    assert response.status_code == 200
-    assert response.json() == {"status": "ok"}
+    assert client.get("/health").json() == {"status": "ok"}
 
 
-def test_action_persists_in_world_state(client: TestClient) -> None:
-    action = "Take the brass key"
+def test_adventure_and_turn_persist_in_world(client: TestClient) -> None:
+    started = client.put(
+        "/v1/adventure",
+        json={"language": "en", "plan": sample_plan().model_dump(mode="json")},
+    )
+    assert started.status_code == 200
+    assert started.json()["plan"]["title"] == "The Storm Bell"
 
-    response = client.post("/v1/actions", json={"action": action})
-
+    response = client.post(
+        "/v1/turns",
+        json={
+            "action": "I improvise a bridge",
+            "proposal": proposal(requires_roll=False, difficulty=None).model_dump(mode="json"),
+        },
+    )
     assert response.status_code == 200
     world = response.json()
     assert world["revision"] == 1
-    assert world["story"][-2] == action
-    assert world["danger"] == 7
-    assert world["last_result"]["success"] is False
+    assert world["last_result"]["action"] == "I improvise a bridge"
     assert client.get("/v1/world").json() == world
 
 
-def test_language_can_be_selected_before_play(client: TestClient) -> None:
+def test_language_can_be_selected_while_planning(client: TestClient) -> None:
     response = client.put("/v1/language", json={"language": "es"})
 
     assert response.status_code == 200
-    world = response.json()
-    assert world["language"] == "es"
-    assert world["objective"].startswith("Encuentra la llave")
-
-    action = client.post("/v1/actions", json={"action": "mirar alrededor"}).json()
-    assert action["last_result"]["summary"].startswith("La puerta principal")
+    assert response.json()["language"] == "es"
+    assert response.json()["status"] == "planning"
 
 
-@pytest.mark.parametrize(
-    "payload",
-    [
-        {"action": ""},
-        {"action": "   "},
-        {"action": "x" * 501},
-        {"action": "valid", "unexpected": True},
-    ],
-)
-def test_invalid_actions_are_rejected(client: TestClient, payload: dict[str, object]) -> None:
-    response = client.post("/v1/actions", json=payload)
-
-    assert response.status_code == 422
+@pytest.mark.parametrize("path", ["/v1/adventure", "/v1/turns"])
+def test_invalid_payload_is_rejected(client: TestClient, path: str) -> None:
+    assert client.put(path, json={}).status_code in {405, 422}
+    assert client.post(path, json={}).status_code in {405, 422}
 
 
 def test_unknown_route_returns_not_found(client: TestClient) -> None:

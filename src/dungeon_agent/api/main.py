@@ -5,7 +5,13 @@ from typing import Annotated
 from fastapi import Depends, FastAPI, Request
 
 from dungeon_agent.api.config import Settings, get_settings
-from dungeon_agent.api.models import ActionRequest, HealthResponse, LanguageRequest, WorldState
+from dungeon_agent.api.models import (
+    AdventureRequest,
+    HealthResponse,
+    LanguageRequest,
+    TurnRequest,
+    WorldState,
+)
 from dungeon_agent.api.state_store import StateStore
 
 
@@ -45,12 +51,16 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     async def set_language(payload: LanguageRequest, store: StoreDependency) -> WorldState:
         return await store.set_language(payload.language)
 
-    @app.post("/v1/actions", response_model=WorldState, tags=["world"])
-    async def apply_action(
-        payload: ActionRequest,
+    @app.put("/v1/adventure", response_model=WorldState, tags=["world"])
+    async def start_adventure(
+        payload: AdventureRequest,
         store: StoreDependency,
     ) -> WorldState:
-        return await store.apply_action(payload.action)
+        return await store.start_adventure(payload.language, payload.plan)
+
+    @app.post("/v1/turns", response_model=WorldState, tags=["world"])
+    async def apply_turn(payload: TurnRequest, store: StoreDependency) -> WorldState:
+        return await store.apply_turn(payload.action, payload.proposal)
 
     return app
 

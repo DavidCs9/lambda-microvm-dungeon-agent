@@ -3,8 +3,8 @@ import json
 import os
 from pathlib import Path
 
-from dungeon_agent.api.adventure import initial_world, resolve_action
-from dungeon_agent.api.models import LanguageCode, WorldState
+from dungeon_agent.api.adventure import initial_world, resolve_turn, start_adventure
+from dungeon_agent.api.models import AdventurePlan, LanguageCode, TurnProposal, WorldState
 
 
 class StateStore:
@@ -29,16 +29,21 @@ class StateStore:
             current = self._read()
             updated = (
                 initial_world(language)
-                if current.revision == 0
+                if current.status == "planning"
                 else current.model_copy(update={"language": language})
             )
             self._write(updated)
             return updated
 
-    async def apply_action(self, action: str) -> WorldState:
+    async def start_adventure(self, language: LanguageCode, plan: AdventurePlan) -> WorldState:
         async with self._lock:
-            current = self._read()
-            updated = resolve_action(current, action)
+            updated = start_adventure(language, plan)
+            self._write(updated)
+            return updated
+
+    async def apply_turn(self, action: str, proposal: TurnProposal) -> WorldState:
+        async with self._lock:
+            updated = resolve_turn(self._read(), action, proposal)
             self._write(updated)
             return updated
 

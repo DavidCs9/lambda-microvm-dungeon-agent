@@ -88,15 +88,15 @@ def run_benchmark(
         for result in warm_results:
             require_success(result, "warm health check")
 
-        action = request_json(
+        persisted_state = request_json(
             endpoint,
             token,
-            "POST",
-            "/v1/actions",
-            {"action": "Pocket the key before the MicroVM sleeps"},
+            "PUT",
+            "/v1/language",
+            {"language": "es"},
         )
-        require_success(action, "persist action")
-        expected_world = action.body
+        require_success(persisted_state, "persist state")
+        expected_world = persisted_state.body
 
         suspend_started = time.perf_counter()
         client.suspend_microvm(microvmIdentifier=microvm_id)

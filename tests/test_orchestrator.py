@@ -3,122 +3,115 @@ from unittest.mock import Mock
 
 import pytest
 
+from dungeon_agent.orchestrator.agents import AdventureArchitect, DungeonMaster
 from dungeon_agent.orchestrator.game import DungeonOrchestrator
 from dungeon_agent.orchestrator.locales import SPANISH, select_language
-from dungeon_agent.orchestrator.narrator import BedrockNarrator
 from dungeon_agent.orchestrator.observability import SessionMetrics
 from dungeon_agent.orchestrator.session import MicrovmSession
+from tests.test_adventure import proposal, sample_plan
 
 
-def test_orchestrator_persists_action_before_narration() -> None:
+def orchestrator_with_mocks(
+    *, language: str = "en"
+) -> tuple[DungeonOrchestrator, Mock, Mock, Mock, SessionMetrics]:
     session = Mock(spec=MicrovmSession)
-    narrator = Mock(spec=BedrockNarrator)
-    world = {"revision": 1, "story": ["Search the drawer"]}
-    session.apply_action.return_value = world
-    narrator.narrate.return_value = "A brass key glints beneath the console."
-    orchestrator = DungeonOrchestrator(session, narrator)
-
-    result = orchestrator.take_turn("  Search the drawer  ")
-
-    assert result == "A brass key glints beneath the console."
-    session.apply_action.assert_called_once_with("Search the drawer")
-    narrator.narrate.assert_called_once_with("Search the drawer", world)
-
-
-def test_opening_scene_uses_canonical_world_story() -> None:
-    session = Mock(spec=MicrovmSession)
-    narrator = Mock(spec=BedrockNarrator)
-    session.read_world.return_value = {"story": ["You are locked inside a small tavern."]}
-    orchestrator = DungeonOrchestrator(session, narrator)
-
-    assert orchestrator.opening_scene() == "You are locked inside a small tavern."
-    narrator.narrate.assert_not_called()
+    architect = Mock(spec=AdventureArchitect)
+    dungeon_master = Mock(spec=DungeonMaster)
+    metrics = SessionMetrics.start("us.amazon.nova-micro-v1:0")
+    locale = SPANISH if language == "es" else None
+    orchestrator = DungeonOrchestrator(
+        session,
+        architect,
+        dungeon_master,
+        metrics,
+        *(tuple([locale]) if locale is not None else ()),
+    )
+    return orchestrator, session, architect, dungeon_master, metrics
 
 
-def test_state_summary_is_human_readable() -> None:
-    session = Mock(spec=MicrovmSession)
-    narrator = Mock(spec=BedrockNarrator)
-    session.read_world.return_value = {
-        "revision": 2,
-        "location": "The Locked Tavern",
-        "inventory": ["brass key"],
-        "objective": "Find the key and leave",
+def world_data(*, status: str = "active") -> dict[str, object]:
+    return {
+        "revision": 1,
+        "language": "en",
+        "plan": sample_plan().model_dump(mode="json"),
+        "location_id": "square",
+        "inventory": [],
         "health": 3,
-        "danger": 6,
-        "status": "active",
+        "facts": ["The storm is close"],
+        "status": status,
+        "last_result": {
+            "action": "build a bridge",
+            "intent": "cross the flood",
+            "success": True,
+            "narration": "The improvised bridge holds.",
+            "roll": 16,
+            "difficulty": 12,
+            "suggestions": ["Cross it", "Call Mara"],
+        },
     }
-    orchestrator = DungeonOrchestrator(session, narrator)
+
+
+def test_opening_generates_and_starts_a_new_adventure() -> None:
+    orchestrator, session, architect, _, _ = orchestrator_with_mocks()
+    architect.create.return_value = sample_plan()
+    session.start_adventure.return_value = world_data()
+
+    assert orchestrator.opening_scene() == sample_plan().opening
+    architect.create.assert_called_once_with("en")
+    session.start_adventure.assert_called_once()
+
+
+def test_free_form_action_is_adjudicated_then_validated_by_microvm() -> None:
+    orchestrator, session, _, dungeon_master, _ = orchestrator_with_mocks()
+    session.read_world.return_value = world_data()
+    dungeon_master.adjudicate.return_value = proposal()
+    session.apply_turn.return_value = world_data()
+
+    turn = orchestrator.take_turn("  Build a bridge from broken tables  ")
+
+    assert turn.narration == "The improvised bridge holds."
+    assert turn.roll == 16
+    dungeon_master.adjudicate.assert_called_once()
+    session.apply_turn.assert_called_once_with(
+        "Build a bridge from broken tables", dungeon_master.adjudicate.return_value
+    )
+
+
+def test_generated_state_summary_is_human_readable() -> None:
+    orchestrator, session, _, _, _ = orchestrator_with_mocks()
+    session.read_world.return_value = world_data()
 
     assert orchestrator.state_summary() == (
-        "Location: The Locked Tavern\n"
-        "Inventory: brass key\n"
-        "Objective: Find the key and leave\n"
+        "Location: Square\n"
+        "Inventory: Empty\n"
+        "Objective: Recover the storm bell and ring it from the old tower.\n"
         "Health: 3/3\n"
-        "Time remaining: 6/8\n"
+        "Time remaining: 9\n"
         "Status: active\n"
-        "Turns played: 2"
+        "Turns played: 1"
     )
 
 
 def test_spanish_is_an_official_language_option(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr("builtins.input", lambda _: "1")
-
     assert select_language(None) is SPANISH
     assert select_language("es") is SPANISH
 
 
-def test_spanish_state_summary_is_localized() -> None:
-    session = Mock(spec=MicrovmSession)
-    narrator = Mock(spec=BedrockNarrator)
-    session.read_world.return_value = {
-        "revision": 1,
-        "location": "The Locked Tavern",
-        "inventory": [],
-        "objective": "Escapa antes del colapso",
-        "health": 3,
-        "danger": 7,
-        "status": "active",
-    }
-    orchestrator = DungeonOrchestrator(session, narrator, SPANISH)
+def test_stats_summary_includes_tokens_and_cost() -> None:
+    orchestrator, _, _, _, metrics = orchestrator_with_mocks(language="es")
+    metrics.record(input_tokens=1_000, output_tokens=100, latency_ms=750)
 
-    assert orchestrator.state_summary() == (
-        "Ubicación: La Taberna Cerrada\n"
-        "Inventario: Vacío\n"
-        "Objetivo: Escapa antes del colapso\n"
-        "Salud: 3/3\n"
-        "Tiempo restante: 7/8\n"
-        "Estado: active\n"
-        "Turnos jugados: 1"
-    )
-
-
-def test_spanish_stats_summary_includes_tokens_and_cost() -> None:
-    session = Mock(spec=MicrovmSession)
-    narrator = Mock(spec=BedrockNarrator)
-    narrator.metrics = SessionMetrics.start("us.amazon.nova-micro-v1:0")
-    narrator.metrics.record(input_tokens=1_000, output_tokens=100, latency_ms=750)
-    orchestrator = DungeonOrchestrator(session, narrator, SPANISH)
-
-    assert orchestrator.stats_summary() == (
-        "Estadísticas de la sesión LLM\n"
-        "Modelo: us.amazon.nova-micro-v1:0\n"
-        "Llamadas al modelo: 1\n"
-        "Tokens de entrada: 1,000\n"
-        "Tokens de salida: 100\n"
-        "Tokens totales: 1,100\n"
-        "Latencia total del modelo: 0.75 s\n"
-        "Costo estimado del modelo: $0.00004900 USD"
-    )
+    assert "Tokens totales: 1,100" in orchestrator.stats_summary()
+    assert "Costo estimado del modelo: $0.00004900 USD" in orchestrator.stats_summary()
 
 
 @pytest.mark.parametrize("action", ["", "   ", "x" * 501])
 def test_orchestrator_rejects_invalid_actions(action: str) -> None:
-    session = Mock(spec=MicrovmSession)
-    narrator = Mock(spec=BedrockNarrator)
-    orchestrator = DungeonOrchestrator(session, narrator)
+    orchestrator, session, _, dungeon_master, _ = orchestrator_with_mocks()
 
     with pytest.raises(ValueError):
         orchestrator.take_turn(action)
 
-    cast(Mock, session.apply_action).assert_not_called()
-    cast(Mock, narrator.narrate).assert_not_called()
+    cast(Mock, session.apply_turn).assert_not_called()
+    cast(Mock, dungeon_master.adjudicate).assert_not_called()

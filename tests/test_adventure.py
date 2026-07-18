@@ -1,76 +1,139 @@
 import pytest
 
-from dungeon_agent.api.adventure import initial_world, resolve_action
-from dungeon_agent.api.models import LanguageCode, WorldState
-
-
-def play(language: LanguageCode, actions: list[str]) -> WorldState:
-    world = initial_world(language)
-    for action in actions:
-        world = resolve_action(world, action)
-    return world
-
-
-@pytest.mark.parametrize(
-    ("language", "actions"),
-    [
-        (
-            "en",
-            ["look around", "enter kitchen", "search drawer", "take key", "return", "open door"],
-        ),
-        (
-            "es",
-            [
-                "mirar alrededor",
-                "entrar a la cocina",
-                "buscar cajón",
-                "tomar llave",
-                "volver a la sala principal",
-                "abrir puerta",
-            ],
-        ),
-    ],
+from dungeon_agent.api.adventure import initial_world, resolve_turn, start_adventure
+from dungeon_agent.api.models import (
+    AdventurePlan,
+    Character,
+    Item,
+    Location,
+    StateChanges,
+    TurnProposal,
 )
-def test_player_can_escape_in_each_language(language: LanguageCode, actions: list[str]) -> None:
-    world = play(language, actions)
-
-    assert world.status == "won"
-    assert "escaped" in world.completed_events
-    assert world.last_result is not None
-    assert world.last_result.success is True
 
 
-def test_danger_clock_can_end_the_adventure() -> None:
-    world = play("en", [f"wait {turn}" for turn in range(8)])
-
-    assert world.status == "lost"
-    assert world.health == 0
-    assert world.danger == 0
-    assert world.ending is not None
-
-    unchanged = resolve_action(world, "open door")
-    assert unchanged.revision == world.revision
-    assert unchanged.last_result is not None
-    assert unchanged.last_result.success is False
-
-
-def test_locked_door_and_empty_tavern_give_simple_guidance() -> None:
-    locked = resolve_action(initial_world(), "open door")
-    conversation = resolve_action(initial_world(), "talk to someone")
-
-    assert locked.last_result is not None
-    assert locked.last_result.success is False
-    assert conversation.last_result is not None
-    assert conversation.last_result.success is False
-    assert len(conversation.last_result.suggestions) >= 1
-
-
-def test_inspection_and_return_preserve_discovered_state() -> None:
-    world = play(
-        "en",
-        ["look around", "enter kitchen", "search drawer", "take key", "return"],
+def sample_plan() -> AdventurePlan:
+    return AdventurePlan(
+        title="The Storm Bell",
+        premise="A magical storm surrounds a village whose warning bell was stolen.",
+        objective="Recover the storm bell and ring it from the old tower.",
+        opening="Rain lashes the village square. Find the stolen bell before the storm arrives.",
+        starting_location_id="square",
+        locations=[
+            Location(
+                id="square",
+                name="Square",
+                description="A flooded village square.",
+                exits=["mill", "tower"],
+            ),
+            Location(
+                id="mill",
+                name="Mill",
+                description="An abandoned mill creaks nearby.",
+                exits=["square"],
+            ),
+            Location(
+                id="tower",
+                name="Tower",
+                description="The old warning tower overlooks town.",
+                exits=["square"],
+            ),
+        ],
+        characters=[
+            Character(
+                id="mara",
+                name="Mara",
+                description="A worried miller.",
+                motivation="Protect her village.",
+            ),
+        ],
+        items=[
+            Item(id="bell", name="Storm Bell", description="A small rune-covered bell."),
+            Item(id="rope", name="Rope", description="A coil of sturdy rope."),
+        ],
+        secrets=["Mara hid the bell in the mill."],
+        max_turns=10,
     )
 
-    assert world.location == "The Locked Tavern"
-    assert "brass key" in world.inventory
-    assert len(world.discovered_clues) == 2
+
+def proposal(**changes: object) -> TurnProposal:
+    values: dict[str, object] = {
+        "intent": "Try a creative approach",
+        "requires_roll": True,
+        "difficulty": 12,
+        "success_narration": "Your clever plan works and opens a new path.",
+        "failure_narration": "The attempt fails, but you notice a useful clue.",
+        "success_changes": StateChanges(add_facts=["A new path is open"]),
+        "failure_changes": StateChanges(health_delta=-1, add_facts=["The stones are slippery"]),
+        "suggestions": ["Talk to Mara", "Explore the mill"],
+    }
+    values.update(changes)
+    return TurnProposal.model_validate(values)
+
+
+def test_generated_adventure_starts_from_validated_plan() -> None:
+    world = start_adventure("en", sample_plan())
+
+    assert world.status == "active"
+    assert world.location_id == "square"
+    assert world.plan is not None
+    assert world.plan.title == "The Storm Bell"
+
+
+def test_d20_selects_and_applies_only_matching_branch() -> None:
+    world = start_adventure("en", sample_plan())
+
+    success = resolve_turn(world, "swing across", proposal(), roll=17)
+    failure = resolve_turn(world, "swing across", proposal(), roll=4)
+
+    assert success.last_result is not None and success.last_result.success
+    assert "A new path is open" in success.facts
+    assert success.health == 3
+    assert failure.last_result is not None and not failure.last_result.success
+    assert failure.health == 2
+    assert "The stones are slippery" in failure.facts
+
+
+def test_model_cannot_invent_unknown_locations_or_items() -> None:
+    world = start_adventure("en", sample_plan())
+
+    with pytest.raises(ValueError, match="unknown location"):
+        resolve_turn(
+            world,
+            "teleport",
+            proposal(success_changes=StateChanges(location_id="moon")),
+            roll=20,
+        )
+    with pytest.raises(ValueError, match="unknown item"):
+        resolve_turn(
+            world,
+            "summon sword",
+            proposal(success_changes=StateChanges(add_items=["magic_sword"])),
+            roll=20,
+        )
+
+
+def test_objective_completion_and_turn_limit_are_authoritative() -> None:
+    world = start_adventure("en", sample_plan())
+    victory = resolve_turn(
+        world,
+        "ring the bell",
+        proposal(
+            requires_roll=False,
+            difficulty=None,
+            success_changes=StateChanges(objective_complete=True),
+        ),
+    )
+    assert victory.status == "won"
+
+    current = world
+    automatic = proposal(requires_roll=False, difficulty=None)
+    for _ in range(10):
+        current = resolve_turn(current, "wait", automatic)
+        if current.status == "lost":
+            break
+    assert current.status == "lost"
+
+
+def test_planning_world_rejects_turns() -> None:
+    with pytest.raises(ValueError, match="not active"):
+        resolve_turn(initial_world(), "anything", proposal(), roll=10)
