@@ -3,7 +3,10 @@ from unittest.mock import Mock
 
 import pytest
 
-from scripts.orchestrator import BedrockNarrator, DungeonOrchestrator, MicrovmSession
+from scripts.dungeon.game import DungeonOrchestrator
+from scripts.dungeon.locales import SPANISH, select_language
+from scripts.dungeon.narrator import BedrockNarrator
+from scripts.dungeon.session import MicrovmSession
 
 
 def test_orchestrator_persists_action_before_narration() -> None:
@@ -33,6 +36,28 @@ def test_state_summary_is_human_readable() -> None:
 
     assert orchestrator.state_summary() == (
         "Location: The Snapshot Tavern\nInventory: brass key\nTurns played: 2"
+    )
+
+
+def test_spanish_is_an_official_language_option(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr("builtins.input", lambda _: "1")
+
+    assert select_language(None) is SPANISH
+    assert select_language("es") is SPANISH
+
+
+def test_spanish_state_summary_is_localized() -> None:
+    session = Mock(spec=MicrovmSession)
+    narrator = Mock(spec=BedrockNarrator)
+    session.read_world.return_value = {
+        "revision": 1,
+        "location": "The Snapshot Tavern",
+        "inventory": [],
+    }
+    orchestrator = DungeonOrchestrator(session, narrator, SPANISH)
+
+    assert orchestrator.state_summary() == (
+        "Ubicación: La Taberna Snapshot\nInventario: Vacío\nTurnos jugados: 1"
     )
 
 

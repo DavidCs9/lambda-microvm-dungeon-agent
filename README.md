@@ -97,6 +97,15 @@ The CLI opens with a narrated scene, example actions, and visible controls:
 
 Ctrl+C also terminates the session cleanly. For a non-interactive smoke test, add `--turn "Inspect the humming machine"`. The Bedrock Converse request explicitly caps output at 180 tokens per turn.
 
+### Languages
+
+Before launching the MicroVM, the CLI asks the player to choose an official language:
+
+1. Español
+2. English
+
+The choice localizes the opening scene, narration, commands, prompts, state, errors, and shutdown messages. Press Enter to choose Español, or skip the menu with `--language es` or `--language en`.
+
 ## Planned milestones
 
 1. Validate the FastAPI backend and ARM64 container.

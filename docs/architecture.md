@@ -10,3 +10,11 @@ The lab separates orchestration from untrusted execution:
 The FastAPI backend intentionally implements state operations only. Its OpenAPI contract can support a separate web client later. Arbitrary code execution will be added only with MicroVM isolation, resource limits, no AWS credentials, and restricted network egress.
 
 The master orchestrator runs outside the MicroVM. It owns the Bedrock conversation, MicroVM lifecycle, short-lived endpoint token, and player loop. The MicroVM remains a narrow state and tool-execution boundary rather than receiving model credentials.
+
+The orchestrator is split by responsibility:
+
+- `scripts/orchestrator.py` — CLI parsing and dependency composition
+- `scripts/dungeon/locales.py` — official languages and selection
+- `scripts/dungeon/session.py` — MicroVM lifecycle and authenticated API adapter
+- `scripts/dungeon/narrator.py` — bounded Bedrock Converse adapter
+- `scripts/dungeon/game.py` — provider-independent game rules and terminal loop
