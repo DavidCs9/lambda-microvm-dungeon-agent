@@ -19,7 +19,7 @@ Then the dungeon was actually fun to play.
 The experiment grew into a bilingual tabletop game with generated worlds, dedicated adventure and
 character architects, free-form Dungeon Master adjudication, visible dice, voice, music,
 observability, and gameplay evals. The MicroVM lab is still here, but now it protects the rules and
-state of a real game we want to keep improving.
+state of a real game I want to keep improving.
 
 ## What the game does
 
