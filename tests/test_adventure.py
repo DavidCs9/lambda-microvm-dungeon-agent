@@ -16,11 +16,18 @@ def play(language: LanguageCode, actions: list[str]) -> WorldState:
     [
         (
             "en",
-            ["look around", "enter cellar", "take key", "return tavern", "open door"],
+            ["look around", "enter kitchen", "search drawer", "take key", "return", "open door"],
         ),
         (
             "es",
-            ["mirar alrededor", "entrar al sótano", "tomar llave", "subir taberna", "abrir puerta"],
+            [
+                "mirar alrededor",
+                "entrar a la cocina",
+                "buscar cajón",
+                "tomar llave",
+                "volver a la sala principal",
+                "abrir puerta",
+            ],
         ),
     ],
 )
@@ -31,23 +38,6 @@ def test_player_can_escape_in_each_language(language: LanguageCode, actions: lis
     assert "escaped" in world.completed_events
     assert world.last_result is not None
     assert world.last_result.success is True
-
-
-@pytest.mark.parametrize(
-    ("language", "actions"),
-    [
-        ("en", ["talk to Mira", "enter cellar", "inspect machine", "use tuning fork"]),
-        ("es", ["hablar con Mira", "entrar al sótano", "inspeccionar máquina", "usar diapasón"]),
-    ],
-)
-def test_player_can_save_tavern_in_each_language(
-    language: LanguageCode, actions: list[str]
-) -> None:
-    world = play(language, actions)
-
-    assert world.status == "won"
-    assert "tavern_stabilized" in world.completed_events
-    assert world.npc_relationships["Mira"] == 1
 
 
 def test_danger_clock_can_end_the_adventure() -> None:
@@ -64,24 +54,23 @@ def test_danger_clock_can_end_the_adventure() -> None:
     assert unchanged.last_result.success is False
 
 
-def test_locked_door_and_machine_without_fork_give_guidance() -> None:
+def test_locked_door_and_empty_tavern_give_simple_guidance() -> None:
     locked = resolve_action(initial_world(), "open door")
-    cellar = resolve_action(initial_world(), "enter cellar")
-    rejected = resolve_action(cellar, "use machine")
+    conversation = resolve_action(initial_world(), "talk to someone")
 
     assert locked.last_result is not None
     assert locked.last_result.success is False
-    assert rejected.last_result is not None
-    assert rejected.last_result.success is False
-    assert len(rejected.last_result.suggestions) >= 1
+    assert conversation.last_result is not None
+    assert conversation.last_result.success is False
+    assert len(conversation.last_result.suggestions) >= 1
 
 
 def test_inspection_and_return_preserve_discovered_state() -> None:
     world = play(
         "en",
-        ["look around", "enter cellar", "inspect machine", "take key", "return tavern"],
+        ["look around", "enter kitchen", "search drawer", "take key", "return"],
     )
 
-    assert world.location == "The Snapshot Tavern"
-    assert "brass snapshot key" in world.inventory
+    assert world.location == "The Locked Tavern"
+    assert "brass key" in world.inventory
     assert len(world.discovered_clues) == 2

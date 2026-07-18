@@ -31,12 +31,19 @@ class JourneyEvidence:
 
 JOURNEYS = (
     Journey(
-        "independent_escape",
-        ("look around", "enter the cellar", "take the brass key", "return to tavern", "open door"),
+        "clear_escape",
+        (
+            "look around",
+            "enter the kitchen",
+            "search the drawer",
+            "take the key",
+            "return",
+            "open door",
+        ),
     ),
     Journey(
-        "help_mira",
-        ("talk to Mira", "enter the cellar", "inspect the machine", "use the tuning fork"),
+        "recover_from_locked_door",
+        ("open door", "enter kitchen", "take key", "return to main room", "use key on door"),
     ),
     Journey("ignore_the_warning", tuple(f"wait and do nothing {turn}" for turn in range(1, 10))),
 )
@@ -92,7 +99,7 @@ def _score(evidence: tuple[JourneyEvidence, ...]) -> dict[str, object]:
     return {
         "rubricVersion": "1.0",
         "evaluationGoals": [
-            "support meaningfully different player strategies",
+            "keep one simple goal reachable through natural player phrasing",
             "communicate goals and consequences clearly",
             "create fair urgency and reachable failure",
             "preserve consistent state across turns",
@@ -202,13 +209,12 @@ def _request(
 
 
 def _agency_score(evidence: tuple[JourneyEvidence, ...]) -> int:
-    endings = {
-        str(state.get("ending"))
+    completed = sum(
+        any(state.get("status") == "won" for state in journey.states)
         for journey in evidence
-        for state in journey.states
-        if state.get("status") == "won" and state.get("ending")
-    }
-    return 20 if len(endings) >= 2 else 10 if endings else 0
+        if journey.name != "ignore_the_warning"
+    )
+    return 10 * completed
 
 
 def _guidance_score(evidence: tuple[JourneyEvidence, ...]) -> int:

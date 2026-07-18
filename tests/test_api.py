@@ -42,10 +42,10 @@ def test_language_can_be_selected_before_play(client: TestClient) -> None:
     assert response.status_code == 200
     world = response.json()
     assert world["language"] == "es"
-    assert world["objective"].startswith("Escapa")
+    assert world["objective"].startswith("Encuentra la llave")
 
     action = client.post("/v1/actions", json={"action": "mirar alrededor"}).json()
-    assert action["last_result"]["summary"].startswith("Descubres")
+    assert action["last_result"]["summary"].startswith("La puerta principal")
 
 
 @pytest.mark.parametrize(

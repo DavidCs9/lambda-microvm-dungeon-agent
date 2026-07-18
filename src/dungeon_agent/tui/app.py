@@ -39,7 +39,7 @@ class DungeonApp(App[None]):
     """Full-screen, bilingual terminal client for one isolated game session."""
 
     CSS_PATH = "dungeon.tcss"
-    TITLE = "Snapshot Tavern"
+    TITLE = "The Locked Tavern"
     BINDINGS: ClassVar = [
         Binding("f1", "help", "Help"),
         Binding("f2", "state", "State"),
@@ -117,6 +117,7 @@ class DungeonApp(App[None]):
         if locale is None:
             return
         self.locale = locale
+        self.title = locale.game_title
         self.query_one("#language-view").add_class("hidden")
         self.query_one("#connecting-view").remove_class("hidden")
         self.query_one("#connecting-message", Label).update(locale.starting)

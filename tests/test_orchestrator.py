@@ -13,16 +13,16 @@ from dungeon_agent.orchestrator.session import MicrovmSession
 def test_orchestrator_persists_action_before_narration() -> None:
     session = Mock(spec=MicrovmSession)
     narrator = Mock(spec=BedrockNarrator)
-    world = {"revision": 1, "story": ["Inspect the machine"]}
+    world = {"revision": 1, "story": ["Search the drawer"]}
     session.apply_action.return_value = world
     narrator.narrate.return_value = "A brass key glints beneath the console."
     orchestrator = DungeonOrchestrator(session, narrator)
 
-    result = orchestrator.take_turn("  Inspect the machine  ")
+    result = orchestrator.take_turn("  Search the drawer  ")
 
     assert result == "A brass key glints beneath the console."
-    session.apply_action.assert_called_once_with("Inspect the machine")
-    narrator.narrate.assert_called_once_with("Inspect the machine", world)
+    session.apply_action.assert_called_once_with("Search the drawer")
+    narrator.narrate.assert_called_once_with("Search the drawer", world)
 
 
 def test_state_summary_is_human_readable() -> None:
@@ -30,9 +30,9 @@ def test_state_summary_is_human_readable() -> None:
     narrator = Mock(spec=BedrockNarrator)
     session.read_world.return_value = {
         "revision": 2,
-        "location": "The Snapshot Tavern",
+        "location": "The Locked Tavern",
         "inventory": ["brass key"],
-        "objective": "Escape before collapse",
+        "objective": "Find the key and leave",
         "health": 3,
         "danger": 6,
         "status": "active",
@@ -40,9 +40,9 @@ def test_state_summary_is_human_readable() -> None:
     orchestrator = DungeonOrchestrator(session, narrator)
 
     assert orchestrator.state_summary() == (
-        "Location: The Snapshot Tavern\n"
+        "Location: The Locked Tavern\n"
         "Inventory: brass key\n"
-        "Objective: Escape before collapse\n"
+        "Objective: Find the key and leave\n"
         "Health: 3/3\n"
         "Time remaining: 6/8\n"
         "Status: active\n"
@@ -62,7 +62,7 @@ def test_spanish_state_summary_is_localized() -> None:
     narrator = Mock(spec=BedrockNarrator)
     session.read_world.return_value = {
         "revision": 1,
-        "location": "The Snapshot Tavern",
+        "location": "The Locked Tavern",
         "inventory": [],
         "objective": "Escapa antes del colapso",
         "health": 3,
@@ -72,7 +72,7 @@ def test_spanish_state_summary_is_localized() -> None:
     orchestrator = DungeonOrchestrator(session, narrator, SPANISH)
 
     assert orchestrator.state_summary() == (
-        "Ubicación: La Taberna Snapshot\n"
+        "Ubicación: La Taberna Cerrada\n"
         "Inventario: Vacío\n"
         "Objetivo: Escapa antes del colapso\n"
         "Salud: 3/3\n"

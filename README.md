@@ -90,7 +90,7 @@ GitHub `release` environment:
 Publish a version only when intended:
 
 ```sh
-git tag -a v0.2.0 -m "Snapshot Tavern one-shot"
+git tag -a v0.2.0 -m "Dungeon Agent release"
 git push origin v0.2.0
 ```
 
@@ -136,7 +136,7 @@ The following typed commands work in both the TUI and plain interface:
 - `/quit` — terminate the MicroVM and exit
 
 Ctrl+C also terminates the session cleanly. Add `--plain` for the stream-based interface used by
-basic terminals and debugging. A non-interactive `--turn "Inspect the humming machine"` run
+basic terminals and debugging. A non-interactive `--turn "Look around"` run
 automatically uses plain mode. The Bedrock Converse request explicitly caps output at 180 tokens
 per turn.
 

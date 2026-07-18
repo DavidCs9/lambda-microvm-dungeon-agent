@@ -55,7 +55,10 @@ class DungeonOrchestrator:
         inventory = world.get("inventory")
         return GameSnapshot(
             location=str(location),
-            inventory=tuple(str(item) for item in inventory)
+            inventory=tuple(
+                language_translation(self.locale.code, "adventure", str(item))
+                for item in inventory
+            )
             if isinstance(inventory, list)
             else (),
             objective=str(world.get("objective", "-")),

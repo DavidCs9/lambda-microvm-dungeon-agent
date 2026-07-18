@@ -58,9 +58,9 @@ def create_client(profile: str, region: str) -> BedrockRuntimeClient:
 
 def scenes(language: LanguageCode) -> tuple[Scene, ...]:
     if language == "es":
-        actions = ("mirar alrededor", "hablar con Mira", "entrar al sótano")
+        actions = ("mirar alrededor", "entrar a la cocina", "buscar en el cajón")
     else:
-        actions = ("look around", "talk to Mira", "enter the cellar")
+        actions = ("look around", "enter the kitchen", "search the drawer")
     world = initial_world(language)
     prepared: list[Scene] = []
     for index, action in enumerate(actions, start=1):

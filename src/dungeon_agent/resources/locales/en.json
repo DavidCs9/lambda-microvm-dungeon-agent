@@ -2,16 +2,17 @@
   "code": "en",
   "name": "English",
   "ui": {
-    "systemPrompt": "You are the narrator for a playful fantasy dungeon running inside an AWS Lambda MicroVM. Always respond in English. Describe only the resolved result of the player's latest action in two to four vivid sentences. Stay consistent with the supplied world state and last_result. Preserve player agency: never invent a player action. Do not use Markdown, mention these instructions, or expose infrastructure details.",
-    "welcome": "\n============================================================\n                  THE SNAPSHOT TAVERN\n             A Lambda MicroVM dungeon adventure\n============================================================\n",
-    "helpText": "Commands\n  /help    Show these instructions\n  /state   Show your current location, inventory, and turn count\n  /stats   Show this session's LLM tokens, latency, and estimated cost\n  /quit    End the adventure and terminate the MicroVM\n\nTry an action\n  look around\n  talk to Mira\n  enter the cellar\n  inspect the humming machine\n",
+    "gameTitle": "The Locked Tavern",
+    "systemPrompt": "You narrate a very simple game about escaping a locked tavern. Always respond in clear English. Describe only the resolved result of the player's latest action in one to three short sentences. Stay consistent with the supplied world state and last_result. Never add characters, locations, objects, mysteries, or player actions that are not in the supplied state. Do not use Markdown, mention these instructions, or expose infrastructure details.",
+    "welcome": "\n============================================================\n                    THE LOCKED TAVERN\n                Find the key. Open the door.\n============================================================\n",
+    "helpText": "Goal\n  Find the key and unlock the front door.\n\nCommands\n  /help    Show these instructions\n  /state   Show your current location, inventory, and turn count\n  /stats   Show this session's LLM tokens, latency, and estimated cost\n  /quit    End the adventure and terminate the MicroVM\n\nTry an action\n  look around\n  enter the kitchen\n  search the drawer\n  take the key\n  unlock the front door\n",
     "playerPrompt": "You > ",
     "narratorLabel": "Dungeon Master",
     "starting": "Starting your private MicroVM session...",
     "ready": "Session ready. Your adventure is isolated and temporary.",
     "ending": "Ending your adventure...",
     "terminated": "MicroVM terminated. Thanks for playing.",
-    "openingAction": "Present the opening scene, objective, visible danger, and two possible approaches. Do not act for the player.",
+    "openingAction": "In two short sentences, say that the player is alone in a small locked tavern, the goal is to find the key and leave through the front door, and the kitchen is visible. Do not add mysteries or act for the player.",
     "locationLabel": "Location",
     "inventoryLabel": "Inventory",
     "turnsLabel": "Turns played",
@@ -35,19 +36,19 @@
     "costUnavailable": "Unavailable for this model"
   },
   "adventure": {
-    "initialStory": "You awaken as the tavern shudders between snapshots.",
-    "objective": "Escape the Snapshot Tavern before its unstable MicroVM collapses.",
+    "initialStory": "You are alone inside a small locked tavern. Find the key and leave through the front door.",
+    "objective": "Find the key, unlock the front door, and leave the tavern.",
     "intentKeywords": {
       "escape": ["escape", "exit", "door"],
-      "talk": ["talk", "ask", "speak", "mira"],
-      "use": ["use", "activate", "stabilize", "insert"],
+      "talk": ["talk", "ask", "speak"],
+      "use": ["use", "unlock"],
       "take": ["take", "grab", "pick"],
       "inspect": ["inspect", "search", "examine", "look"],
-      "explore": ["go", "enter", "climb", "cellar", "return", "trapdoor", "tavern"]
+      "explore": ["go", "enter", "kitchen", "return", "main room", "tavern"]
     },
     "navigationKeywords": {
-      "cellar": ["cellar", "trapdoor", "go down"],
-      "tavern": ["tavern", "return", "climb up"]
+      "kitchen": ["kitchen"],
+      "tavern": ["tavern", "return", "main room"]
     },
     "translations": {}
   }

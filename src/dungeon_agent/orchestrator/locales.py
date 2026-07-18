@@ -9,6 +9,7 @@ from dungeon_agent.localization import language_section, load_language
 class Locale:
     code: LanguageCode
     name: str
+    game_title: str
     system_prompt: str
     welcome: str
     help_text: str
@@ -62,6 +63,7 @@ def load_locale(language: LanguageCode) -> Locale:
     return Locale(
         code=language,
         name=name,
+        game_title=text("gameTitle"),
         system_prompt=text("systemPrompt"),
         welcome=text("welcome"),
         help_text=text("helpText"),

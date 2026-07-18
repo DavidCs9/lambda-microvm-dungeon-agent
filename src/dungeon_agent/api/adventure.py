@@ -1,4 +1,4 @@
-"""Deterministic rules for the Escape the Snapshot Tavern one-shot."""
+"""Deterministic rules for the Escape the Locked Tavern one-shot."""
 
 import re
 from dataclasses import dataclass
@@ -13,8 +13,8 @@ from dungeon_agent.api.models import (
 )
 from dungeon_agent.localization import language_section, language_text, language_translation
 
-TAVERN = "The Snapshot Tavern"
-CELLAR = "The Snapshot Cellar"
+TAVERN = "The Locked Tavern"
+KITCHEN = "The Tavern Kitchen"
 
 
 @dataclass
@@ -47,7 +47,7 @@ def initial_world(language: LanguageCode = "en") -> WorldState:
         danger=8,
         objective=language_text(language, "adventure", "objective"),
         discovered_clues=[],
-        npc_relationships={"Mira": 0},
+        npc_relationships={},
         completed_events=[],
         status="active",
     )
@@ -84,27 +84,19 @@ def resolve_action(state: WorldState, action: str) -> WorldState:
         health = 0
         status = "lost"
         ending = _localize(
-            state.language, "The unstable snapshot collapses with you still trapped inside."
+            state.language, "Time runs out and you remain locked inside the tavern."
         )
         consequence = ending
         suggestions = [_localize(state.language, "Start a new session and try another path")]
 
-    if "tavern_stabilized" in world.events:
+    if "escaped" in world.events:
         status = "won"
         ending = _localize(
             state.language,
-            "You stabilize the MicroVM and save Mira's tavern from the collapsing snapshot.",
+            "You unlock the front door and step outside. You escaped the tavern!",
         )
         consequence = ending
-        suggestions = [_localize(state.language, "Celebrate with Mira")]
-    elif "escaped" in world.events:
-        status = "won"
-        ending = _localize(
-            state.language,
-            "You unlock the snapshot door and escape as the tavern dissolves behind you.",
-        )
-        consequence = ending
-        suggestions = [_localize(state.language, "Look back at the fading tavern")]
+        suggestions = [_localize(state.language, "Celebrate your escape")]
 
     result = ActionResult(
         intent=intent,
@@ -150,108 +142,88 @@ def _resolve(
     text: str,
     language: LanguageCode,
 ) -> tuple[bool, str, str, list[str]]:
-    if intent == "talk" and world.location == TAVERN:
-        world.relationships["Mira"] = 1
-        _add_once(world.clues, "Mira says a tuning fork can stabilize the cellar machine.")
-        _add_once(world.inventory, "silver tuning fork")
-        _add_once(world.events, "befriended_mira")
+    if intent == "talk":
         return (
-            True,
-            "Mira trusts you with her silver tuning fork.",
-            "She points to a trapdoor beneath the hearth and warns that time is running out.",
-            ["Enter the cellar", "Inspect the snapshot door", "Ask Mira about the machine"],
+            False,
+            "No one else is in the tavern.",
+            "You will need to find the key yourself.",
+            _suggestions_for(world.location),
         )
 
     if intent == "inspect" and world.location == TAVERN:
-        _add_once(world.clues, "The cellar trapdoor is hidden beneath the hearth rug.")
+        _add_once(world.clues, "The front door is locked. The kitchen is open.")
         return (
             True,
-            "You discover a trapdoor beneath the hearth rug.",
-            "Cold blue light pulses through its frame in time with the tavern's shaking.",
-            ["Enter the cellar", "Talk to Mira", "Inspect the snapshot door"],
+            "The front door is locked and needs a key.",
+            "An open doorway leads to the kitchen.",
+            ["Enter the kitchen", "Try the front door"],
         )
 
     if intent == "explore":
-        if world.location == TAVERN and _matches_navigation(text, language, "cellar"):
-            world.location = CELLAR
+        if world.location == TAVERN and _matches_navigation(text, language, "kitchen"):
+            world.location = KITCHEN
             return (
                 True,
-                "You descend into the Snapshot Cellar.",
-                "A brass key hangs beside a violently humming machine.",
-                ["Take the brass key", "Inspect the machine", "Return to the tavern"],
+                "You enter the small kitchen.",
+                "There is a wooden table, a cupboard, and one closed drawer.",
+                ["Search the drawer", "Look around", "Return to the main room"],
             )
-        if world.location == CELLAR and _matches_navigation(text, language, "tavern"):
+        if world.location == KITCHEN and _matches_navigation(text, language, "tavern"):
             world.location = TAVERN
             return (
                 True,
-                "You climb back into the tavern.",
-                "The snapshot door flickers while Mira braces the bar.",
-                ["Open the snapshot door", "Talk to Mira", "Return to the cellar"],
+                "You return to the main room.",
+                "The locked front door is directly ahead.",
+                ["Unlock the front door", "Return to the kitchen"],
             )
 
-    if intent == "take" and world.location == CELLAR:
-        _add_once(world.inventory, "brass snapshot key")
+    if intent == "take" and world.location == KITCHEN:
+        _add_once(world.inventory, "brass key")
         _add_once(world.events, "found_key")
         return (
             True,
-            "You take the brass snapshot key.",
-            "It is warm and fits the lock on the tavern's glowing door.",
-            ["Return to the tavern", "Inspect the machine", "Use the tuning fork"],
+            "You take the brass key from the drawer.",
+            "It looks like it fits the front door.",
+            ["Return to the main room", "Unlock the front door"],
         )
 
-    if intent == "inspect" and world.location == CELLAR:
-        _add_once(world.clues, "The machine has a fork-shaped stabilizer socket.")
+    if intent == "inspect" and world.location == KITCHEN:
+        _add_once(world.clues, "A brass key is inside the kitchen drawer.")
         return (
             True,
-            "You find a fork-shaped socket in the unstable machine.",
-            "The machine can be stabilized if you have the matching instrument.",
-            ["Use the tuning fork", "Take the brass key", "Return to the tavern"],
+            "You open the drawer and find a brass key.",
+            "The key is within reach.",
+            ["Take the brass key", "Return to the main room"],
         )
 
-    if intent == "use" and world.location == CELLAR:
-        if "silver tuning fork" in world.inventory:
-            _add_once(world.events, "tavern_stabilized")
-            return (
-                True,
-                "The silver tuning fork resonates with the machine.",
-                "The violent shaking stops and the Snapshot Tavern becomes stable.",
-                ["Celebrate with Mira"],
-            )
-        return (
-            False,
-            "The machine rejects your attempt.",
-            "Its socket needs a specific fork-shaped instrument.",
-            ["Inspect the machine", "Return and talk to Mira"],
-        )
-
-    if intent == "escape" and world.location == TAVERN:
-        if "brass snapshot key" in world.inventory:
+    if intent in {"escape", "use"} and world.location == TAVERN:
+        if "brass key" in world.inventory:
             _add_once(world.events, "escaped")
             return (
                 True,
-                "The brass key turns in the snapshot door.",
-                "The doorway opens onto solid ground beyond the failing MicroVM.",
-                ["Step through the door"],
+                "The brass key turns in the lock.",
+                "The front door opens.",
+                ["Step outside"],
             )
         return (
             False,
-            "The snapshot door is locked.",
-            "A brass keyhole glows beneath its handle.",
-            ["Search the tavern", "Talk to Mira", "Enter the cellar"],
+            "The front door is locked.",
+            "You need to find its key.",
+            ["Look around", "Enter the kitchen"],
         )
 
     return (
         False,
         "Your idea does not change the situation yet.",
-        "The tavern shudders again; try describing what you inspect, use, or whom you approach.",
+        "Try one of the simple actions shown in the suggestions.",
         _suggestions_for(world.location),
     )
 
 
 def _suggestions_for(location: str) -> list[str]:
-    if location == CELLAR:
-        return ["Inspect the machine", "Take the brass key", "Return to the tavern"]
-    return ["Look around", "Talk to Mira", "Try the snapshot door"]
+    if location == KITCHEN:
+        return ["Search the drawer", "Take the brass key", "Return to the main room"]
+    return ["Look around", "Enter the kitchen", "Try the front door"]
 
 
 def _matches_navigation(text: str, language: LanguageCode, target: str) -> bool:
