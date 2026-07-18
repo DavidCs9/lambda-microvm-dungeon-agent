@@ -92,6 +92,7 @@ jobs:
           aws-region: ${{ vars.AWS_REGION }}
       - name: Build and publish MicroVM image version
         run: |
+          set -o pipefail
           uv run --group tooling python -m scripts.build_microvm_image \
             --region "${{ vars.AWS_REGION }}" \
             --stack-name "${{ vars.AWS_BOOTSTRAP_STACK }}" \

@@ -195,8 +195,10 @@ def publish_image(
     region: str,
     release_version: str | None,
 ) -> tuple[str, str]:
+    _, partition, _, _, account_id, _ = build_role_arn.split(":", maxsplit=5)
+    image_identifier = f"arn:{partition}:lambda:{region}:{account_id}:microvm-image:{image_name}"
     try:
-        existing = microvms.get_microvm_image(imageIdentifier=image_name)
+        existing = microvms.get_microvm_image(imageIdentifier=image_identifier)
     except microvms.exceptions.ResourceNotFoundException:
         image_arn = create_image(
             microvms,

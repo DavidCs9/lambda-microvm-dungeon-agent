@@ -74,11 +74,16 @@ def test_publish_updates_an_existing_image() -> None:
         image_name="dungeon-agent-fastapi",
         artifact=artifact,
         artifact_uri="s3://bucket/source.zip",
-        build_role_arn="arn:build-role",
+        build_role_arn="arn:aws:iam::123456789012:role/build-role",
         region="us-east-2",
         release_version="v1.2.3",
     )
 
     assert (image_arn, operation) == ("arn:existing", "updated")
+    client.get_microvm_image.assert_called_once_with(
+        imageIdentifier=(
+            "arn:aws:lambda:us-east-2:123456789012:microvm-image:dungeon-agent-fastapi"
+        )
+    )
     client.update_microvm_image.assert_called_once()
     client.tag_resource.assert_called_once_with(Resource="arn:existing", Tags={"Release": "v1.2.3"})
