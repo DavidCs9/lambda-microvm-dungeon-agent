@@ -96,4 +96,3 @@ Outputs:
   MicrovmBuildRoleArn:
     Description: Role Lambda assumes while building a MicroVM image.
     Value: !GetAtt MicrovmBuildRole.Arn
-
