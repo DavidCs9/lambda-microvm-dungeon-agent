@@ -3,7 +3,7 @@ import time
 from typing import TypeVar
 
 from mypy_boto3_bedrock_runtime import BedrockRuntimeClient
-from pydantic import BaseModel
+from pydantic import BaseModel, ValidationError
 
 from dungeon_agent.api.models import AdventurePlan, LanguageCode, TurnProposal
 from dungeon_agent.orchestrator.observability import SessionMetrics
@@ -25,6 +25,41 @@ class StructuredBedrockAgent:
         self.metrics = metrics
 
     def invoke(
+        self,
+        *,
+        system: str,
+        prompt: str,
+        tool_name: str,
+        tool_description: str,
+        output_model: type[OutputModel],
+        max_tokens: int,
+        temperature: float,
+    ) -> OutputModel:
+        current_prompt = prompt
+        current_temperature = temperature
+        for attempt in range(2):
+            try:
+                return self._invoke_once(
+                    system=system,
+                    prompt=current_prompt,
+                    tool_name=tool_name,
+                    tool_description=tool_description,
+                    output_model=output_model,
+                    max_tokens=max_tokens,
+                    temperature=current_temperature,
+                )
+            except ValidationError as error:
+                if attempt == 1:
+                    raise
+                current_prompt = (
+                    f"{prompt}\n\nYour previous tool output failed validation. Correct every "
+                    f"error below and call {tool_name} again with a complete object:\n"
+                    f"{str(error)[:1_500]}"
+                )
+                current_temperature = min(temperature, 0.3)
+        raise RuntimeError("structured output repair exhausted")
+
+    def _invoke_once(
         self,
         *,
         system: str,

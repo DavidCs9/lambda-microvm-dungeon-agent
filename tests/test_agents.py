@@ -70,3 +70,31 @@ def test_structured_agent_rejects_invalid_model_output() -> None:
             max_tokens=2_000,
             temperature=0.9,
         )
+    assert client.converse.call_count == 2
+
+
+def test_structured_agent_repairs_invalid_output_once() -> None:
+    client = Mock()
+    client.converse.side_effect = [
+        response_for("create_adventure", {"title": "Incomplete"}),
+        response_for("create_adventure", sample_plan().model_dump(mode="json")),
+    ]
+    agent = StructuredBedrockAgent(client, "test-model", SessionMetrics.start("test-model"))
+
+    result = agent.invoke(
+        system="Design a game",
+        prompt="Make a new adventure",
+        tool_name="create_adventure",
+        tool_description="Create it",
+        output_model=type(sample_plan()),
+        max_tokens=2_000,
+        temperature=0.9,
+    )
+
+    assert result.title == "The Storm Bell"
+    repaired_request = client.converse.call_args_list[1].kwargs
+    assert (
+        "previous tool output failed validation"
+        in repaired_request["messages"][0]["content"][0]["text"]
+    )
+    assert repaired_request["inferenceConfig"]["temperature"] == 0.3
