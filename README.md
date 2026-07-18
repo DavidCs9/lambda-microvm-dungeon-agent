@@ -135,6 +135,23 @@ The following typed commands work in both the TUI and plain interface:
 - `/stats` — show model calls, token usage, latency, and estimated session cost
 - `/quit` — terminate the MicroVM and exit
 
+### Voice and ambience
+
+The TUI speaks Dungeon Master narration with Amazon Polly and plays a quiet, original tavern
+ambience loop generated locally by the application. Audio is a presentation adapter: it runs on
+the player's computer and is not part of the MicroVM image or game rules.
+
+- `F4` — toggle Dungeon Master voice
+- `F5` — toggle ambience
+- `--no-voice` — start without Polly speech
+- `--no-music` — start without ambience
+- `--polly-region` — select the Polly region (default: `us-east-1`)
+- `--audio-cache` — select the local generated-audio cache (default: `dist/audio-cache`)
+
+English uses Polly's Matthew voice and Spanish uses the Mexican Spanish Andrés voice with the
+generative engine. The AWS identity running the local CLI needs `polly:SynthesizeSpeech`.
+Gameplay remains fully functional if audio is disabled or the host has no supported player.
+
 Ctrl+C also terminates the session cleanly. Add `--plain` for the stream-based interface used by
 basic terminals and debugging. A non-interactive `--turn "Look around"` run
 automatically uses plain mode. The Bedrock Converse request explicitly caps output at 180 tokens

@@ -33,7 +33,11 @@
     "totalTokensLabel": "Tokens totales",
     "modelLatencyLabel": "Latencia total del modelo",
     "estimatedCostLabel": "Costo estimado del modelo",
-    "costUnavailable": "No disponible para este modelo"
+    "costUnavailable": "No disponible para este modelo",
+    "voiceLabel": "Voz",
+    "musicLabel": "Música",
+    "enabledLabel": "activa",
+    "disabledLabel": "apagada"
   },
   "adventure": {
     "initialStory": "Estás solo dentro de una pequeña taberna cerrada. Encuentra la llave y sal por la puerta principal.",

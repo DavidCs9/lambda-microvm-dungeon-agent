@@ -33,7 +33,11 @@
     "totalTokensLabel": "Total tokens",
     "modelLatencyLabel": "Total model latency",
     "estimatedCostLabel": "Estimated model cost",
-    "costUnavailable": "Unavailable for this model"
+    "costUnavailable": "Unavailable for this model",
+    "voiceLabel": "Voice",
+    "musicLabel": "Music",
+    "enabledLabel": "on",
+    "disabledLabel": "off"
   },
   "adventure": {
     "initialStory": "You are alone inside a small locked tavern. Find the key and leave through the front door.",

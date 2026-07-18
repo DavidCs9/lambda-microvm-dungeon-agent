@@ -41,6 +41,10 @@ class Locale:
     model_latency_label: str
     estimated_cost_label: str
     cost_unavailable: str
+    voice_label: str
+    music_label: str
+    enabled_label: str
+    disabled_label: str
 
 
 def _ui_text(ui: dict[str, object], key: str, language: LanguageCode) -> str:
@@ -95,6 +99,10 @@ def load_locale(language: LanguageCode) -> Locale:
         model_latency_label=text("modelLatencyLabel"),
         estimated_cost_label=text("estimatedCostLabel"),
         cost_unavailable=text("costUnavailable"),
+        voice_label=text("voiceLabel"),
+        music_label=text("musicLabel"),
+        enabled_label=text("enabledLabel"),
+        disabled_label=text("disabledLabel"),
     )
 
 

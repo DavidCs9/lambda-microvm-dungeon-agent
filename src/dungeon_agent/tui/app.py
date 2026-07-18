@@ -10,6 +10,7 @@ from textual.screen import ModalScreen
 from textual.widgets import Footer, Header, Input, Label, RichLog, Select, Static
 
 from dungeon_agent.api.models import LanguageCode
+from dungeon_agent.audio.contracts import AudioPort, SilentAudio
 from dungeon_agent.orchestrator.contracts import GamePort, GameSnapshot, UsageSnapshot
 from dungeon_agent.orchestrator.locales import LOCALES, Locale
 
@@ -44,6 +45,8 @@ class DungeonApp(App[None]):
         Binding("f1", "help", "Help"),
         Binding("f2", "state", "State"),
         Binding("f3", "stats", "Stats"),
+        Binding("f4", "voice", "Voice/Voz"),
+        Binding("f5", "music", "Music/Música"),
         Binding("ctrl+q", "quit_game", "Quit"),
     ]
 
@@ -51,10 +54,12 @@ class DungeonApp(App[None]):
         self,
         runtime_factory: RuntimeFactory,
         selected_language: str | None = None,
+        audio: AudioPort | None = None,
     ) -> None:
         super().__init__()
         self.runtime_factory = runtime_factory
         self.selected_language = selected_language
+        self.audio = audio or SilentAudio()
         self.locale: Locale | None = None
         self.runtime: AbstractContextManager[GamePort] | None = None
         self.game: GamePort | None = None
@@ -63,7 +68,7 @@ class DungeonApp(App[None]):
         yield Header(show_clock=True)
         with Vertical(id="language-view"):
             yield Static("◆", id="crest")
-            yield Label("SNAPSHOT TAVERN", id="tavern-title")
+            yield Label("THE LOCKED TAVERN · LA TABERNA CERRADA", id="tavern-title")
             yield Label("Choose your language · Elige tu idioma", id="language-prompt")
             yield Select(
                 ((locale.name, locale.code) for locale in LOCALES.values()),
@@ -151,10 +156,12 @@ class DungeonApp(App[None]):
         story = self.query_one("#story", RichLog)
         story.write(f"[bold cyan]{self.locale.narrator_label}[/bold cyan]")
         story.write(opening)
+        self.audio.start()
+        self.speak(opening)
         command_input = self.query_one("#command-input", Input)
         command_input.placeholder = self.locale.player_prompt.strip()
         command_input.focus()
-        self.query_one("#connection-status", Static).update(f"● {self.locale.ready}")
+        self._update_connection_status()
         self._refresh_sidebar()
 
     def on_input_submitted(self, event: Input.Submitted) -> None:
@@ -197,6 +204,7 @@ class DungeonApp(App[None]):
         else:
             story.write(f"[bold cyan]{self.locale.narrator_label}[/bold cyan]")
             story.write(text)
+            self.speak(text)
         self._refresh_sidebar()
         command_input = self.query_one("#command-input", Input)
         command_input.disabled = finished
@@ -256,9 +264,42 @@ class DungeonApp(App[None]):
     def action_stats(self) -> None:
         self._refresh_sidebar()
 
+    @work(thread=True, group="audio")
+    def speak(self, text: str) -> None:
+        assert self.locale is not None
+        try:
+            self.audio.narrate(text, self.locale.code)
+        except Exception:
+            return
+
+    def action_voice(self) -> None:
+        self.audio.toggle_voice()
+        self._update_connection_status()
+
+    def action_music(self) -> None:
+        self.audio.toggle_music()
+        self._update_connection_status()
+
+    def _update_connection_status(self) -> None:
+        if self.locale is None:
+            return
+        voice = (
+            self.locale.enabled_label if self.audio.voice_enabled else self.locale.disabled_label
+        )
+        music = (
+            self.locale.enabled_label if self.audio.music_enabled else self.locale.disabled_label
+        )
+        self.query_one("#connection-status", Static).update(
+            f"● {self.locale.ready}  ·  {self.locale.voice_label}: {voice}"
+            f"  ·  {self.locale.music_label}: {music}"
+        )
+
     def action_quit_game(self) -> None:
         self.exit()
 
     def on_unmount(self) -> None:
-        if self.runtime is not None:
-            self.runtime.__exit__(None, None, None)
+        try:
+            self.audio.stop()
+        finally:
+            if self.runtime is not None:
+                self.runtime.__exit__(None, None, None)

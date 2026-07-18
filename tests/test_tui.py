@@ -3,6 +3,7 @@ from collections.abc import Iterator
 from contextlib import contextmanager
 from decimal import Decimal
 
+from dungeon_agent.api.models import LanguageCode
 from dungeon_agent.orchestrator.contracts import GamePort, GameSnapshot, UsageSnapshot
 from dungeon_agent.orchestrator.locales import Locale
 from dungeon_agent.tui.app import DungeonApp
@@ -29,8 +30,35 @@ class FakeGame:
         return False
 
 
+class FakeAudio:
+    def __init__(self) -> None:
+        self.voice_enabled = True
+        self.music_enabled = True
+        self.started = False
+        self.stopped = False
+        self.narrations: list[tuple[str, LanguageCode]] = []
+
+    def start(self) -> None:
+        self.started = True
+
+    def narrate(self, text: str, language: LanguageCode) -> None:
+        self.narrations.append((text, language))
+
+    def toggle_voice(self) -> bool:
+        self.voice_enabled = not self.voice_enabled
+        return self.voice_enabled
+
+    def toggle_music(self) -> bool:
+        self.music_enabled = not self.music_enabled
+        return self.music_enabled
+
+    def stop(self) -> None:
+        self.stopped = True
+
+
 def test_tui_runs_game_through_presentation_port() -> None:
     game = FakeGame()
+    audio = FakeAudio()
     closed = False
 
     @contextmanager
@@ -42,7 +70,7 @@ def test_tui_runs_game_through_presentation_port() -> None:
             closed = True
 
     async def exercise() -> None:
-        app = DungeonApp(runtime, selected_language="es")
+        app = DungeonApp(runtime, selected_language="es", audio=audio)
         async with app.run_test() as pilot:
             await pilot.pause()
             assert app.query_one("#game-view").display
@@ -50,9 +78,15 @@ def test_tui_runs_game_through_presentation_port() -> None:
             await pilot.press(*"abrir puerta", "enter")
             await pilot.pause()
             assert game.actions == ["abrir puerta"]
+            await pilot.press("f4", "f5")
+            assert not audio.voice_enabled
+            assert not audio.music_enabled
 
     asyncio.run(exercise())
     assert closed
+    assert audio.started
+    assert audio.stopped
+    assert audio.narrations[0][1] == "es"
 
 
 def test_tui_starts_with_blank_language_selection() -> None:

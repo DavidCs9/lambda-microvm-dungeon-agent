@@ -9,7 +9,11 @@ from botocore.config import Config
 from botocore.exceptions import BotoCoreError, ClientError
 from mypy_boto3_bedrock_runtime import BedrockRuntimeClient
 from mypy_boto3_lambda_microvms import LambdaMicroVMsClient
+from mypy_boto3_polly.literals import VoiceIdType
 
+from dungeon_agent.api.models import LanguageCode
+from dungeon_agent.audio.local import LocalAudioExperience
+from dungeon_agent.audio.polly import PollySpeechSynthesizer
 from dungeon_agent.orchestrator.game import DungeonOrchestrator, play
 from dungeon_agent.orchestrator.locales import LOCALES, Locale, select_language
 from dungeon_agent.orchestrator.narrator import BedrockNarrator
@@ -18,6 +22,7 @@ from dungeon_agent.tui.app import DungeonApp
 
 DEFAULT_REGION = "us-east-2"
 DEFAULT_MODEL_ID = "us.amazon.nova-micro-v1:0"
+DEFAULT_POLLY_REGION = "us-east-1"
 
 
 def create_clients(profile: str, region: str) -> tuple[LambdaMicroVMsClient, BedrockRuntimeClient]:
@@ -41,6 +46,15 @@ def create_parser() -> argparse.ArgumentParser:
     parser.add_argument("--image-arn", required=True)
     parser.add_argument("--image-version", required=True)
     parser.add_argument("--model-id", default=DEFAULT_MODEL_ID)
+    parser.add_argument("--polly-region", default=DEFAULT_POLLY_REGION)
+    parser.add_argument("--no-voice", action="store_true", help="Disable Dungeon Master speech.")
+    parser.add_argument("--no-music", action="store_true", help="Disable tavern ambience.")
+    parser.add_argument(
+        "--audio-cache",
+        type=Path,
+        default=Path("dist/audio-cache"),
+        help="Cache synthesized speech and original ambience here.",
+    )
     parser.add_argument(
         "--language",
         choices=sorted(LOCALES),
@@ -60,6 +74,28 @@ def create_parser() -> argparse.ArgumentParser:
         help="Append privacy-safe session metrics as JSONL.",
     )
     return parser
+
+
+def create_audio(args: argparse.Namespace) -> LocalAudioExperience:
+    session = boto3.Session(profile_name=args.profile, region_name=args.polly_region)
+    config = Config(
+        connect_timeout=5,
+        read_timeout=30,
+        retries={"mode": "adaptive", "total_max_attempts": 4},
+        user_agent_extra="lambda-microvm-dungeon-agent-audio/0.1.0",
+    )
+    voices: dict[LanguageCode, VoiceIdType] = {"en": "Matthew", "es": "Andres"}
+    synthesizer = PollySpeechSynthesizer(
+        session.client("polly", config=config),
+        args.audio_cache / "speech",
+        voices,
+    )
+    return LocalAudioExperience(
+        synthesizer,
+        args.audio_cache,
+        voice_enabled=not args.no_voice,
+        music_enabled=not args.no_music,
+    )
 
 
 @contextmanager
@@ -84,6 +120,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         app = DungeonApp(
             lambda locale: create_runtime(args, locale),
             selected_language=args.language,
+            audio=create_audio(args),
         )
         app.run()
         return 0

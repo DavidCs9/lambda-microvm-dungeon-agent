@@ -100,6 +100,9 @@ cloudformation = [
 lambda-microvms = [
     { name = "mypy-boto3-lambda-microvms" },
 ]
+polly = [
+    { name = "mypy-boto3-polly" },
+]
 s3 = [
     { name = "mypy-boto3-s3" },
 ]
@@ -326,7 +329,7 @@ dev = [
 ]
 tooling = [
     { name = "boto3" },
-    { name = "boto3-stubs", extra = ["bedrock-runtime", "cloudformation", "lambda-microvms", "s3"] },
+    { name = "boto3-stubs", extra = ["bedrock-runtime", "cloudformation", "lambda-microvms", "polly", "s3"] },
     { name = "botocore", extra = ["crt"] },
     { name = "textual" },
 ]
@@ -348,7 +351,7 @@ dev = [
 ]
 tooling = [
     { name = "boto3", specifier = ">=1.43.51" },
-    { name = "boto3-stubs", extras = ["bedrock-runtime", "cloudformation", "lambda-microvms", "s3"], specifier = ">=1.43.51" },
+    { name = "boto3-stubs", extras = ["bedrock-runtime", "cloudformation", "lambda-microvms", "polly", "s3"], specifier = ">=1.43.51" },
     { name = "botocore", extras = ["crt"], specifier = ">=1.43.51" },
     { name = "textual", specifier = ">=8.2,<9" },
 ]
@@ -492,6 +495,15 @@ source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/05/f3/0774a5c982c19e2addbeb47fc86132316d6bf97e28727261e00816d39c54/mypy_boto3_lambda_microvms-1.43.35.tar.gz", hash = "sha256:43caee4b5db2a41fe9900a49845e231b9a489031a8f6f90b28dd133116fdc0db", size = 21160, upload-time = "2026-06-22T21:56:04.951Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/a0/bf/5b08eaf89acbb6ad531904fda4f7b769de422729020d0bfbca9bf1f19b84/mypy_boto3_lambda_microvms-1.43.35-py3-none-any.whl", hash = "sha256:abbf91ef3b8f4062746c3b9396cac55c45f10301a171810b6fe95f9928c54a64", size = 29130, upload-time = "2026-06-22T21:56:02.79Z" },
+]
+
+[[package]]
+name = "mypy-boto3-polly"
+version = "1.43.0"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/6e/f8/1e2262914d49071f5fdf2ec57066462698ad2d94fd0b19f2e5939e259fb8/mypy_boto3_polly-1.43.0.tar.gz", hash = "sha256:903dd1103c001ce8f6785530cc43e6aea8c56aa8ff985e6eaddc9fe50bd0bff4", size = 19718, upload-time = "2026-04-29T23:04:32.625Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/32/46/bc19a715621dab1e37b9d025bf7c9138b4fe813358a160063b24d0d108d8/mypy_boto3_polly-1.43.0-py3-none-any.whl", hash = "sha256:41f82db10b7c1be9e811e608fabcb97572c5f225d64fa69896c179bcef609596", size = 27001, upload-time = "2026-04-29T23:04:30.619Z" },
 ]
 
 [[package]]

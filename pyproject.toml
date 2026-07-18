@@ -25,7 +25,7 @@ dev = [
 ]
 tooling = [
     "boto3>=1.43.51",
-    "boto3-stubs[bedrock-runtime,cloudformation,lambda-microvms,s3]>=1.43.51",
+    "boto3-stubs[bedrock-runtime,cloudformation,lambda-microvms,polly,s3]>=1.43.51",
     "botocore[crt]>=1.43.51",
     "textual>=8.2,<9",
 ]
