@@ -3,7 +3,7 @@ name = "lambda-microvm-dungeon-agent"
 version = "0.1.0"
 description = "A stateful AI-agent backend lab for AWS Lambda MicroVMs"
 readme = "README.md"
-requires-python = ">=3.12"
+requires-python = ">=3.14"
 license = "MIT"
 authors = [{ name = "DavidCs9" }]
 dependencies = [
@@ -41,14 +41,14 @@ addopts = "--strict-config --strict-markers --cov=dungeon_agent.api --cov-report
 testpaths = ["tests"]
 
 [tool.ruff]
-target-version = "py312"
+target-version = "py314"
 line-length = 100
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "B", "UP", "SIM", "RUF"]
 
 [tool.mypy]
-python_version = "3.12"
+python_version = "3.14"
 strict = true
 files = ["src", "scripts", "tests"]
 plugins = ["pydantic.mypy"]

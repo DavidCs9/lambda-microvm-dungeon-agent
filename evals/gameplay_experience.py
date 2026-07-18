@@ -145,7 +145,7 @@ def _wait_until_ready(process: subprocess.Popen[str], port: int) -> None:
         try:
             _request(port, "GET", "/health")
             return
-        except (OSError, urllib.error.URLError):
+        except OSError, urllib.error.URLError:
             time.sleep(0.05)
     raise TimeoutError("Evaluation server did not become ready")
 

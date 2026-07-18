@@ -70,7 +70,7 @@ def play(orchestrator: DungeonOrchestrator, one_turn: str | None, locale: Locale
     while True:
         try:
             action = input(locale.player_prompt).strip()
-        except (EOFError, KeyboardInterrupt):
+        except EOFError, KeyboardInterrupt:
             print(f"\n\n{locale.ending}")
             return
         command = action.lower()

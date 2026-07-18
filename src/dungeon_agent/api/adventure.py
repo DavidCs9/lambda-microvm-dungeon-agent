@@ -26,7 +26,7 @@ class MutableWorld:
     events: list[str]
 
     @classmethod
-    def from_state(cls, state: WorldState) -> "MutableWorld":
+    def from_state(cls, state: WorldState) -> MutableWorld:
         return cls(
             location=state.location,
             inventory=list(state.inventory),

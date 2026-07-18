@@ -11,7 +11,7 @@ The repository currently contains a FastAPI backend and tests. AWS deployment an
 
 ## Prerequisites
 
-- Python 3.13
+- Python 3.14
 - [uv](https://docs.astral.sh/uv/)
 - Docker with ARM64 build support
 - AWS CLI with Lambda MicroVM support

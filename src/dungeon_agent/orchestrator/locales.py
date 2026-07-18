@@ -93,7 +93,7 @@ def select_language(selected: str | None) -> Locale:
     while True:
         try:
             choice = input("\n> ").strip().casefold()
-        except (EOFError, KeyboardInterrupt):
+        except EOFError, KeyboardInterrupt:
             print()
             return locales[0]
         if not choice:
