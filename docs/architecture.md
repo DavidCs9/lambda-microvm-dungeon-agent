@@ -21,6 +21,8 @@ The master orchestrator runs outside the MicroVM. It owns the Bedrock conversati
 
 Application code uses an installable `src` layout and is split by responsibility:
 
+- `src/dungeon_agent/domain/` — framework-neutral game schemas and presentation views
+- `src/dungeon_agent/control_plane/domain/` — versioned web session contracts and application ports
 - `src/dungeon_agent/api/` — FastAPI backend hosted inside the MicroVM
 - `src/dungeon_agent/cli.py` — CLI parsing and dependency composition
 - `src/dungeon_agent/orchestrator/locales.py` — official languages and selection

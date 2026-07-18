@@ -182,6 +182,8 @@ The service exposes health and state at `/health` and `/v1/world`; interactive O
 ## Repository structure
 
 - `src/dungeon_agent/api/` — FastAPI rules and persistent state inside the MicroVM
+- `src/dungeon_agent/domain/` — framework-neutral game and presentation contracts
+- `src/dungeon_agent/control_plane/domain/` — versioned web session contracts and ports
 - `src/dungeon_agent/orchestrator/` — agents, game use cases, contracts, and MicroVM adapter
 - `src/dungeon_agent/tui/` — Textual presentation layer
 - `src/dungeon_agent/audio/` — local voice, ambience, and dice adapters

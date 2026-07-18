@@ -42,7 +42,13 @@ class FakeGame:
 
     def take_turn(self, action: str) -> TurnView:
         self.actions.append(action)
-        return TurnView("La puerta se abre.", True, 16, 12, ("Salir", "Celebrar"))
+        return TurnView(
+            narration="La puerta se abre.",
+            success=True,
+            roll=16,
+            difficulty=12,
+            suggestions=("Salir", "Celebrar"),
+        )
 
     def snapshot(self) -> GameSnapshot:
         return GameSnapshot(
@@ -57,7 +63,15 @@ class FakeGame:
         )
 
     def usage_snapshot(self) -> UsageSnapshot:
-        return UsageSnapshot("test-model", 1, 10, 5, 15, 20.0, Decimal("0.0001"))
+        return UsageSnapshot(
+            model_id="test-model",
+            calls=1,
+            input_tokens=10,
+            output_tokens=5,
+            total_tokens=15,
+            model_latency_ms=20.0,
+            estimated_cost=Decimal("0.0001"),
+        )
 
     def is_finished(self) -> bool:
         return self.status in {"won", "lost"}

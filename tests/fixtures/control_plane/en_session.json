@@ -1,0 +1,53 @@
+{
+  "workflow": {
+    "schemaVersion": 1,
+    "sessionId": "ses_01J00000000000000000000000",
+    "ownerId": "user_english_demo",
+    "language": "en",
+    "idempotencyKey": "create-english-demo-001",
+    "correlationId": "corr-english-demo-001",
+    "requestedAt": "2026-07-18T21:00:00Z"
+  },
+  "session": {
+    "schemaVersion": 1,
+    "sessionId": "ses_01J00000000000000000000000",
+    "ownerId": "user_english_demo",
+    "language": "en",
+    "status": "ready",
+    "phase": "ready",
+    "revision": 0,
+    "lastEventSequence": 5,
+    "createdAt": "2026-07-18T21:00:00Z",
+    "updatedAt": "2026-07-18T21:01:30Z",
+    "workflowExecutionArn": "arn:aws:states:us-east-2:123456789012:execution:create-session:demo-en",
+    "activeMicrovmId": "mvm-english-demo"
+  },
+  "readyEvent": {
+    "version": 1,
+    "eventId": "evt_01J00000000000000000000001",
+    "sessionId": "ses_01J00000000000000000000000",
+    "sequence": 5,
+    "type": "session.ready",
+    "occurredAt": "2026-07-18T21:01:30Z",
+    "correlationId": "corr-english-demo-001",
+    "payload": {
+      "revision": 0,
+      "opening": {
+        "schemaVersion": 1,
+        "language": "en",
+        "title": "The Silent Bell",
+        "blocks": [
+          {"id": "identity", "position": 0, "kind": "identity", "text": "You are Elia Vale, an exiled bell keeper.", "narratable": true},
+          {"id": "background", "position": 1, "kind": "background", "text": "You left after failing to warn the village during its last great storm.", "narratable": true},
+          {"id": "motivation", "position": 2, "kind": "motivation", "text": "You returned to find your missing brother and earn another chance.", "narratable": true},
+          {"id": "knowledge_1", "position": 3, "kind": "knowledge", "text": "The old tower mechanism only responds to its true bell.", "narratable": true},
+          {"id": "knowledge_2", "position": 4, "kind": "knowledge", "text": "Mara was the last person seen near the mill.", "narratable": true},
+          {"id": "situation", "position": 5, "kind": "situation", "text": "Rain floods the square while the tower remains dangerously silent.", "narratable": true},
+          {"id": "action_investigate", "position": 6, "kind": "possible_action", "text": "Inspect the tower mechanism.", "narratable": false},
+          {"id": "action_social", "position": 7, "kind": "possible_action", "text": "Ask Mara what she saw.", "narratable": false},
+          {"id": "action_risky", "position": 8, "kind": "possible_action", "text": "Cross the flooded square to the mill.", "narratable": false}
+        ]
+      }
+    }
+  }
+}

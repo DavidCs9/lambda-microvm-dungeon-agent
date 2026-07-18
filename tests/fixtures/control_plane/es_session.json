@@ -1,0 +1,53 @@
+{
+  "workflow": {
+    "schemaVersion": 1,
+    "sessionId": "ses_01J00000000000000000000002",
+    "ownerId": "usuario_demo_es",
+    "language": "es",
+    "idempotencyKey": "crear-sesion-demo-es-001",
+    "correlationId": "corr-demo-espanol-001",
+    "requestedAt": "2026-07-18T22:00:00Z"
+  },
+  "session": {
+    "schemaVersion": 1,
+    "sessionId": "ses_01J00000000000000000000002",
+    "ownerId": "usuario_demo_es",
+    "language": "es",
+    "status": "ready",
+    "phase": "ready",
+    "revision": 0,
+    "lastEventSequence": 5,
+    "createdAt": "2026-07-18T22:00:00Z",
+    "updatedAt": "2026-07-18T22:01:35Z",
+    "workflowExecutionArn": "arn:aws:states:us-east-2:123456789012:execution:create-session:demo-es",
+    "activeMicrovmId": "mvm-demo-espanol"
+  },
+  "readyEvent": {
+    "version": 1,
+    "eventId": "evt_01J00000000000000000000003",
+    "sessionId": "ses_01J00000000000000000000002",
+    "sequence": 5,
+    "type": "session.ready",
+    "occurredAt": "2026-07-18T22:01:35Z",
+    "correlationId": "corr-demo-espanol-001",
+    "payload": {
+      "revision": 0,
+      "opening": {
+        "schemaVersion": 1,
+        "language": "es",
+        "title": "La Campana Silenciosa",
+        "blocks": [
+          {"id": "identidad", "position": 0, "kind": "identity", "text": "Eres Elia Vale, una campanera exiliada.", "narratable": true},
+          {"id": "historia", "position": 1, "kind": "background", "text": "Te marchaste tras no poder advertir al pueblo durante su última gran tormenta.", "narratable": true},
+          {"id": "motivacion", "position": 2, "kind": "motivation", "text": "Regresaste para encontrar a tu hermano desaparecido y ganar otra oportunidad.", "narratable": true},
+          {"id": "conocimiento_1", "position": 3, "kind": "knowledge", "text": "El mecanismo de la torre solo responde ante su campana verdadera.", "narratable": true},
+          {"id": "conocimiento_2", "position": 4, "kind": "knowledge", "text": "Mara fue la última persona vista cerca del molino.", "narratable": true},
+          {"id": "situacion", "position": 5, "kind": "situation", "text": "La lluvia inunda la plaza mientras la torre permanece peligrosamente silenciosa.", "narratable": true},
+          {"id": "accion_investigar", "position": 6, "kind": "possible_action", "text": "Inspeccionar el mecanismo de la torre.", "narratable": false},
+          {"id": "accion_social", "position": 7, "kind": "possible_action", "text": "Preguntar a Mara qué vio.", "narratable": false},
+          {"id": "accion_riesgo", "position": 8, "kind": "possible_action", "text": "Cruzar la plaza inundada hacia el molino.", "narratable": false}
+        ]
+      }
+    }
+  }
+}

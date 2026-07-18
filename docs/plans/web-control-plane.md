@@ -72,6 +72,10 @@ to an integration owner and are added only after the relevant branches merge.
 Only this wave is intentionally sequential. Complete Slice 0 and merge it before launching the
 first parallel group.
 
+Status: completed on 2026-07-18. The foundation lives in `src/dungeon_agent/domain/` and
+`src/dungeon_agent/control_plane/domain/`, with bilingual transport fixtures under
+`tests/fixtures/control_plane/`.
+
 Required outputs:
 
 - versioned session, event, opening, workflow-input, and error schemas;
