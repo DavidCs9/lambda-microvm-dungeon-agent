@@ -1,0 +1,17 @@
+# Contributing
+
+Thanks for helping improve the lab.
+
+## Development workflow
+
+1. Open an issue for substantial behavior or architecture changes.
+2. Create a focused branch from `main`.
+3. Keep credentials, auth tokens, account IDs, and session data out of commits.
+4. Run `npm run check` before opening a pull request.
+5. Include tests and documentation for behavior changes.
+
+Commits should be small, descriptive, and independently reviewable. Pull requests should explain the motivation, security impact, test evidence, and cleanup implications for AWS resources.
+
+## Security-sensitive changes
+
+Changes to command execution, IAM, authentication, network egress, lifecycle hooks, or tenant isolation require explicit tests and a short threat analysis in the pull request.
