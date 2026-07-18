@@ -97,6 +97,9 @@ wheels = [
 ]
 
 [package.optional-dependencies]
+bedrock-runtime = [
+    { name = "mypy-boto3-bedrock-runtime" },
+]
 cloudformation = [
     { name = "mypy-boto3-cloudformation" },
 ]
@@ -373,7 +376,7 @@ dev = [
 ]
 tooling = [
     { name = "boto3" },
-    { name = "boto3-stubs", extra = ["cloudformation", "lambda-microvms", "s3"] },
+    { name = "boto3-stubs", extra = ["bedrock-runtime", "cloudformation", "lambda-microvms", "s3"] },
     { name = "botocore", extra = ["crt"] },
 ]
 
@@ -394,7 +397,7 @@ dev = [
 ]
 tooling = [
     { name = "boto3", specifier = ">=1.43.51" },
-    { name = "boto3-stubs", extras = ["cloudformation", "lambda-microvms", "s3"], specifier = ">=1.43.51" },
+    { name = "boto3-stubs", extras = ["bedrock-runtime", "cloudformation", "lambda-microvms", "s3"], specifier = ">=1.43.51" },
     { name = "botocore", extras = ["crt"], specifier = ">=1.43.51" },
 ]
 
@@ -501,6 +504,15 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/5a/2c/78a8851264dec38cd736ca5b8bc9380674df0dd0be7792f538916157716c/mypy-1.20.2-cp314-cp314t-win_amd64.whl", hash = "sha256:9bcb8aa397ff0093c824182fd76a935a9ba7ad097fcbef80ae89bf6c1731d8ec", size = 12568661, upload-time = "2026-04-21T17:11:54.473Z" },
     { url = "https://files.pythonhosted.org/packages/83/01/cd7318aa03493322ce275a0e14f4f52b8896335e4e79d4fb8153a7ad2b77/mypy-1.20.2-cp314-cp314t-win_arm64.whl", hash = "sha256:e061b58443f1736f8a37c48978d7ab581636d6ab03e3d4f99e3fa90463bb9382", size = 10389240, upload-time = "2026-04-21T17:09:42.719Z" },
     { url = "https://files.pythonhosted.org/packages/28/9a/f23c163e25b11074188251b0b5a0342625fc1cdb6af604757174fa9acc9b/mypy-1.20.2-py3-none-any.whl", hash = "sha256:a94c5a76ab46c5e6257c7972b6c8cff0574201ca7dc05647e33e795d78680563", size = 2637314, upload-time = "2026-04-21T17:05:54.5Z" },
+]
+
+[[package]]
+name = "mypy-boto3-bedrock-runtime"
+version = "1.43.30"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/73/05/e9c80d2ad57066bca9f609dbe46d74586058c906ee488ca6698ca5020473/mypy_boto3_bedrock_runtime-1.43.30.tar.gz", hash = "sha256:e7f50e6cb125da7a0807c364ba6a8fcac67e01e5268aee97c62b92f75fd77049", size = 31280, upload-time = "2026-06-15T21:23:45.951Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/59/3e/f20d90c8b130dbd88cf12ec5b58cad075339ce70afac72105c1d8a353718/mypy_boto3_bedrock_runtime-1.43.30-py3-none-any.whl", hash = "sha256:bc73e6f824b87fca7e40528e272b119b12e770fc848db80f44567691f2aa136f", size = 37623, upload-time = "2026-06-15T21:23:39.868Z" },
 ]
 
 [[package]]

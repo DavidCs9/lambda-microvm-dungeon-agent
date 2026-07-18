@@ -78,6 +78,19 @@ uv run --group tooling python -m scripts.microvm_session \
 
 The harness prints launch, warm request, suspend, resume, and post-resume latency measurements as JSON. Lambda MicroVMs use public internet egress by default; do not enable agent-generated code execution until a restricted VPC egress connector is configured.
 
+## Play through the master orchestrator
+
+The orchestrator launches one MicroVM session, persists each player action in the FastAPI backend, uses Amazon Bedrock Nova Micro for narration, and terminates the MicroVM on exit:
+
+```sh
+uv run --group tooling python -m scripts.orchestrator \
+  --profile personal \
+  --region us-east-2 \
+  --image-arn <microvm-image-arn>
+```
+
+Enter `/quit` to end the game. For a non-interactive smoke test, add `--turn "Inspect the humming machine"`. The Bedrock Converse request explicitly caps output at 180 tokens per turn.
+
 ## Planned milestones
 
 1. Validate the FastAPI backend and ARM64 container.
