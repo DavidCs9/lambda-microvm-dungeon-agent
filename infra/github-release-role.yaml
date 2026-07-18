@@ -83,6 +83,11 @@ Resources:
                   - lambda:UpdateMicrovmImage
                 Resource: !Sub >-
                   arn:${AWS::Partition}:lambda:${AWS::Region}:${AWS::AccountId}:microvm-image:${ImageName}
+              - Sid: PassManagedInternetConnector
+                Effect: Allow
+                Action: lambda:PassNetworkConnector
+                Resource: !Sub >-
+                  arn:${AWS::Partition}:lambda:${AWS::Region}:aws:network-connector:aws-network-connector:INTERNET_EGRESS
               - Sid: PassMicrovmBuildRole
                 Effect: Allow
                 Action: iam:PassRole
