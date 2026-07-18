@@ -55,6 +55,33 @@ REQUIRED_WORLD_FIELDS = {
 
 def evaluate(project_root: Path) -> dict[str, object]:
     evidence = tuple(_run_journey(project_root, journey) for journey in JOURNEYS)
+    return _score(evidence)
+
+
+def evaluate_microvm(
+    profile: str,
+    region: str,
+    image_arn: str,
+    image_version: str,
+) -> dict[str, object]:
+    from dungeon_agent.cli import create_clients
+    from dungeon_agent.orchestrator.session import MicrovmSession
+
+    microvms, _ = create_clients(profile, region)
+    collected: list[JourneyEvidence] = []
+    for journey in JOURNEYS:
+        with MicrovmSession(microvms, image_arn, image_version) as session:
+            states: list[dict[str, object]] = []
+            for action in journey.actions:
+                state = session.apply_action(action)
+                states.append(state)
+                if state.get("status") in {"won", "lost"}:
+                    break
+        collected.append(JourneyEvidence(journey.name, journey.actions, tuple(states)))
+    return _score(tuple(collected))
+
+
+def _score(evidence: tuple[JourneyEvidence, ...]) -> dict[str, object]:
     dimensions = {
         "player_agency": _agency_score(evidence),
         "guidance_and_information": _guidance_score(evidence),
@@ -233,12 +260,22 @@ def create_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Evaluate deterministic gameplay quality.")
     parser.add_argument("--project-root", type=Path, default=Path.cwd())
     parser.add_argument("--output", type=Path)
+    parser.add_argument("--profile", default="personal")
+    parser.add_argument("--region", default="us-east-2")
+    parser.add_argument("--image-arn")
+    parser.add_argument("--image-version")
     return parser
 
 
 def main(argv: Sequence[str] | None = None) -> int:
     args = create_parser().parse_args(argv)
-    report = evaluate(args.project_root.resolve())
+    if bool(args.image_arn) != bool(args.image_version):
+        raise SystemExit("--image-arn and --image-version must be provided together")
+    report = (
+        evaluate_microvm(args.profile, args.region, args.image_arn, args.image_version)
+        if args.image_arn is not None and args.image_version is not None
+        else evaluate(args.project_root.resolve())
+    )
     serialized = json.dumps(report, indent=2, sort_keys=True) + "\n"
     if args.output is not None:
         args.output.parent.mkdir(parents=True, exist_ok=True)

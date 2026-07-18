@@ -15,6 +15,16 @@ Run it against any checkout of the project:
 uv run python evals/gameplay_experience.py
 ```
 
+Run the same journeys against a released MicroVM image:
+
+```sh
+uv run --group tooling python evals/gameplay_experience.py \
+  --profile personal \
+  --region us-east-2 \
+  --image-arn arn:aws:lambda:us-east-2:123456789012:microvm-image:dungeon-agent-fastapi \
+  --image-version 2.0
+```
+
 The score is a deterministic engineering proxy, not a replacement for playtesting. Narration
 quality should be evaluated separately with human players.
 

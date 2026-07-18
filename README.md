@@ -148,6 +148,16 @@ Run the deterministic black-box gameplay evaluation:
 uv run python evals/gameplay_experience.py
 ```
 
+Evaluate a released image with the same rubric:
+
+```sh
+uv run --group tooling python evals/gameplay_experience.py \
+  --profile personal \
+  --region us-east-2 \
+  --image-arn <microvm-image-arn> \
+  --image-version <microvm-image-version>
+```
+
 It checks player agency, guidance, danger, state consistency, and structured world depth across
 multiple playthroughs. Model selection is evaluated separately so narration cannot hide weak game
 rules. Compare one or more Bedrock models on identical English and Spanish scenes:
