@@ -32,7 +32,11 @@ class DungeonOrchestrator:
         return self.narrator.narrate(normalized, world)
 
     def opening_scene(self) -> str:
-        return self.narrator.narrate(self.locale.opening_action, self.session.read_world())
+        world = self.session.read_world()
+        story = world.get("story")
+        if isinstance(story, list) and story and isinstance(story[0], str):
+            return story[0]
+        return self.narrator.narrate(self.locale.opening_action, world)
 
     def state_summary(self) -> str:
         snapshot = self.snapshot()

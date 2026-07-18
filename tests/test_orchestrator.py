@@ -25,6 +25,16 @@ def test_orchestrator_persists_action_before_narration() -> None:
     narrator.narrate.assert_called_once_with("Search the drawer", world)
 
 
+def test_opening_scene_uses_canonical_world_story() -> None:
+    session = Mock(spec=MicrovmSession)
+    narrator = Mock(spec=BedrockNarrator)
+    session.read_world.return_value = {"story": ["You are locked inside a small tavern."]}
+    orchestrator = DungeonOrchestrator(session, narrator)
+
+    assert orchestrator.opening_scene() == "You are locked inside a small tavern."
+    narrator.narrate.assert_not_called()
+
+
 def test_state_summary_is_human_readable() -> None:
     session = Mock(spec=MicrovmSession)
     narrator = Mock(spec=BedrockNarrator)

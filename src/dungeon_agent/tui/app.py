@@ -36,6 +36,35 @@ class HelpScreen(ModalScreen[None]):
         self.dismiss()
 
 
+class EndingScreen(ModalScreen[None]):
+    """Make the deterministic end of the adventure unmistakable."""
+
+    BINDINGS: ClassVar = [
+        Binding("enter", "close_game", "Close"),
+        Binding("ctrl+q", "close_game", "Close"),
+    ]
+
+    def __init__(self, locale: Locale, state: GameSnapshot) -> None:
+        super().__init__()
+        self.locale = locale
+        self.state = state
+
+    def compose(self) -> ComposeResult:
+        won = self.state.status == "won"
+        title = self.locale.victory_title if won else self.locale.defeat_title
+        message = self.locale.victory_message if won else self.locale.defeat_message
+        yield Vertical(
+            Label("◆", id="ending-crest"),
+            Label(title, id="ending-title"),
+            Label(message, id="ending-message"),
+            Label(self.locale.close_game_hint, id="ending-hint"),
+            id="ending-card",
+        )
+
+    def action_close_game(self) -> None:
+        self.app.exit()
+
+
 class DungeonApp(App[None]):
     """Full-screen, bilingual terminal client for one isolated game session."""
 
@@ -210,7 +239,9 @@ class DungeonApp(App[None]):
         command_input.disabled = finished
         if finished:
             assert self.game is not None
-            story.write(f"\n[bold]{self._format_state(self.game.snapshot())}[/bold]")
+            state = self.game.snapshot()
+            story.write(f"\n[bold]{self._format_state(state)}[/bold]")
+            self.push_screen(EndingScreen(self.locale, state))
         else:
             command_input.focus()
 

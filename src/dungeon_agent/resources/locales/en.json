@@ -37,7 +37,12 @@
     "voiceLabel": "Voice",
     "musicLabel": "Music",
     "enabledLabel": "on",
-    "disabledLabel": "off"
+    "disabledLabel": "off",
+    "victoryTitle": "YOU ESCAPED!",
+    "victoryMessage": "You unlocked the front door and left the tavern.",
+    "defeatTitle": "TIME RAN OUT",
+    "defeatMessage": "The door is still locked. Try again in a new session.",
+    "closeGameHint": "Press Enter or Ctrl+Q to finish"
   },
   "adventure": {
     "initialStory": "You are alone inside a small locked tavern. Find the key and leave through the front door.",

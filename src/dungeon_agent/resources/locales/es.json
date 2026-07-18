@@ -37,7 +37,12 @@
     "voiceLabel": "Voz",
     "musicLabel": "Música",
     "enabledLabel": "activa",
-    "disabledLabel": "apagada"
+    "disabledLabel": "apagada",
+    "victoryTitle": "¡ESCAPASTE!",
+    "victoryMessage": "Abriste la puerta principal y saliste de la taberna.",
+    "defeatTitle": "SE ACABÓ EL TIEMPO",
+    "defeatMessage": "La puerta sigue cerrada. Inténtalo de nuevo en una sesión nueva.",
+    "closeGameHint": "Presiona Enter o Ctrl+Q para terminar"
   },
   "adventure": {
     "initialStory": "Estás solo dentro de una pequeña taberna cerrada. Encuentra la llave y sal por la puerta principal.",

@@ -88,3 +88,31 @@ HelpScreen {
     border: round #67e8f9;
     background: #111621;
 }
+
+EndingScreen {
+    align: center middle;
+    background: rgba(5, 8, 14, 0.9);
+}
+
+#ending-card {
+    width: 64;
+    max-width: 90%;
+    height: auto;
+    padding: 2 4;
+    border: round #86efac;
+    background: #111621;
+    align: center middle;
+}
+
+#ending-crest, #ending-title, #ending-message, #ending-hint {
+    width: 100%;
+    text-align: center;
+    margin: 1 0;
+}
+
+#ending-crest, #ending-title {
+    color: #86efac;
+    text-style: bold;
+}
+
+#ending-hint { color: #94a3b8; }

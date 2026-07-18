@@ -26,7 +26,24 @@ class BedrockNarrator:
         self.metrics = SessionMetrics.start(model_id)
 
     def narrate(self, action: str, world: dict[str, object]) -> str:
+        canonical = self._canonical_outcome(world)
+        if canonical is not None:
+            return canonical
         return self.narrate_with_metrics(action, world).text
+
+    @staticmethod
+    def _canonical_outcome(world: dict[str, object]) -> str | None:
+        """Keep model prose from contradicting failed or terminal rule outcomes."""
+        result = world.get("last_result")
+        if not isinstance(result, dict):
+            return None
+        success = result.get("success")
+        status = world.get("status")
+        if success is not False and status not in {"won", "lost"}:
+            return None
+        parts = [result.get("summary"), result.get("consequence")]
+        text = " ".join(part.strip() for part in parts if isinstance(part, str) and part.strip())
+        return text or None
 
     def narrate_with_metrics(self, action: str, world: dict[str, object]) -> NarrationResult:
         prompt = json.dumps(

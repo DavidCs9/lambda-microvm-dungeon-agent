@@ -45,6 +45,11 @@ class Locale:
     music_label: str
     enabled_label: str
     disabled_label: str
+    victory_title: str
+    victory_message: str
+    defeat_title: str
+    defeat_message: str
+    close_game_hint: str
 
 
 def _ui_text(ui: dict[str, object], key: str, language: LanguageCode) -> str:
@@ -103,6 +108,11 @@ def load_locale(language: LanguageCode) -> Locale:
         music_label=text("musicLabel"),
         enabled_label=text("enabledLabel"),
         disabled_label=text("disabledLabel"),
+        victory_title=text("victoryTitle"),
+        victory_message=text("victoryMessage"),
+        defeat_title=text("defeatTitle"),
+        defeat_message=text("defeatMessage"),
+        close_game_hint=text("closeGameHint"),
     )
 
 
