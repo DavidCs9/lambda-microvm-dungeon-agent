@@ -2,6 +2,7 @@
 
 from collections.abc import Callable, Mapping
 from datetime import UTC, datetime
+from typing import Protocol, cast
 
 from dungeon_agent.control_plane.domain.enums import (
     ErrorCode,
@@ -22,11 +23,27 @@ from dungeon_agent.control_plane.domain.models import (
     SessionReadyPayload,
     SessionRecord,
 )
-from dungeon_agent.control_plane.domain.ports import EventRepository, SessionRepository
+from dungeon_agent.control_plane.domain.ports import (
+    EventRepository,
+    MicrovmManagerPort,
+    SessionRepository,
+)
 from dungeon_agent.control_plane.identifiers import new_event_id
-from dungeon_agent.domain.game import LanguageCode
+from dungeon_agent.control_plane.steps.adventure import AdventureStep
+from dungeon_agent.control_plane.steps.character import (
+    AdventurePlanLoader,
+    CharacterStep,
+    CharacterStepInput,
+)
+from dungeon_agent.domain.game import LanguageCode, PlayerCharacter
 
 Clock = Callable[[], datetime]
+
+
+class CharacterArtifactLoader(Protocol):
+    def load_character(self, character_ref: str) -> PlayerCharacter: ...
+
+    def load_opening(self, character_ref: str) -> OpeningDocument: ...
 
 
 class DurableSessionWorkflowStub:
@@ -37,10 +54,20 @@ class DurableSessionWorkflowStub:
         sessions: SessionRepository,
         events: EventRepository,
         *,
+        adventure_step: AdventureStep | None = None,
+        character_step: CharacterStep | None = None,
+        adventures: AdventurePlanLoader | None = None,
+        characters: CharacterArtifactLoader | None = None,
+        microvms: MicrovmManagerPort | None = None,
         clock: Clock | None = None,
     ) -> None:
         self._sessions = sessions
         self._events = events
+        self._adventure_step = adventure_step
+        self._character_step = character_step
+        self._adventures = adventures
+        self._characters = characters
+        self._microvms = microvms
         self._clock = clock or (lambda: datetime.now(UTC))
 
     def handle(self, event: Mapping[str, object]) -> dict[str, object]:
@@ -98,36 +125,79 @@ class DurableSessionWorkflowStub:
             )
 
         if operation == "LaunchMicrovm":
-            state["microvmRef"] = "sandbox-microvm"
+            if self._microvms is None:
+                state["microvmRef"] = "sandbox-microvm"
+            else:
+                session_id: SessionId = _required_string(state, "sessionId")
+                launched = self._microvms.launch(session_id)
+                state["microvmRef"] = launched.microvm_id
         elif operation == "GenerateAdventure":
-            state["adventureRef"] = "sandbox://adventure"
+            if self._adventure_step is None:
+                state["adventureRef"] = "sandbox://adventure"
+            else:
+                adventure_result = self._adventure_step.execute(_workflow_input(state))
+                state["adventureRef"] = adventure_result.adventure_ref
+                state["adventureLatencyMs"] = adventure_result.latency_ms
         elif operation == "GenerateCharacter":
-            state["characterRef"] = "sandbox://character"
+            if self._character_step is None:
+                state["characterRef"] = "sandbox://character"
+            else:
+                character_result = self._character_step.execute(
+                    CharacterStepInput(
+                        session_id=_required_string(state, "sessionId"),
+                        language=_required_string(state, "language"),
+                        correlation_id=_required_string(state, "correlationId"),
+                        adventure_ref=_required_string(state, "adventureRef"),
+                        adventure_latency_ms=_required_int(state, "adventureLatencyMs"),
+                    )
+                )
+                state["characterRef"] = character_result.character_ref
+                state["characterLatencyMs"] = character_result.latency_ms
         elif operation == "InitializeMicrovmGame":
-            state["stateRevision"] = 0
+            if self._microvms is None or self._adventures is None or self._characters is None:
+                state["stateRevision"] = 0
+            else:
+                world = self._microvms.initialize(
+                    _required_string(state, "microvmRef"),
+                    cast(LanguageCode, _required_string(state, "language")),
+                    self._adventures.load(_required_string(state, "adventureRef")),
+                    self._characters.load_character(_required_string(state, "characterRef")),
+                )
+                state["stateRevision"] = world.revision
         elif operation == "MarkSessionReady":
             session = self._update_session(
                 state,
                 status=SessionStatus.READY,
                 phase=SessionPhase.READY,
                 workflow_arn=workflow_arn,
-                active_microvm_id="sandbox-microvm",
+                active_microvm_id=_required_string(state, "microvmRef"),
             )
             state["status"] = session.status.value
             state["phase"] = session.phase.value
         elif operation == "EmitSessionReady":
             session = self._required_session(state)
+            opening = (
+                _sandbox_opening(session.language)
+                if self._characters is None
+                else self._characters.load_opening(_required_string(state, "characterRef"))
+            )
             self._append_event(
                 session,
                 state,
                 EventType.SESSION_READY,
                 SessionReadyPayload(
                     revision=session.revision,
-                    opening=_sandbox_opening(session.language),
+                    opening=opening,
                 ),
                 now,
             )
         elif operation == "MarkSessionFailed":
+            microvm_ref = state.get("microvmRef")
+            if self._microvms is not None and isinstance(microvm_ref, str):
+                try:
+                    self._microvms.terminate(microvm_ref)
+                except Exception as cleanup_error:
+                    print(f"MicroVM cleanup failed: {cleanup_error}")
             session = self._update_session(
                 state,
                 status=SessionStatus.FAILED,
@@ -282,6 +352,27 @@ def _required_string(value: Mapping[str, object], key: str) -> str:
     if not isinstance(result, str) or not result:
         raise ValueError(f"{key} must be a non-empty string")
     return result
+
+
+def _required_int(value: Mapping[str, object], key: str) -> int:
+    result = value.get(key)
+    if not isinstance(result, int) or isinstance(result, bool) or result < 0:
+        raise ValueError(f"{key} must be a non-negative integer")
+    return result
+
+
+def _workflow_input(state: Mapping[str, object]) -> CreateSessionWorkflowInput:
+    return CreateSessionWorkflowInput.model_validate(
+        {
+            "schemaVersion": state.get("schemaVersion", 1),
+            "sessionId": state.get("sessionId"),
+            "ownerId": state.get("ownerId"),
+            "language": state.get("language"),
+            "idempotencyKey": state.get("idempotencyKey"),
+            "correlationId": state.get("correlationId"),
+            "requestedAt": state.get("requestedAt"),
+        }
+    )
 
 
 def _parse_time(value: str) -> datetime:

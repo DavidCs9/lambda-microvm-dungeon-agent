@@ -8,6 +8,14 @@ Parameters:
     Default: 30
     AllowedValues: [7, 14, 30, 60, 90]
     Description: Retention period for workflow and Lambda operational logs.
+  BedrockModelId:
+    Type: String
+    Default: us.anthropic.claude-sonnet-4-6
+    Description: Bedrock inference profile used by both session architects.
+  MicrovmImageName:
+    Type: String
+    Default: dungeon-agent-fastapi
+    Description: Image name resolved to its latest active version at runtime.
 
 Resources:
   SessionTable:
@@ -116,22 +124,38 @@ Resources:
                   - dynamodb:Query
                   - dynamodb:TransactWriteItems
                 Resource: !GetAtt SessionTable.Arn
+              - Effect: Allow
+                Action:
+                  - bedrock:InvokeModel
+                Resource: "*"
+              - Effect: Allow
+                Action:
+                  - lambda:ListMicrovmImages
+                  - lambda:GetMicrovmImage
+                  - lambda:RunMicrovm
+                  - lambda:GetMicrovm
+                  - lambda:CreateMicrovmAuthToken
+                  - lambda:TerminateMicrovm
+                  - lambda:PassNetworkConnector
+                Resource: "*"
 
   WorkflowTaskFunction:
     Type: AWS::Serverless::Function
     Properties:
-      Description: Durable Wave 1 task adapter; generation operations remain sandbox stubs.
+      Description: Wave 2 session architects and Lambda MicroVM lifecycle adapter.
       FunctionName: !Sub "${AWS::StackName}-workflow-stub"
       Runtime: python3.14
       Architectures: [arm64]
       CodeUri: ../../../dist/control-plane-bundle
       Handler: dungeon_agent.control_plane.runtime.workflow_handler
       MemorySize: 512
-      Timeout: 30
+      Timeout: 300
       Role: !GetAtt WorkflowTaskRole.Arn
       Environment:
         Variables:
           TABLE_NAME: !Ref SessionTable
+          BEDROCK_MODEL_ID: !Ref BedrockModelId
+          MICROVM_IMAGE_NAME: !Ref MicrovmImageName
 
   WorkflowTaskLogGroup:
     Type: AWS::Logs::LogGroup

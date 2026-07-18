@@ -1,12 +1,16 @@
 """Schema-validated Amazon Bedrock Converse adapter."""
 
-import time
-from typing import TypeVar
+from __future__ import annotations
 
-from mypy_boto3_bedrock_runtime import BedrockRuntimeClient
+import time
+from typing import TYPE_CHECKING, TypeVar
+
 from pydantic import BaseModel, ValidationError
 
 from dungeon_agent.control_plane.agents.metrics import AgentMetricsPort
+
+if TYPE_CHECKING:
+    from mypy_boto3_bedrock_runtime import BedrockRuntimeClient
 
 OutputModel = TypeVar("OutputModel", bound=BaseModel)
 

@@ -1,0 +1,62 @@
+"""Connect, subscribe, disconnect, and replay use cases."""
+
+from collections.abc import Callable
+from datetime import UTC, datetime, timedelta
+
+from dungeon_agent.control_plane.domain.models import OwnerId, SessionEvent, SessionId
+from dungeon_agent.control_plane.domain.ports import EventRepository, SessionRepository
+from dungeon_agent.control_plane.realtime.models import ConnectionRecord
+from dungeon_agent.control_plane.realtime.ports import ConnectionRepository
+
+Clock = Callable[[], datetime]
+
+
+class RealtimeSessionService:
+    def __init__(
+        self,
+        connections: ConnectionRepository,
+        sessions: SessionRepository,
+        events: EventRepository,
+        *,
+        clock: Clock | None = None,
+        connection_ttl: timedelta = timedelta(hours=2),
+    ) -> None:
+        self._connections = connections
+        self._sessions = sessions
+        self._events = events
+        self._clock = clock or (lambda: datetime.now(UTC))
+        self._connection_ttl = connection_ttl
+
+    def connect(self, connection_id: str, owner_id: OwnerId) -> ConnectionRecord:
+        now = self._clock()
+        connection = ConnectionRecord(
+            connection_id=connection_id,
+            owner_id=owner_id,
+            connected_at=now,
+            expires_at=int((now + self._connection_ttl).timestamp()),
+        )
+        self._connections.put(connection)
+        return connection
+
+    def subscribe(
+        self,
+        connection_id: str,
+        owner_id: OwnerId,
+        session_id: SessionId,
+        *,
+        after_sequence: int,
+    ) -> tuple[SessionEvent, ...]:
+        connection = self._connections.get(connection_id)
+        if connection is None or connection.owner_id != owner_id:
+            raise PermissionError("connection does not belong to this player")
+        session = self._sessions.get(session_id)
+        if session is None or session.owner_id != owner_id:
+            raise PermissionError("session does not belong to this player")
+        subscribed = connection.model_copy(
+            update={"session_id": session_id, "after_sequence": after_sequence}
+        )
+        self._connections.subscribe(ConnectionRecord.model_validate(subscribed))
+        return self._events.list_after(session_id, after_sequence)
+
+    def disconnect(self, connection_id: str) -> None:
+        self._connections.delete(connection_id)

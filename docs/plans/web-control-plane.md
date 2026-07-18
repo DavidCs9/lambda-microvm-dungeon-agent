@@ -122,6 +122,10 @@ creation, ownership, workflow failure, and event sequencing tests pass here.
 
 ### Wave 2: Product capabilities in parallel
 
+Status: backend packages W2-A through W2-D and W2-F completed on 2026-07-18 with isolated
+adapter tests. The W2-E web shell is not started. Live deployment validation remains the
+Integration checkpoint 2 merge barrier.
+
 Launch these after Integration checkpoint 1:
 
 | Package | Scope | Depends on | Can run with |

@@ -1,11 +1,15 @@
 """Shared primitives for authenticated Lambda MicroVM communication."""
 
+from __future__ import annotations
+
 import http.client
 import json
 import time
 from dataclasses import dataclass
+from typing import TYPE_CHECKING
 
-from mypy_boto3_lambda_microvms import LambdaMicroVMsClient
+if TYPE_CHECKING:
+    from mypy_boto3_lambda_microvms import LambdaMicroVMsClient
 
 
 @dataclass(frozen=True)
