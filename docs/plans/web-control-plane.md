@@ -107,6 +107,10 @@ contracts, not import the actual agents. This keeps all four branches independen
 
 ### Integration checkpoint 1
 
+Status: completed and deployed on 2026-07-18 in the `dungeon-agent-control-plane-sandbox` stack.
+The live smoke test verified idempotent creation, ownership, a successful Standard execution,
+durable event sequencing, and replay through the HTTP API.
+
 Merge Wave 1 and execute one stubbed vertical path:
 
 ```text

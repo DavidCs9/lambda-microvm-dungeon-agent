@@ -1,5 +1,6 @@
 AWSTemplateFormatVersion: "2010-09-09"
-Description: Standard Step Functions skeleton for asynchronous Dungeon Agent session creation.
+Transform: AWS::Serverless-2016-10-31
+Description: Sandbox HTTP and Step Functions control plane for Dungeon Agent session creation.
 
 Parameters:
   LogRetentionDays:
@@ -9,6 +10,82 @@ Parameters:
     Description: Retention period for workflow and Lambda operational logs.
 
 Resources:
+  SessionTable:
+    Type: AWS::DynamoDB::Table
+    DeletionPolicy: Delete
+    UpdateReplacePolicy: Delete
+    Properties:
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: PK
+          AttributeType: S
+        - AttributeName: SK
+          AttributeType: S
+      KeySchema:
+        - AttributeName: PK
+          KeyType: HASH
+        - AttributeName: SK
+          KeyType: RANGE
+      SSESpecification:
+        SSEEnabled: true
+      TimeToLiveSpecification:
+        AttributeName: expiresAt
+        Enabled: true
+
+  ControlPlaneHttpApi:
+    Type: AWS::Serverless::HttpApi
+    Properties:
+      CorsConfiguration:
+        AllowHeaders:
+          - content-type
+          - idempotency-key
+          - x-correlation-id
+          - x-player-id
+        AllowMethods: [GET, POST]
+        AllowOrigins: ["*"]
+
+  ControlPlaneApiFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Description: Sandbox HTTP control plane for session creation and replay.
+      Runtime: python3.14
+      Architectures: [arm64]
+      CodeUri: ../../../dist/control-plane-bundle
+      Handler: dungeon_agent.control_plane.runtime.http_handler
+      MemorySize: 512
+      Timeout: 15
+      Environment:
+        Variables:
+          TABLE_NAME: !Ref SessionTable
+          STATE_MACHINE_ARN: !GetAtt CreateSessionStateMachine.Arn
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref SessionTable
+        - StepFunctionsExecutionPolicy:
+            StateMachineName: !GetAtt CreateSessionStateMachine.Name
+      Events:
+        CreateSession:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref ControlPlaneHttpApi
+            Path: /sessions
+            Method: POST
+            PayloadFormatVersion: "2.0"
+        GetSession:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref ControlPlaneHttpApi
+            Path: /sessions/{sessionId}
+            Method: GET
+            PayloadFormatVersion: "2.0"
+        ListSessionEvents:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref ControlPlaneHttpApi
+            Path: /sessions/{sessionId}/events
+            Method: GET
+            PayloadFormatVersion: "2.0"
+
   WorkflowTaskRole:
     Type: AWS::IAM::Role
     Properties:
@@ -31,127 +108,30 @@ Resources:
                   - logs:PutLogEvents
                 Resource: !Sub >-
                   arn:${AWS::Partition}:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/${AWS::StackName}-workflow-stub:*
+              - Effect: Allow
+                Action:
+                  - dynamodb:GetItem
+                  - dynamodb:UpdateItem
+                  - dynamodb:PutItem
+                  - dynamodb:Query
+                  - dynamodb:TransactWriteItems
+                Resource: !GetAtt SessionTable.Arn
 
   WorkflowTaskFunction:
-    Type: AWS::Lambda::Function
+    Type: AWS::Serverless::Function
     Properties:
-      Description: Contract-preserving stub replaced by focused adapters in later waves.
+      Description: Durable Wave 1 task adapter; generation operations remain sandbox stubs.
       FunctionName: !Sub "${AWS::StackName}-workflow-stub"
       Runtime: python3.14
-      Handler: index.handler
-      MemorySize: 256
+      Architectures: [arm64]
+      CodeUri: ../../../dist/control-plane-bundle
+      Handler: dungeon_agent.control_plane.runtime.workflow_handler
+      MemorySize: 512
       Timeout: 30
       Role: !GetAtt WorkflowTaskRole.Arn
-      Code:
-        ZipFile: |
-          import copy
-          import json
-          from datetime import UTC, datetime
-
-
-          class ValidationError(Exception):
-              pass
-
-
-          class AuthorizationError(Exception):
-              pass
-
-
-          class RetriableDependencyError(Exception):
-              pass
-
-
-          def _now() -> str:
-              return datetime.now(UTC).isoformat().replace("+00:00", "Z")
-
-
-          def _append_event(state: dict, event_type: str, payload: dict) -> None:
-              events = state.setdefault("eventStubs", [])
-              events.append({"type": event_type, "occurredAt": _now(), "payload": payload})
-
-
-          def handler(event: dict, _context: object) -> dict:
-              operation = event["operation"]
-              retry_count = int(event.get("retryCount", 0))
-              input_state = event.get("state", {})
-
-              if input_state.get("forceValidationFailureAt") == operation:
-                  raise ValidationError(f"forced validation failure at {operation}")
-              if input_state.get("forceAuthorizationFailureAt") == operation:
-                  raise AuthorizationError(f"forced authorization failure at {operation}")
-              transient_operation = input_state.get("forceRetriableFailureAt")
-              transient_attempts = int(input_state.get("forceRetriableAttempts", 1))
-              if transient_operation == operation and retry_count < transient_attempts:
-                  raise RetriableDependencyError(
-                      f"forced dependency failure at {operation}; retry={retry_count}"
-                  )
-
-              state = copy.deepcopy(input_state)
-              entered_at = event["stateEnteredAt"]
-              state["workflowExecutionArn"] = event["workflowExecutionArn"]
-              state["updatedAt"] = _now()
-              state.setdefault("taskTimestamps", {})[operation] = {
-                  "startedAt": entered_at,
-                  "completedAt": state["updatedAt"],
-              }
-
-              phase = event.get("phase")
-              if phase:
-                  state["phase"] = phase
-                  state.setdefault("phaseTimestamps", {})[phase] = entered_at
-                  _append_event(
-                      state,
-                      "session.phase.changed",
-                      {"phase": phase, "elapsedMs": 0},
-                  )
-
-              if operation == "CreateSessionRecord":
-                  state["status"] = "creating"
-                  _append_event(
-                      state,
-                      "session.creation.started",
-                      {"language": state.get("language")},
-                  )
-              elif operation == "LaunchMicrovm":
-                  state["microvmRef"] = "stub-microvm"
-              elif operation == "GenerateAdventure":
-                  state["adventureRef"] = "stub://adventures/generated"
-              elif operation == "GenerateCharacter":
-                  state["characterRef"] = "stub://characters/generated"
-              elif operation == "InitializeMicrovmGame":
-                  state["stateRevision"] = 0
-              elif operation == "MarkSessionReady":
-                  state["status"] = "ready"
-                  state["phase"] = "ready"
-                  state.setdefault("phaseTimestamps", {})["ready"] = entered_at
-              elif operation == "EmitSessionReady":
-                  _append_event(state, "session.ready", {"revision": 0})
-              elif operation == "MarkSessionFailed":
-                  failure = state.get("failure", {})
-                  state["status"] = "failed"
-                  state["phase"] = "failed"
-                  state.setdefault("phaseTimestamps", {})["failed"] = entered_at
-                  state["normalizedFailure"] = {
-                      "error": failure.get("Error", "UnknownWorkflowError"),
-                      "retryable": False,
-                  }
-              elif operation == "EmitSessionCreationFailed":
-                  failure = state.get("normalizedFailure", {})
-                  _append_event(
-                      state,
-                      "session.creation.failed",
-                      {
-                          "code": "session_creation_failed",
-                          "retryable": bool(failure.get("retryable", False)),
-                      },
-                  )
-
-              print(json.dumps({
-                  "operation": operation,
-                  "sessionId": state.get("sessionId"),
-                  "workflowExecutionArn": state.get("workflowExecutionArn"),
-              }))
-              return state
+      Environment:
+        Variables:
+          TABLE_NAME: !Ref SessionTable
 
   WorkflowTaskLogGroup:
     Type: AWS::Logs::LogGroup
@@ -1057,6 +1037,12 @@ Resources:
       TreatMissingData: notBreaching
 
 Outputs:
+  ApiUrl:
+    Description: Public sandbox endpoint. Send x-player-id on every request.
+    Value: !Sub "https://${ControlPlaneHttpApi}.execute-api.${AWS::Region}.${AWS::URLSuffix}"
+  SessionTableName:
+    Description: DynamoDB table containing sessions and durable events.
+    Value: !Ref SessionTable
   CreateSessionStateMachineArn:
     Description: ARN used by the control plane to start Standard create-session executions.
     Value: !GetAtt CreateSessionStateMachine.Arn

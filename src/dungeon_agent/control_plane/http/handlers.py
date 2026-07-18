@@ -193,9 +193,6 @@ class SessionHttpHandlers:
         try:
             return self._sessions.save(updated, expected_revision=session.revision)
         except Exception:
-            # A concurrent duplicate may have started the same idempotently named
-            # execution and persisted it first. A consistent read turns that race
-            # into the same successful response without coupling to adapter errors.
             current = self._sessions.get(session.session_id)
             if current is not None and current.workflow_execution_arn is not None:
                 return current

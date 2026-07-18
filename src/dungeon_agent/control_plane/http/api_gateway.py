@@ -25,13 +25,21 @@ SAFE_CORRELATION_ID = re.compile(r"^[A-Za-z0-9._:-]{8,100}$")
 class ApiGatewayHttpAdapter:
     """Map HTTP API v2 proxy events onto framework-neutral session handlers."""
 
-    def __init__(self, handlers: SessionHttpHandlers) -> None:
+    def __init__(
+        self,
+        handlers: SessionHttpHandlers,
+        *,
+        allow_sandbox_identity: bool = False,
+    ) -> None:
         self._handlers = handlers
+        self._allow_sandbox_identity = allow_sandbox_identity
 
     def __call__(self, event: Mapping[str, Any], _context: object = None) -> dict[str, Any]:
         headers = _normalized_headers(event.get("headers"))
         correlation_id = _correlation_id(headers, event)
         identity = _identity(event)
+        if identity is None and self._allow_sandbox_identity:
+            identity = _sandbox_identity(headers)
         if identity is None:
             return self._serialize(
                 self._handlers.error(
@@ -169,6 +177,16 @@ def _identity(event: Mapping[str, Any]) -> AuthenticatedIdentity | None:
         return None
     try:
         return AuthenticatedIdentity(owner_id=subject)
+    except ValidationError:
+        return None
+
+
+def _sandbox_identity(headers: Mapping[str, str]) -> AuthenticatedIdentity | None:
+    player_id = headers.get("x-player-id")
+    if player_id is None:
+        return None
+    try:
+        return AuthenticatedIdentity(owner_id=player_id)
     except ValidationError:
         return None
 

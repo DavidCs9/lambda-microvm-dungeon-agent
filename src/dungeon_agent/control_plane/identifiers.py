@@ -1,0 +1,24 @@
+"""Sortable identifiers used by control-plane adapters."""
+
+from uuid import uuid7
+
+from dungeon_agent.control_plane.domain.models import EventId, SessionId
+
+_CROCKFORD = "0123456789ABCDEFGHJKMNPQRSTVWXYZ"
+
+
+def _encoded_uuid() -> str:
+    value = uuid7().int
+    characters = ["0"] * 26
+    for index in range(25, -1, -1):
+        value, remainder = divmod(value, 32)
+        characters[index] = _CROCKFORD[remainder]
+    return "".join(characters)
+
+
+def new_session_id() -> SessionId:
+    return f"ses_{_encoded_uuid()}"
+
+
+def new_event_id() -> EventId:
+    return f"evt_{_encoded_uuid()}"
