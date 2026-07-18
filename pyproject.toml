@@ -44,4 +44,3 @@ python_version = "3.12"
 strict = true
 packages = ["app"]
 plugins = ["pydantic.mypy"]
-
