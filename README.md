@@ -65,7 +65,33 @@ uv run --group tooling python -m scripts.build_microvm_image \
   --region us-east-2
 ```
 
-The command prints the local artifact path, SHA-256 digest, S3 URI, and MicroVM image ARN. It waits for the image to reach `CREATED` unless `--no-wait` is provided. It does not launch a billable MicroVM.
+The command creates the image when it does not exist and publishes a new version otherwise. It
+prints the artifact digest, S3 URI, image ARN, and active image version. It does not launch a
+billable MicroVM.
+
+## CI and versioned AWS releases
+
+Normal pushes and pull requests never authenticate to AWS. CI runs the quality gates, builds the
+ARM64 container, and uploads a deterministic source bundle as a short-lived workflow artifact.
+
+Tags matching `v*` trigger `.github/workflows/release.yml`. That workflow verifies and packages
+the tagged commit, obtains short-lived AWS credentials through GitHub OIDC, publishes a new
+version of `dungeon-agent-fastapi`, and creates a GitHub Release containing the source bundle and
+image metadata.
+
+The one-time OIDC role setup is documented in `infra/README.md`. Configure these variables on the
+GitHub `release` environment:
+
+- `AWS_RELEASE_ROLE_ARN`
+- `AWS_REGION` (`us-east-2`)
+- `AWS_BOOTSTRAP_STACK` (`lambda-microvm-dungeon-agent-bootstrap`)
+
+Publish a version only when intended:
+
+```sh
+git tag -a v0.2.0 -m "Snapshot Tavern one-shot"
+git push origin v0.2.0
+```
 
 ## Run the lifecycle and latency lab
 
@@ -75,7 +101,8 @@ Launch an authenticated MicroVM, exercise the FastAPI API, suspend and resume it
 uv run --group tooling python -m scripts.benchmark_microvm \
   --profile personal \
   --region us-east-2 \
-  --image-arn <microvm-image-arn>
+  --image-arn <microvm-image-arn> \
+  --image-version <microvm-image-version>
 ```
 
 The harness prints launch, warm request, suspend, resume, and post-resume latency measurements as JSON. Lambda MicroVMs use public internet egress by default; do not enable agent-generated code execution until a restricted VPC egress connector is configured.
@@ -88,7 +115,8 @@ The orchestrator launches one MicroVM session, persists each player action in th
 uv run --group tooling dungeon-agent \
   --profile personal \
   --region us-east-2 \
-  --image-arn <microvm-image-arn>
+  --image-arn <microvm-image-arn> \
+  --image-version <microvm-image-version>
 ```
 
 The CLI opens with a narrated scene, example actions, and visible controls:

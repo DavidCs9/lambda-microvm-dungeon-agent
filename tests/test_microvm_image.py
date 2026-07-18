@@ -1,10 +1,17 @@
 import hashlib
 import zipfile
 from pathlib import Path
+from unittest.mock import Mock
 
 import pytest
 
-from dungeon_agent.operations.image_builder import SOURCE_FILES, package_source
+from dungeon_agent.operations.image_builder import (
+    SOURCE_FILES,
+    Artifact,
+    existing_artifact,
+    package_source,
+    publish_image,
+)
 
 
 def create_project(root: Path) -> None:
@@ -44,3 +51,34 @@ def test_package_source_is_deterministic(tmp_path: Path) -> None:
 def test_package_source_rejects_missing_files(tmp_path: Path) -> None:
     with pytest.raises(FileNotFoundError, match="Missing source files"):
         package_source(tmp_path, tmp_path / "artifact.zip")
+
+
+def test_existing_artifact_uses_content_digest(tmp_path: Path) -> None:
+    path = tmp_path / "source.zip"
+    path.write_bytes(b"release source")
+
+    artifact = existing_artifact(path)
+
+    assert artifact.sha256 == hashlib.sha256(b"release source").hexdigest()
+    assert artifact.s3_key.endswith("/microvm-source.zip")
+
+
+def test_publish_updates_an_existing_image() -> None:
+    client = Mock()
+    client.get_microvm_image.return_value = {"imageArn": "arn:existing"}
+    client.update_microvm_image.return_value = {"imageArn": "arn:existing"}
+    artifact = Artifact(Path("source.zip"), "a" * 64, "artifacts/source.zip")
+
+    image_arn, operation = publish_image(
+        client,
+        image_name="dungeon-agent-fastapi",
+        artifact=artifact,
+        artifact_uri="s3://bucket/source.zip",
+        build_role_arn="arn:build-role",
+        region="us-east-2",
+        release_version="v1.2.3",
+    )
+
+    assert (image_arn, operation) == ("arn:existing", "updated")
+    client.update_microvm_image.assert_called_once()
+    client.tag_resource.assert_called_once_with(Resource="arn:existing", Tags={"Release": "v1.2.3"})

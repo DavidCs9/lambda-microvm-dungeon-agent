@@ -56,3 +56,27 @@ jobs:
           context: .
           platforms: linux/arm64
           push: false
+
+  package:
+    name: Package release source
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v6
+        with:
+          version: "0.8.22"
+          python-version: "3.13"
+          enable-cache: true
+      - name: Install dependencies
+        run: uv sync --locked --all-groups
+      - name: Build deterministic source bundle
+        run: uv run --group tooling python -m scripts.build_microvm_image --package-only
+      - name: Upload source bundle
+        uses: actions/upload-artifact@v4
+        with:
+          name: microvm-source-${{ github.sha }}
+          path: dist/microvm-source.zip
+          if-no-files-found: error
+          retention-days: 7

@@ -44,7 +44,9 @@ def median_latency(results: Sequence[HttpResult]) -> float:
     return statistics.median(result.latency_ms for result in results)
 
 
-def run_benchmark(client: LambdaMicroVMsClient, image_arn: str) -> BenchmarkResult:
+def run_benchmark(
+    client: LambdaMicroVMsClient, image_arn: str, image_version: str
+) -> BenchmarkResult:
     ingress_connector = (
         f"arn:aws:lambda:{client.meta.region_name}:aws:network-connector:"
         "aws-network-connector:ALL_INGRESS"
@@ -56,7 +58,7 @@ def run_benchmark(client: LambdaMicroVMsClient, image_arn: str) -> BenchmarkResu
     launch_started = time.perf_counter()
     run_response = client.run_microvm(
         imageIdentifier=image_arn,
-        imageVersion="1.0",
+        imageVersion=image_version,
         ingressNetworkConnectors=[ingress_connector],
         egressNetworkConnectors=[internet_egress_connector],
         idlePolicy={
@@ -133,13 +135,16 @@ def create_parser() -> argparse.ArgumentParser:
     parser.add_argument("--profile", default="personal")
     parser.add_argument("--region", default=DEFAULT_REGION)
     parser.add_argument("--image-arn", required=True)
+    parser.add_argument("--image-version", required=True)
     return parser
 
 
 def main(argv: Sequence[str] | None = None) -> int:
     args = create_parser().parse_args(argv)
     try:
-        result = run_benchmark(create_client(args.profile, args.region), args.image_arn)
+        result = run_benchmark(
+            create_client(args.profile, args.region), args.image_arn, args.image_version
+        )
         output = asdict(result)
         output["terminated"] = True
         print(json.dumps(output, indent=2, sort_keys=True))

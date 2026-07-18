@@ -10,9 +10,10 @@ from dungeon_agent.microvm import request_json, require_success, wait_for_state
 class MicrovmSession:
     """Own one MicroVM lifecycle and its authenticated backend connection."""
 
-    def __init__(self, client: LambdaMicroVMsClient, image_arn: str) -> None:
+    def __init__(self, client: LambdaMicroVMsClient, image_arn: str, image_version: str) -> None:
         self.client = client
         self.image_arn = image_arn
+        self.image_version = image_version
         self.microvm_id: str | None = None
         self.endpoint: str | None = None
         self.token: str | None = None
@@ -27,7 +28,7 @@ class MicrovmSession:
         )
         response = self.client.run_microvm(
             imageIdentifier=self.image_arn,
-            imageVersion="1.0",
+            imageVersion=self.image_version,
             ingressNetworkConnectors=[ingress_connector],
             egressNetworkConnectors=[internet_egress_connector],
             idlePolicy={

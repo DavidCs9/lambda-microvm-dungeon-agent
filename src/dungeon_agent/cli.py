@@ -36,6 +36,7 @@ def create_parser() -> argparse.ArgumentParser:
     parser.add_argument("--profile", default="personal")
     parser.add_argument("--region", default=DEFAULT_REGION)
     parser.add_argument("--image-arn", required=True)
+    parser.add_argument("--image-version", required=True)
     parser.add_argument("--model-id", default=DEFAULT_MODEL_ID)
     parser.add_argument(
         "--language",
@@ -53,7 +54,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         locale = select_language(args.language)
         microvms, bedrock = create_clients(args.profile, args.region)
         print(f"\n{locale.starting}", flush=True)
-        with MicrovmSession(microvms, args.image_arn) as microvm_session:
+        with MicrovmSession(microvms, args.image_arn, args.image_version) as microvm_session:
             microvm_session.set_language(locale.code)
             print(f"{locale.ready}\n", flush=True)
             orchestrator = DungeonOrchestrator(

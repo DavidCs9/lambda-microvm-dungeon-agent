@@ -41,7 +41,7 @@ class Artifact:
 
 
 def create_clients(
-    profile: str,
+    profile: str | None,
     region: str,
 ) -> tuple[CloudFormationClient, S3Client, LambdaMicroVMsClient]:
     session = boto3.Session(profile_name=profile, region_name=region)
@@ -84,6 +84,13 @@ def package_source(project_root: Path, output_path: Path) -> Artifact:
         sha256=digest,
         s3_key=f"artifacts/{digest}/microvm-source.zip",
     )
+
+
+def existing_artifact(path: Path) -> Artifact:
+    if not path.is_file():
+        raise FileNotFoundError(f"Missing source artifact: {path}")
+    digest = hashlib.sha256(path.read_bytes()).hexdigest()
+    return Artifact(path=path, sha256=digest, s3_key=f"artifacts/{digest}/microvm-source.zip")
 
 
 def get_bootstrap_outputs(
@@ -130,7 +137,12 @@ def create_image(
     artifact_uri: str,
     build_role_arn: str,
     region: str,
+    client_token: str,
+    release_version: str | None,
 ) -> str:
+    tags = {"Project": "lambda-microvm-dungeon-agent", "ManagedBy": "image-builder"}
+    if release_version is not None:
+        tags["Release"] = release_version
     response = microvms.create_microvm_image(
         name=image_name,
         description="FastAPI backend for the Lambda MicroVM Dungeon Agent lab",
@@ -140,9 +152,74 @@ def create_image(
         cpuConfigurations=[{"architecture": "ARM_64"}],
         resources=[{"minimumMemoryInMiB": 2048}],
         environmentVariables={"DUNGEON_WORKSPACE_DIR": "/workspace"},
-        tags={"Project": "lambda-microvm-dungeon-agent", "ManagedBy": "microvm-image-tool"},
+        tags=tags,
+        clientToken=client_token,
     )
     return response["imageArn"]
+
+
+def update_image(
+    microvms: LambdaMicroVMsClient,
+    *,
+    image_identifier: str,
+    artifact_uri: str,
+    build_role_arn: str,
+    region: str,
+    client_token: str,
+    release_version: str | None,
+) -> str:
+    response = microvms.update_microvm_image(
+        imageIdentifier=image_identifier,
+        description="FastAPI backend for the Lambda MicroVM Dungeon Agent lab",
+        baseImageArn=BASE_IMAGE_ARN_TEMPLATE.format(region=region),
+        buildRoleArn=build_role_arn,
+        codeArtifact={"uri": artifact_uri},
+        cpuConfigurations=[{"architecture": "ARM_64"}],
+        resources=[{"minimumMemoryInMiB": 2048}],
+        environmentVariables={"DUNGEON_WORKSPACE_DIR": "/workspace"},
+        clientToken=client_token,
+    )
+    image_arn = response["imageArn"]
+    if release_version is not None:
+        microvms.tag_resource(Resource=image_arn, Tags={"Release": release_version})
+    return image_arn
+
+
+def publish_image(
+    microvms: LambdaMicroVMsClient,
+    *,
+    image_name: str,
+    artifact: Artifact,
+    artifact_uri: str,
+    build_role_arn: str,
+    region: str,
+    release_version: str | None,
+) -> tuple[str, str]:
+    try:
+        existing = microvms.get_microvm_image(imageIdentifier=image_name)
+    except microvms.exceptions.ResourceNotFoundException:
+        image_arn = create_image(
+            microvms,
+            image_name=image_name,
+            artifact_uri=artifact_uri,
+            build_role_arn=build_role_arn,
+            region=region,
+            client_token=artifact.sha256,
+            release_version=release_version,
+        )
+        operation = "created"
+    else:
+        image_arn = update_image(
+            microvms,
+            image_identifier=existing["imageArn"],
+            artifact_uri=artifact_uri,
+            build_role_arn=build_role_arn,
+            region=region,
+            client_token=artifact.sha256,
+            release_version=release_version,
+        )
+        operation = "updated"
+    return image_arn, operation
 
 
 def wait_for_image(
@@ -156,9 +233,9 @@ def wait_for_image(
     while time.monotonic() < deadline:
         response = microvms.get_microvm_image(imageIdentifier=image_identifier)
         state = response["state"]
-        if state == "CREATED":
+        if state in {"CREATED", "UPDATED"}:
             return state
-        if state in {"CREATE_FAILED", "DELETE_FAILED", "DELETED"}:
+        if state in {"CREATE_FAILED", "UPDATE_FAILED", "DELETE_FAILED", "DELETED"}:
             raise RuntimeError(f"MicroVM image entered terminal state {state}")
         time.sleep(poll_seconds)
     raise TimeoutError(f"Timed out waiting for MicroVM image {image_identifier}")
@@ -167,34 +244,54 @@ def wait_for_image(
 def build_image(args: argparse.Namespace) -> dict[str, str]:
     cloudformation, s3, microvms = create_clients(args.profile, args.region)
     project_root = Path(args.project_root).resolve()
-    artifact = package_source(project_root, project_root / args.output)
+    output_path = project_root / args.output
+    artifact = (
+        existing_artifact(output_path)
+        if args.use_existing_artifact
+        else package_source(project_root, output_path)
+    )
     outputs = get_bootstrap_outputs(cloudformation, args.stack_name)
     artifact_uri = upload_artifact(s3, outputs, artifact)
-    image_arn = create_image(
+    image_arn, operation = publish_image(
         microvms,
         image_name=args.image_name,
+        artifact=artifact,
         artifact_uri=artifact_uri,
         build_role_arn=outputs.build_role_arn,
         region=args.region,
+        release_version=args.release_version,
     )
     if args.wait:
         wait_for_image(microvms, image_arn)
+    image = microvms.get_microvm_image(imageIdentifier=image_arn)
     return {
         "artifact": str(artifact.path),
         "artifactSha256": artifact.sha256,
         "artifactUri": artifact_uri,
         "imageArn": image_arn,
+        "imageVersion": image.get("latestActiveImageVersion", "unknown"),
+        "operation": operation,
+        "releaseVersion": args.release_version or "unversioned",
     }
+
+
+def package_only(args: argparse.Namespace) -> dict[str, str]:
+    project_root = Path(args.project_root).resolve()
+    artifact = package_source(project_root, project_root / args.output)
+    return {"artifact": str(artifact.path), "artifactSha256": artifact.sha256}
 
 
 def create_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Package and build the lab MicroVM image.")
-    parser.add_argument("--profile", default="personal")
+    parser.add_argument("--profile")
     parser.add_argument("--region", default=DEFAULT_REGION)
     parser.add_argument("--stack-name", default=DEFAULT_STACK_NAME)
     parser.add_argument("--image-name", default=DEFAULT_IMAGE_NAME)
     parser.add_argument("--project-root", default=".")
     parser.add_argument("--output", default="dist/microvm-source.zip")
+    parser.add_argument("--release-version")
+    parser.add_argument("--package-only", action="store_true")
+    parser.add_argument("--use-existing-artifact", action="store_true")
     parser.add_argument("--no-wait", action="store_false", dest="wait")
     parser.set_defaults(wait=True)
     return parser
@@ -203,7 +300,8 @@ def create_parser() -> argparse.ArgumentParser:
 def main(argv: Sequence[str] | None = None) -> int:
     args = create_parser().parse_args(argv)
     try:
-        print(json.dumps(build_image(args), indent=2, sort_keys=True))
+        result = package_only(args) if args.package_only else build_image(args)
+        print(json.dumps(result, indent=2, sort_keys=True))
     except (BotoCoreError, ClientError, FileNotFoundError, RuntimeError, TimeoutError) as error:
         print(f"Error: {error}", file=sys.stderr)
         return 1
