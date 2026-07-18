@@ -65,12 +65,25 @@ uv run --group tooling python -m scripts.microvm_image \
 
 The command prints the local artifact path, SHA-256 digest, S3 URI, and MicroVM image ARN. It waits for the image to reach `CREATED` unless `--no-wait` is provided. It does not launch a billable MicroVM.
 
+## Run the lifecycle and latency lab
+
+Launch an authenticated MicroVM, exercise the FastAPI API, suspend and resume it, verify state preservation, and terminate it in a guaranteed cleanup path:
+
+```sh
+uv run --group tooling python -m scripts.microvm_session \
+  --profile personal \
+  --region us-east-2 \
+  --image-arn <microvm-image-arn>
+```
+
+The harness prints launch, warm request, suspend, resume, and post-resume latency measurements as JSON. Lambda MicroVMs use public internet egress by default; do not enable agent-generated code execution until a restricted VPC egress connector is configured.
+
 ## Planned milestones
 
 1. Validate the FastAPI backend and ARM64 container.
 2. Bootstrap the build resources and create the MicroVM image in Ohio (`us-east-2`).
-3. Add launch, benchmark, and cleanup automation.
-4. Measure launch, warm-request, suspend, and resume latency.
+3. Add lifecycle hooks and restricted VPC egress.
+4. Automate repeatable benchmark result capture.
 5. Add a constrained code-execution tool inside the MicroVM.
 6. Connect an AI model and run the dungeon experiment.
 
