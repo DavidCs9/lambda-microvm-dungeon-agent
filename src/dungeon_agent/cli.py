@@ -1,6 +1,7 @@
 import argparse
 import sys
-from collections.abc import Sequence
+from collections.abc import Iterator, Sequence
+from contextlib import contextmanager
 from pathlib import Path
 
 import boto3
@@ -10,9 +11,10 @@ from mypy_boto3_bedrock_runtime import BedrockRuntimeClient
 from mypy_boto3_lambda_microvms import LambdaMicroVMsClient
 
 from dungeon_agent.orchestrator.game import DungeonOrchestrator, play
-from dungeon_agent.orchestrator.locales import LOCALES, select_language
+from dungeon_agent.orchestrator.locales import LOCALES, Locale, select_language
 from dungeon_agent.orchestrator.narrator import BedrockNarrator
 from dungeon_agent.orchestrator.session import MicrovmSession
+from dungeon_agent.tui.app import DungeonApp
 
 DEFAULT_REGION = "us-east-2"
 DEFAULT_MODEL_ID = "us.amazon.nova-micro-v1:0"
@@ -47,6 +49,11 @@ def create_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--turn", help="Run one player turn non-interactively, then terminate.")
     parser.add_argument(
+        "--plain",
+        action="store_true",
+        help="Use the stream-based interface instead of the full-screen TUI.",
+    )
+    parser.add_argument(
         "--metrics-output",
         type=Path,
         default=Path("dist/session-metrics.jsonl"),
@@ -55,8 +62,31 @@ def create_parser() -> argparse.ArgumentParser:
     return parser
 
 
+@contextmanager
+def create_runtime(args: argparse.Namespace, locale: Locale) -> Iterator[DungeonOrchestrator]:
+    microvms, bedrock = create_clients(args.profile, args.region)
+    with MicrovmSession(microvms, args.image_arn, args.image_version) as microvm_session:
+        microvm_session.set_language(locale.code)
+        orchestrator = DungeonOrchestrator(
+            microvm_session,
+            BedrockNarrator(bedrock, args.model_id, locale),
+            locale,
+        )
+        try:
+            yield orchestrator
+        finally:
+            orchestrator.narrator.metrics.append_jsonl(args.metrics_output)
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     args = create_parser().parse_args(argv)
+    if not args.plain and args.turn is None:
+        app = DungeonApp(
+            lambda locale: create_runtime(args, locale),
+            selected_language=args.language,
+        )
+        app.run()
+        return 0
     try:
         locale = select_language(args.language)
         microvms, bedrock = create_clients(args.profile, args.region)

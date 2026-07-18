@@ -38,7 +38,8 @@ curl -X POST http://127.0.0.1:8000/v1/actions \
 ## Repository layout
 
 - `src/dungeon_agent/api/` — FastAPI application hosted inside the MicroVM
-- `src/dungeon_agent/orchestrator/` — game loop, localization, narration, and session lifecycle
+- `src/dungeon_agent/orchestrator/` — presentation-neutral game contract, game loop, narration, and session lifecycle
+- `src/dungeon_agent/tui/` — Textual terminal presentation client and styling
 - `src/dungeon_agent/cli.py` — installed player CLI and dependency composition
 - `tests/` — API and persistence tests
 - `docs/` — architecture and security decisions
@@ -119,14 +120,30 @@ uv run --group tooling dungeon-agent \
   --image-version <microvm-image-version>
 ```
 
-The CLI opens with a narrated scene, example actions, and visible controls:
+The CLI opens a full-screen TUI with language selection, connection progress, a wrapped story
+transcript, command input, current world state, session usage, and keyboard shortcuts:
+
+- `F1` — show localized help and action examples
+- `F2` — refresh current state
+- `F3` — refresh token usage, latency, and estimated cost
+- `Ctrl+Q` — terminate the MicroVM and exit
+
+The following typed commands work in both the TUI and plain interface:
 
 - `/help` — show instructions and action examples
 - `/state` — show location, inventory, and turn count
 - `/stats` — show model calls, token usage, latency, and estimated session cost
 - `/quit` — terminate the MicroVM and exit
 
-Ctrl+C also terminates the session cleanly. For a non-interactive smoke test, add `--turn "Inspect the humming machine"`. The Bedrock Converse request explicitly caps output at 180 tokens per turn.
+Ctrl+C also terminates the session cleanly. Add `--plain` for the stream-based interface used by
+basic terminals and debugging. A non-interactive `--turn "Inspect the humming machine"` run
+automatically uses plain mode. The Bedrock Converse request explicitly caps output at 180 tokens
+per turn.
+
+Presentation clients depend on `GamePort`, which exposes structured `GameSnapshot` and
+`UsageSnapshot` values. AWS client construction and metrics persistence remain in the CLI
+composition root. A future web client can therefore reuse the orchestration layer without
+importing Textual or parsing terminal-formatted strings.
 
 Each completed or failed CLI session appends privacy-safe LLM telemetry to
 `dist/session-metrics.jsonl`. Override the path with `--metrics-output`. Records include the

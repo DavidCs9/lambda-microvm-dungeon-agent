@@ -1,0 +1,90 @@
+Screen {
+    background: #090b10;
+    color: #e6e9ef;
+}
+
+.hidden { display: none; }
+
+Header, Footer {
+    background: #111621;
+    color: #c7d2fe;
+}
+
+#language-view, #connecting-view {
+    align: center middle;
+    padding: 2 4;
+}
+
+#crest, #spinner-mark {
+    width: 100%;
+    text-align: center;
+    color: #67e8f9;
+    text-style: bold;
+}
+
+#tavern-title {
+    width: 100%;
+    margin: 1 0 2 0;
+    text-align: center;
+    color: #f8fafc;
+    text-style: bold;
+}
+
+#language-prompt, #connecting-message, #connecting-detail, #start-hint {
+    width: 100%;
+    text-align: center;
+    margin: 1 0;
+}
+
+#language-select { width: 42; max-width: 90%; }
+#start-hint, #connecting-detail { color: #94a3b8; }
+
+#game-view, #game-body { height: 1fr; }
+#story-pane { width: 1fr; padding: 1; }
+#story { height: 1fr; padding: 1 2; scrollbar-color: #334155; }
+
+#command-input {
+    margin: 1 1 0 1;
+    border: tall #334155;
+    background: #10141d;
+}
+
+#command-input:focus { border: tall #67e8f9; }
+
+#sidebar {
+    width: 38;
+    min-width: 28;
+    border-left: solid #263244;
+    background: #0d1119;
+    padding: 1;
+    overflow-y: auto;
+}
+
+.side-section {
+    height: auto;
+    margin-bottom: 2;
+    padding: 1;
+    border: round #263244;
+}
+
+#session-stats { color: #a5b4fc; }
+#connection-status {
+    height: 1;
+    padding: 0 2;
+    color: #86efac;
+    background: #111621;
+}
+
+HelpScreen {
+    align: center middle;
+    background: rgba(5, 8, 14, 0.85);
+}
+
+#help-content {
+    width: 70;
+    max-width: 90%;
+    height: auto;
+    padding: 2 3;
+    border: round #67e8f9;
+    background: #111621;
+}

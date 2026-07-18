@@ -1,7 +1,12 @@
 from dungeon_agent.localization import language_translation
+from dungeon_agent.orchestrator.contracts import GameSnapshot, UsageSnapshot
 from dungeon_agent.orchestrator.locales import ENGLISH, Locale
 from dungeon_agent.orchestrator.narrator import BedrockNarrator
 from dungeon_agent.orchestrator.session import MicrovmSession
+
+
+def _integer(value: object, default: int = 0) -> int:
+    return value if isinstance(value, int) else default
 
 
 class DungeonOrchestrator:
@@ -30,47 +35,67 @@ class DungeonOrchestrator:
         return self.narrator.narrate(self.locale.opening_action, self.session.read_world())
 
     def state_summary(self) -> str:
+        snapshot = self.snapshot()
+        inventory_text = ", ".join(snapshot.inventory) or self.locale.empty_inventory
+        return (
+            f"{self.locale.location_label}: {snapshot.location}\n"
+            f"{self.locale.inventory_label}: {inventory_text}\n"
+            f"{self.locale.objective_label}: {snapshot.objective}\n"
+            f"{self.locale.health_label}: {snapshot.health}/3\n"
+            f"{self.locale.danger_label}: {snapshot.danger}/8\n"
+            f"{self.locale.status_label}: {snapshot.status}\n"
+            f"{self.locale.turns_label}: {snapshot.turns}"
+        )
+
+    def snapshot(self) -> GameSnapshot:
         world = self.session.read_world()
         location = world.get("location", self.locale.unknown_location)
         if isinstance(location, str):
             location = language_translation(self.locale.code, "adventure", location)
-        revision = world.get("revision", 0)
-        inventory = world.get("inventory", [])
-        objective = world.get("objective", "-")
-        health = world.get("health", "-")
-        danger = world.get("danger", "-")
-        status = world.get("status", "active")
-        inventory_text = (
-            ", ".join(str(item) for item in inventory)
-            if isinstance(inventory, list) and inventory
-            else self.locale.empty_inventory
-        )
-        return (
-            f"{self.locale.location_label}: {location}\n"
-            f"{self.locale.inventory_label}: {inventory_text}\n"
-            f"{self.locale.objective_label}: {objective}\n"
-            f"{self.locale.health_label}: {health}/3\n"
-            f"{self.locale.danger_label}: {danger}/8\n"
-            f"{self.locale.status_label}: {status}\n"
-            f"{self.locale.turns_label}: {revision}"
+        inventory = world.get("inventory")
+        return GameSnapshot(
+            location=str(location),
+            inventory=tuple(str(item) for item in inventory)
+            if isinstance(inventory, list)
+            else (),
+            objective=str(world.get("objective", "-")),
+            health=_integer(world.get("health")),
+            danger=_integer(world.get("danger")),
+            status=str(world.get("status", "active")),
+            turns=_integer(world.get("revision")),
         )
 
     def is_finished(self) -> bool:
         return self.session.read_world().get("status") in {"won", "lost"}
 
     def stats_summary(self) -> str:
-        metrics = self.narrator.metrics
-        cost = metrics.estimated_cost
-        cost_text = f"${cost:.8f} USD" if cost is not None else self.locale.cost_unavailable
+        usage = self.usage_snapshot()
+        cost_text = (
+            f"${usage.estimated_cost:.8f} USD"
+            if usage.estimated_cost is not None
+            else self.locale.cost_unavailable
+        )
         return (
             f"{self.locale.stats_title}\n"
-            f"{self.locale.model_label}: {metrics.model_id}\n"
-            f"{self.locale.calls_label}: {metrics.calls}\n"
-            f"{self.locale.input_tokens_label}: {metrics.input_tokens:,}\n"
-            f"{self.locale.output_tokens_label}: {metrics.output_tokens:,}\n"
-            f"{self.locale.total_tokens_label}: {metrics.total_tokens:,}\n"
-            f"{self.locale.model_latency_label}: {metrics.model_latency_ms / 1_000:.2f} s\n"
+            f"{self.locale.model_label}: {usage.model_id}\n"
+            f"{self.locale.calls_label}: {usage.calls}\n"
+            f"{self.locale.input_tokens_label}: {usage.input_tokens:,}\n"
+            f"{self.locale.output_tokens_label}: {usage.output_tokens:,}\n"
+            f"{self.locale.total_tokens_label}: {usage.total_tokens:,}\n"
+            f"{self.locale.model_latency_label}: {usage.model_latency_ms / 1_000:.2f} s\n"
             f"{self.locale.estimated_cost_label}: {cost_text}"
+        )
+
+    def usage_snapshot(self) -> UsageSnapshot:
+        metrics = self.narrator.metrics
+        return UsageSnapshot(
+            model_id=metrics.model_id,
+            calls=metrics.calls,
+            input_tokens=metrics.input_tokens,
+            output_tokens=metrics.output_tokens,
+            total_tokens=metrics.total_tokens,
+            model_latency_ms=metrics.model_latency_ms,
+            estimated_cost=metrics.estimated_cost,
         )
 
 
