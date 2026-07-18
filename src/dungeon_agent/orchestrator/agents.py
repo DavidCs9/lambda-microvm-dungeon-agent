@@ -121,6 +121,7 @@ class DungeonMaster:
                 "automatically. A difficulty of 8 is easy, 12 moderate, 15 hard, and 18 extreme. "
                 "Never claim state changes only in narration: encode every location, item, fact, "
                 "health, or victory change in the matching changes object. Only use declared IDs. "
+                "Summarize intent in fewer than 200 characters. "
                 "Set objective_complete only when the stated objective is genuinely accomplished. "
                 "Failures should move the story forward with a consequence, not simply reject the "
                 "idea. Keep each narration to 1 to 3 vivid sentences and never act for the player."

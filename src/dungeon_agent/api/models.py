@@ -77,7 +77,7 @@ class StateChanges(BaseModel):
 class TurnProposal(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    intent: str = Field(min_length=2, max_length=100)
+    intent: str = Field(min_length=2, max_length=300)
     requires_roll: bool
     difficulty: int | None = Field(default=None, ge=5, le=20)
     success_narration: str = Field(min_length=10, max_length=500)
