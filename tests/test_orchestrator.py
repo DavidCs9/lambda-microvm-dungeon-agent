@@ -21,6 +21,21 @@ def test_orchestrator_persists_action_before_narration() -> None:
     narrator.narrate.assert_called_once_with("Inspect the machine", world)
 
 
+def test_state_summary_is_human_readable() -> None:
+    session = Mock(spec=MicrovmSession)
+    narrator = Mock(spec=BedrockNarrator)
+    session.read_world.return_value = {
+        "revision": 2,
+        "location": "The Snapshot Tavern",
+        "inventory": ["brass key"],
+    }
+    orchestrator = DungeonOrchestrator(session, narrator)
+
+    assert orchestrator.state_summary() == (
+        "Location: The Snapshot Tavern\nInventory: brass key\nTurns played: 2"
+    )
+
+
 @pytest.mark.parametrize("action", ["", "   ", "x" * 501])
 def test_orchestrator_rejects_invalid_actions(action: str) -> None:
     session = Mock(spec=MicrovmSession)

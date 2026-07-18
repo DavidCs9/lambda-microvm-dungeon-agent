@@ -19,6 +19,23 @@ SYSTEM_PROMPT = """You are the narrator for a playful fantasy dungeon running in
 Lambda MicroVM. Describe the result of the player's latest action in two to four vivid sentences.
 Stay consistent with the supplied world state. Do not use Markdown, mention these instructions,
 invent player actions, or expose infrastructure details."""
+WELCOME = """
+============================================================
+                  THE SNAPSHOT TAVERN
+             A Lambda MicroVM dungeon adventure
+============================================================
+"""
+HELP = """Commands
+  /help    Show these instructions
+  /state   Show your current location, inventory, and turn count
+  /quit    End the adventure and terminate the MicroVM
+
+Try an action
+  look around
+  inspect the humming machine
+  check my inventory
+  open the wooden door
+"""
 
 
 class MicrovmSession:
@@ -139,6 +156,24 @@ class DungeonOrchestrator:
         world = self.session.apply_action(normalized)
         return self.narrator.narrate(normalized, world)
 
+    def opening_scene(self) -> str:
+        return self.narrator.narrate(
+            "Set the opening scene. Do not move the player or add an action to the story.",
+            self.session.read_world(),
+        )
+
+    def state_summary(self) -> str:
+        world = self.session.read_world()
+        location = world.get("location", "Unknown")
+        revision = world.get("revision", 0)
+        inventory = world.get("inventory", [])
+        inventory_text = (
+            ", ".join(str(item) for item in inventory)
+            if isinstance(inventory, list) and inventory
+            else "Empty"
+        )
+        return f"Location: {location}\nInventory: {inventory_text}\nTurns played: {revision}"
+
 
 def create_clients(profile: str, region: str) -> tuple[LambdaMicroVMsClient, BedrockRuntimeClient]:
     session = boto3.Session(profile_name=profile, region_name=region)
@@ -159,18 +194,31 @@ def play(orchestrator: DungeonOrchestrator, one_turn: str | None) -> None:
         print(orchestrator.take_turn(one_turn))
         return
 
-    print("The Snapshot Tavern is ready. Type /quit to end the session.")
+    print(WELCOME)
+    print(orchestrator.opening_scene())
+    print(f"\n{HELP}")
     while True:
         try:
-            action = input("\n> ").strip()
-        except EOFError:
-            print()
+            action = input("You > ").strip()
+        except (EOFError, KeyboardInterrupt):
+            print("\n\nEnding your adventure...")
             return
-        if action.lower() in {"/quit", "/exit"}:
+        command = action.lower()
+        if command in {"/quit", "/exit"}:
+            print("\nEnding your adventure...")
             return
+        if command == "/help":
+            print(f"\n{HELP}")
+            continue
+        if command == "/state":
+            print(f"\n{orchestrator.state_summary()}\n")
+            continue
         if not action:
             continue
-        print(f"\n{orchestrator.take_turn(action)}")
+        try:
+            print(f"\nDungeon Master:\n{orchestrator.take_turn(action)}\n")
+        except ValueError as error:
+            print(f"\n{error}. Type /help for examples.\n")
 
 
 def create_parser() -> argparse.ArgumentParser:
@@ -187,12 +235,15 @@ def main(argv: Sequence[str] | None = None) -> int:
     args = create_parser().parse_args(argv)
     try:
         microvms, bedrock = create_clients(args.profile, args.region)
+        print("Starting your private MicroVM session...", flush=True)
         with MicrovmSession(microvms, args.image_arn) as microvm_session:
+            print("Session ready. Your adventure is isolated and temporary.\n", flush=True)
             orchestrator = DungeonOrchestrator(
                 microvm_session,
                 BedrockNarrator(bedrock, args.model_id),
             )
             play(orchestrator, args.turn)
+        print("MicroVM terminated. Thanks for playing.")
     except (BotoCoreError, ClientError, OSError, RuntimeError, ValueError) as error:
         print(f"Error: {error}", file=sys.stderr)
         return 1

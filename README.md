@@ -89,7 +89,13 @@ uv run --group tooling python -m scripts.orchestrator \
   --image-arn <microvm-image-arn>
 ```
 
-Enter `/quit` to end the game. For a non-interactive smoke test, add `--turn "Inspect the humming machine"`. The Bedrock Converse request explicitly caps output at 180 tokens per turn.
+The CLI opens with a narrated scene, example actions, and visible controls:
+
+- `/help` — show instructions and action examples
+- `/state` — show location, inventory, and turn count
+- `/quit` — terminate the MicroVM and exit
+
+Ctrl+C also terminates the session cleanly. For a non-interactive smoke test, add `--turn "Inspect the humming machine"`. The Bedrock Converse request explicitly caps output at 180 tokens per turn.
 
 ## Planned milestones
 
