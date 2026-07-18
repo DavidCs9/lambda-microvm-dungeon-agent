@@ -83,9 +83,7 @@ def resolve_action(state: WorldState, action: str) -> WorldState:
     if danger == 0:
         health = 0
         status = "lost"
-        ending = _localize(
-            state.language, "Time runs out and you remain locked inside the tavern."
-        )
+        ending = _localize(state.language, "Time runs out and you remain locked inside the tavern.")
         consequence = ending
         suggestions = [_localize(state.language, "Start a new session and try another path")]
 

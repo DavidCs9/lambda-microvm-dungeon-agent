@@ -56,8 +56,7 @@ class DungeonOrchestrator:
         return GameSnapshot(
             location=str(location),
             inventory=tuple(
-                language_translation(self.locale.code, "adventure", str(item))
-                for item in inventory
+                language_translation(self.locale.code, "adventure", str(item)) for item in inventory
             )
             if isinstance(inventory, list)
             else (),
