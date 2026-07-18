@@ -1,3 +1,4 @@
+from dungeon_agent.localization import language_translation
 from dungeon_agent.orchestrator.locales import ENGLISH, Locale
 from dungeon_agent.orchestrator.narrator import BedrockNarrator
 from dungeon_agent.orchestrator.session import MicrovmSession
@@ -31,10 +32,14 @@ class DungeonOrchestrator:
     def state_summary(self) -> str:
         world = self.session.read_world()
         location = world.get("location", self.locale.unknown_location)
-        if self.locale.code == "es" and location == "The Snapshot Tavern":
-            location = "La Taberna Snapshot"
+        if isinstance(location, str):
+            location = language_translation(self.locale.code, "adventure", location)
         revision = world.get("revision", 0)
         inventory = world.get("inventory", [])
+        objective = world.get("objective", "-")
+        health = world.get("health", "-")
+        danger = world.get("danger", "-")
+        status = world.get("status", "active")
         inventory_text = (
             ", ".join(str(item) for item in inventory)
             if isinstance(inventory, list) and inventory
@@ -43,8 +48,15 @@ class DungeonOrchestrator:
         return (
             f"{self.locale.location_label}: {location}\n"
             f"{self.locale.inventory_label}: {inventory_text}\n"
+            f"{self.locale.objective_label}: {objective}\n"
+            f"{self.locale.health_label}: {health}/3\n"
+            f"{self.locale.danger_label}: {danger}/8\n"
+            f"{self.locale.status_label}: {status}\n"
             f"{self.locale.turns_label}: {revision}"
         )
+
+    def is_finished(self) -> bool:
+        return self.session.read_world().get("status") in {"won", "lost"}
 
 
 def play(orchestrator: DungeonOrchestrator, one_turn: str | None, locale: Locale) -> None:
@@ -75,5 +87,8 @@ def play(orchestrator: DungeonOrchestrator, one_turn: str | None, locale: Locale
             continue
         try:
             print(f"\n{locale.narrator_label}:\n{orchestrator.take_turn(action)}\n")
+            if orchestrator.is_finished():
+                print(f"{orchestrator.state_summary()}\n")
+                return
         except ValueError as error:
             print(f"\n{error}. {locale.invalid_action_hint}\n")

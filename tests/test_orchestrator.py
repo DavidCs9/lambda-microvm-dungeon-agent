@@ -31,11 +31,21 @@ def test_state_summary_is_human_readable() -> None:
         "revision": 2,
         "location": "The Snapshot Tavern",
         "inventory": ["brass key"],
+        "objective": "Escape before collapse",
+        "health": 3,
+        "danger": 6,
+        "status": "active",
     }
     orchestrator = DungeonOrchestrator(session, narrator)
 
     assert orchestrator.state_summary() == (
-        "Location: The Snapshot Tavern\nInventory: brass key\nTurns played: 2"
+        "Location: The Snapshot Tavern\n"
+        "Inventory: brass key\n"
+        "Objective: Escape before collapse\n"
+        "Health: 3/3\n"
+        "Time remaining: 6/8\n"
+        "Status: active\n"
+        "Turns played: 2"
     )
 
 
@@ -53,11 +63,21 @@ def test_spanish_state_summary_is_localized() -> None:
         "revision": 1,
         "location": "The Snapshot Tavern",
         "inventory": [],
+        "objective": "Escapa antes del colapso",
+        "health": 3,
+        "danger": 7,
+        "status": "active",
     }
     orchestrator = DungeonOrchestrator(session, narrator, SPANISH)
 
     assert orchestrator.state_summary() == (
-        "Ubicación: La Taberna Snapshot\nInventario: Vacío\nTurnos jugados: 1"
+        "Ubicación: La Taberna Snapshot\n"
+        "Inventario: Vacío\n"
+        "Objetivo: Escapa antes del colapso\n"
+        "Salud: 3/3\n"
+        "Tiempo restante: 7/8\n"
+        "Estado: active\n"
+        "Turnos jugados: 1"
     )
 
 

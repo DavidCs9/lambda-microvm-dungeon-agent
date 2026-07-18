@@ -38,6 +38,7 @@ jobs:
           uv run ruff format --check .
           uv run mypy
           uv run pytest
+          uv run python evals/gameplay_experience.py
 
   container:
     name: Build ARM64 container

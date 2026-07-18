@@ -108,6 +108,29 @@ Before launching the MicroVM, the CLI asks the player to choose an official lang
 
 The choice localizes the opening scene, narration, commands, prompts, state, errors, and shutdown messages. Press Enter to choose Español, or skip the menu with `--language es` or `--language en`.
 
+Language content and action vocabulary live in packaged JSON resources under
+`src/dungeon_agent/resources/locales/`. Adding a language does not require embedding translated
+game text in Python code.
+
+## Gameplay evaluation
+
+Run the deterministic black-box gameplay evaluation:
+
+```sh
+uv run python evals/gameplay_experience.py
+```
+
+It checks player agency, guidance, danger, state consistency, and structured world depth across
+multiple playthroughs. Model selection is evaluated separately so narration cannot hide weak game
+rules. Compare one or more Bedrock models on identical English and Spanish scenes:
+
+```sh
+uv run --group tooling python evals/narration_models.py \
+  --profile personal \
+  --region us-east-2 \
+  --model-id us.amazon.nova-micro-v1:0
+```
+
 ## Planned milestones
 
 1. Validate the FastAPI backend and ARM64 container.

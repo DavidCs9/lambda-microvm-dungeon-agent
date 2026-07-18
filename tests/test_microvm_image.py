@@ -15,6 +15,9 @@ def create_project(root: Path) -> None:
     api_dir = root / "src" / "dungeon_agent" / "api"
     api_dir.mkdir(parents=True)
     (api_dir / "main.py").write_text("app = None\n", encoding="utf-8")
+    locale_dir = root / "src" / "dungeon_agent" / "resources" / "locales"
+    locale_dir.mkdir(parents=True)
+    (locale_dir / "es.json").write_text('{"code":"es"}\n', encoding="utf-8")
 
 
 def test_package_source_is_deterministic(tmp_path: Path) -> None:
@@ -34,6 +37,7 @@ def test_package_source_is_deterministic(tmp_path: Path) -> None:
             "pyproject.toml",
             "uv.lock",
             "src/dungeon_agent/api/main.py",
+            "src/dungeon_agent/resources/locales/es.json",
         ]
 
 

@@ -3,6 +3,7 @@ from typing import Self, cast
 
 from mypy_boto3_lambda_microvms import LambdaMicroVMsClient
 
+from dungeon_agent.api.models import LanguageCode
 from dungeon_agent.microvm import request_json, require_success, wait_for_state
 
 
@@ -62,6 +63,13 @@ class MicrovmSession:
     def read_world(self) -> dict[str, object]:
         result = request_json(self._endpoint(), self._token(), "GET", "/v1/world")
         require_success(result, "read world")
+        return self._world_from(result.body)
+
+    def set_language(self, language: LanguageCode) -> dict[str, object]:
+        result = request_json(
+            self._endpoint(), self._token(), "PUT", "/v1/language", {"language": language}
+        )
+        require_success(result, "set language")
         return self._world_from(result.body)
 
     def apply_action(self, action: str) -> dict[str, object]:

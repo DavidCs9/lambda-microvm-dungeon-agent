@@ -21,6 +21,8 @@ Application code uses an installable `src` layout and is split by responsibility
 - `src/dungeon_agent/orchestrator/game.py` — provider-independent rules and terminal loop
 - `src/dungeon_agent/microvm.py` — shared authenticated HTTP and lifecycle primitives
 - `src/dungeon_agent/operations/` — image-building and benchmark workflows
+- `src/dungeon_agent/resources/locales/` — runtime-loaded language and action-vocabulary JSON
+- `evals/` — deterministic gameplay and Bedrock narration-model comparisons
 
 The `scripts/` directory contains only operational entrypoints for building an image and running
 the lifecycle benchmark. Reusable behavior remains in the `dungeon_agent` package.

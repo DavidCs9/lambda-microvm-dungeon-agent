@@ -3,14 +3,8 @@ import json
 import os
 from pathlib import Path
 
-from dungeon_agent.api.models import WorldState
-
-INITIAL_WORLD = WorldState(
-    revision=0,
-    location="The Snapshot Tavern",
-    inventory=[],
-    story=["You awaken beside a humming Firecracker."],
-)
+from dungeon_agent.api.adventure import initial_world, resolve_action
+from dungeon_agent.api.models import LanguageCode, WorldState
 
 
 class StateStore:
@@ -24,21 +18,27 @@ class StateStore:
     async def initialize(self) -> None:
         self.workspace_dir.mkdir(parents=True, exist_ok=True)
         if not self.state_path.exists():
-            self._write(INITIAL_WORLD.model_copy(deep=True))
+            self._write(initial_world())
 
     async def read(self) -> WorldState:
         async with self._lock:
             return self._read()
 
+    async def set_language(self, language: LanguageCode) -> WorldState:
+        async with self._lock:
+            current = self._read()
+            updated = (
+                initial_world(language)
+                if current.revision == 0
+                else current.model_copy(update={"language": language})
+            )
+            self._write(updated)
+            return updated
+
     async def apply_action(self, action: str) -> WorldState:
         async with self._lock:
             current = self._read()
-            updated = current.model_copy(
-                update={
-                    "revision": current.revision + 1,
-                    "story": [*current.story, action],
-                }
-            )
+            updated = resolve_action(current, action)
             self._write(updated)
             return updated
 

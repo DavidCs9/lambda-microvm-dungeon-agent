@@ -40,7 +40,8 @@ def create_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--language",
         choices=sorted(LOCALES),
-        help="Skip the language menu: es (Español) or en (English).",
+        help="Skip the language menu: "
+        + ", ".join(f"{code} ({LOCALES[code].name})" for code in sorted(LOCALES)),
     )
     parser.add_argument("--turn", help="Run one player turn non-interactively, then terminate.")
     return parser
@@ -53,6 +54,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         microvms, bedrock = create_clients(args.profile, args.region)
         print(f"\n{locale.starting}", flush=True)
         with MicrovmSession(microvms, args.image_arn) as microvm_session:
+            microvm_session.set_language(locale.code)
             print(f"{locale.ready}\n", flush=True)
             orchestrator = DungeonOrchestrator(
                 microvm_session,

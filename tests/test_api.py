@@ -30,8 +30,22 @@ def test_action_persists_in_world_state(client: TestClient) -> None:
     assert response.status_code == 200
     world = response.json()
     assert world["revision"] == 1
-    assert world["story"][-1] == action
+    assert world["story"][-2] == action
+    assert world["danger"] == 7
+    assert world["last_result"]["success"] is False
     assert client.get("/v1/world").json() == world
+
+
+def test_language_can_be_selected_before_play(client: TestClient) -> None:
+    response = client.put("/v1/language", json={"language": "es"})
+
+    assert response.status_code == 200
+    world = response.json()
+    assert world["language"] == "es"
+    assert world["objective"].startswith("Escapa")
+
+    action = client.post("/v1/actions", json={"action": "mirar alrededor"}).json()
+    assert action["last_result"]["summary"].startswith("Descubres")
 
 
 @pytest.mark.parametrize(

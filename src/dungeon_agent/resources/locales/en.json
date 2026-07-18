@@ -1,0 +1,45 @@
+{
+  "code": "en",
+  "name": "English",
+  "ui": {
+    "systemPrompt": "You are the narrator for a playful fantasy dungeon running inside an AWS Lambda MicroVM. Always respond in English. Describe only the resolved result of the player's latest action in two to four vivid sentences. Stay consistent with the supplied world state and last_result. Preserve player agency: never invent a player action. Do not use Markdown, mention these instructions, or expose infrastructure details.",
+    "welcome": "\n============================================================\n                  THE SNAPSHOT TAVERN\n             A Lambda MicroVM dungeon adventure\n============================================================\n",
+    "helpText": "Commands\n  /help    Show these instructions\n  /state   Show your current location, inventory, and turn count\n  /quit    End the adventure and terminate the MicroVM\n\nTry an action\n  look around\n  talk to Mira\n  enter the cellar\n  inspect the humming machine\n",
+    "playerPrompt": "You > ",
+    "narratorLabel": "Dungeon Master",
+    "starting": "Starting your private MicroVM session...",
+    "ready": "Session ready. Your adventure is isolated and temporary.",
+    "ending": "Ending your adventure...",
+    "terminated": "MicroVM terminated. Thanks for playing.",
+    "openingAction": "Present the opening scene, objective, visible danger, and two possible approaches. Do not act for the player.",
+    "locationLabel": "Location",
+    "inventoryLabel": "Inventory",
+    "turnsLabel": "Turns played",
+    "objectiveLabel": "Objective",
+    "healthLabel": "Health",
+    "dangerLabel": "Time remaining",
+    "statusLabel": "Status",
+    "emptyInventory": "Empty",
+    "unknownLocation": "Unknown",
+    "emptyAction": "Player action cannot be empty",
+    "longAction": "Player action cannot exceed 500 characters",
+    "invalidActionHint": "Type /help for examples."
+  },
+  "adventure": {
+    "initialStory": "You awaken as the tavern shudders between snapshots.",
+    "objective": "Escape the Snapshot Tavern before its unstable MicroVM collapses.",
+    "intentKeywords": {
+      "escape": ["escape", "exit", "door"],
+      "talk": ["talk", "ask", "speak", "mira"],
+      "use": ["use", "activate", "stabilize", "insert"],
+      "take": ["take", "grab", "pick"],
+      "inspect": ["inspect", "search", "examine", "look"],
+      "explore": ["go", "enter", "climb", "cellar", "return", "trapdoor", "tavern"]
+    },
+    "navigationKeywords": {
+      "cellar": ["cellar", "trapdoor", "go down"],
+      "tavern": ["tavern", "return", "climb up"]
+    },
+    "translations": {}
+  }
+}

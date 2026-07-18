@@ -1,8 +1,18 @@
 import json
+import time
+from dataclasses import dataclass
 
 from mypy_boto3_bedrock_runtime import BedrockRuntimeClient
 
 from dungeon_agent.orchestrator.locales import Locale
+
+
+@dataclass(frozen=True)
+class NarrationResult:
+    text: str
+    latency_ms: float
+    input_tokens: int
+    output_tokens: int
 
 
 class BedrockNarrator:
@@ -14,10 +24,14 @@ class BedrockNarrator:
         self.locale = locale
 
     def narrate(self, action: str, world: dict[str, object]) -> str:
+        return self.narrate_with_metrics(action, world).text
+
+    def narrate_with_metrics(self, action: str, world: dict[str, object]) -> NarrationResult:
         prompt = json.dumps(
             {"latestPlayerAction": action, "currentWorldState": world},
             separators=(",", ":"),
         )
+        started = time.perf_counter()
         response = self.client.converse(
             modelId=self.model_id,
             system=[{"text": self.locale.system_prompt}],
@@ -31,4 +45,10 @@ class BedrockNarrator:
         narration = "".join(block["text"] for block in content if "text" in block).strip()
         if not narration:
             raise RuntimeError("Bedrock returned an empty narration")
-        return narration
+        usage = response["usage"]
+        return NarrationResult(
+            text=narration,
+            latency_ms=(time.perf_counter() - started) * 1_000,
+            input_tokens=usage["inputTokens"],
+            output_tokens=usage["outputTokens"],
+        )

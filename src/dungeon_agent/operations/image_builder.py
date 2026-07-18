@@ -61,7 +61,8 @@ def create_clients(
 def package_source(project_root: Path, output_path: Path) -> Artifact:
     package_members = sorted(
         path.relative_to(project_root)
-        for path in (project_root / "src" / "dungeon_agent").rglob("*.py")
+        for path in (project_root / "src" / "dungeon_agent").rglob("*")
+        if path.is_file() and path.suffix in {".json", ".py"}
     )
     members = [*SOURCE_FILES, *package_members]
     missing = [str(member) for member in members if not (project_root / member).is_file()]
