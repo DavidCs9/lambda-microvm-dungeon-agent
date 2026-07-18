@@ -42,7 +42,16 @@
     "victoryMessage": "You completed the adventure's objective.",
     "defeatTitle": "TIME RAN OUT",
     "defeatMessage": "This adventure has ended. A completely new one awaits next session.",
-    "closeGameHint": "Press Enter or Ctrl+Q to finish"
+    "closeGameHint": "Press Enter or Ctrl+Q to finish",
+    "characterTitle": "YOUR CHARACTER",
+    "motivationLabel": "What you want",
+    "connectionLabel": "Why you are here",
+    "strengthLabel": "Strength",
+    "flawLabel": "Flaw",
+    "personalItemLabel": "Personal item",
+    "knownFactsTitle": "WHAT YOU ALREADY KNOW",
+    "openingSceneTitle": "THE SITUATION",
+    "possibleStartsTitle": "YOU COULD START HERE (OR TRY ANYTHING ELSE)"
   },
   "adventure": {
     "initialStory": "You are alone inside a small locked tavern. Find the key and leave through the front door.",

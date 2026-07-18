@@ -19,6 +19,26 @@ class GameSnapshot:
 
 
 @dataclass(frozen=True)
+class OpeningView:
+    """Presentation-neutral briefing shown before the player's first choice."""
+
+    title: str
+    scene: str
+    character_name: str
+    pronouns: str
+    archetype: str
+    appearance: str
+    background: str
+    desire: str
+    connection: str
+    strength: str
+    flaw: str
+    meaningful_item: str
+    known_facts: tuple[str, ...]
+    opening_choices: tuple[str, ...]
+
+
+@dataclass(frozen=True)
 class TurnView:
     """Presentation-neutral result of one adjudicated player action."""
 
@@ -45,7 +65,7 @@ class UsageSnapshot:
 class GamePort(Protocol):
     """Operations exposed to terminal, web, or other presentation clients."""
 
-    def opening_scene(self) -> str: ...
+    def opening_scene(self) -> OpeningView: ...
 
     def take_turn(self, action: str) -> TurnView: ...
 

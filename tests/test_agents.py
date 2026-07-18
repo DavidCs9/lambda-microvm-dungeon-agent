@@ -3,9 +3,9 @@ from unittest.mock import Mock
 import pytest
 from pydantic import ValidationError
 
-from dungeon_agent.orchestrator.agents import StructuredBedrockAgent
+from dungeon_agent.orchestrator.agents import CharacterArchitect, StructuredBedrockAgent
 from dungeon_agent.orchestrator.observability import SessionMetrics
-from tests.test_adventure import sample_plan
+from tests.test_adventure import sample_plan, sample_player
 
 
 def response_for(tool_name: str, tool_input: dict[str, object]) -> dict[str, object]:
@@ -98,3 +98,21 @@ def test_structured_agent_repairs_invalid_output_once() -> None:
         in repaired_request["messages"][0]["content"][0]["text"]
     )
     assert repaired_request["inferenceConfig"]["temperature"] == 0.3
+
+
+def test_character_architect_grounds_protagonist_in_adventure() -> None:
+    client = Mock()
+    client.converse.return_value = response_for(
+        "create_player_character", sample_player().model_dump(mode="json")
+    )
+    architect = CharacterArchitect(
+        StructuredBedrockAgent(client, "test-model", SessionMetrics.start("test-model"))
+    )
+
+    character = architect.create("es", sample_plan())
+
+    assert character.name == "Iria Vale"
+    request = client.converse.call_args.kwargs
+    prompt = request["messages"][0]["content"][0]["text"]
+    assert '"adventure"' in prompt
+    assert "Spanish" in prompt

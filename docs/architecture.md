@@ -3,11 +3,13 @@
 The lab separates orchestration from untrusted execution:
 
 1. A local Adventure Architect generates one small, structured one-shot per session.
-2. The validated plan is stored inside the session's authenticated MicroVM.
-3. A local Dungeon Master turns each free-form action into typed success and failure branches.
-4. The MicroVM rolls the d20, validates proposed changes, and applies exactly one branch.
-5. Each player session receives a dedicated Lambda MicroVM and workspace.
-6. Lifecycle hooks preserve and validate state across suspend and resume.
+2. A separate Character Architect receives that plan and creates a protagonist whose desire,
+   weakness, relationships, and prior knowledge are grounded in the new world.
+3. The validated world and protagonist are stored inside the session's authenticated MicroVM.
+4. A local Dungeon Master turns each free-form action into typed success and failure branches.
+5. The MicroVM rolls the d20, validates proposed changes, and applies exactly one branch.
+6. Each player session receives a dedicated Lambda MicroVM and workspace.
+7. Lifecycle hooks preserve and validate state across suspend and resume.
 
 The FastAPI backend intentionally implements state operations only. Its OpenAPI contract can support a separate web client later. Arbitrary code execution will be added only with MicroVM isolation, resource limits, no AWS credentials, and restricted network egress.
 
@@ -19,7 +21,7 @@ Application code uses an installable `src` layout and is split by responsibility
 - `src/dungeon_agent/cli.py` — CLI parsing and dependency composition
 - `src/dungeon_agent/orchestrator/locales.py` — official languages and selection
 - `src/dungeon_agent/orchestrator/session.py` — MicroVM lifecycle and API adapter
-- `src/dungeon_agent/orchestrator/agents.py` — typed Bedrock architect and Dungeon Master adapters
+- `src/dungeon_agent/orchestrator/agents.py` — typed world, character, and Dungeon Master adapters
 - `src/dungeon_agent/orchestrator/game.py` — presentation-neutral generated-adventure loop
 - `src/dungeon_agent/api/adventure.py` — authoritative d20 and state-change validator
 - `src/dungeon_agent/microvm.py` — shared authenticated HTTP and lifecycle primitives

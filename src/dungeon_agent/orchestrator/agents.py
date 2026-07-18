@@ -5,7 +5,7 @@ from typing import TypeVar
 from mypy_boto3_bedrock_runtime import BedrockRuntimeClient
 from pydantic import BaseModel, ValidationError
 
-from dungeon_agent.api.models import AdventurePlan, LanguageCode, TurnProposal
+from dungeon_agent.api.models import AdventurePlan, LanguageCode, PlayerCharacter, TurnProposal
 from dungeon_agent.orchestrator.observability import SessionMetrics
 
 OutputModel = TypeVar("OutputModel", bound=BaseModel)
@@ -136,6 +136,47 @@ class AdventureArchitect:
             output_model=AdventurePlan,
             max_tokens=3_000,
             temperature=0.9,
+        )
+
+
+class CharacterArchitect:
+    """Create a protagonist with strong reasons to inhabit the generated world."""
+
+    def __init__(self, agent: StructuredBedrockAgent) -> None:
+        self.agent = agent
+
+    def create(self, language: LanguageCode, adventure: AdventurePlan) -> PlayerCharacter:
+        language_name = "Spanish" if language == "es" else "English"
+        return self.agent.invoke(
+            system=(
+                "You design memorable player characters for short tabletop role-playing games. "
+                "Create a person the player can inhabit, not a generic class or a long biography. "
+                "Every detail must create a playable decision, emotional stake, relationship, or "
+                "useful approach. Connect the protagonist tightly to the supplied adventure "
+                "without revealing its secrets. Give the player room to choose their personality "
+                "and actions. "
+                "The three opening choices must represent investigation, social interaction, and a "
+                "risky direct approach; they are examples, never restrictions. Do not copy "
+                "characters or settings from commercial fiction."
+            ),
+            prompt=json.dumps(
+                {
+                    "instruction": (
+                        f"Create one protagonist entirely in {language_name}. The player must "
+                        "immediately understand who they are, what they want, why this objective "
+                        "matters personally, what they already know, and three different ways to "
+                        "begin. Keep the complete character briefing concise and playable."
+                    ),
+                    "adventure": adventure.model_dump(mode="json"),
+                },
+                ensure_ascii=False,
+                separators=(",", ":"),
+            ),
+            tool_name="create_player_character",
+            tool_description="Return a complete protagonist grounded in the supplied adventure.",
+            output_model=PlayerCharacter,
+            max_tokens=2_000,
+            temperature=0.85,
         )
 
 

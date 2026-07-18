@@ -27,8 +27,9 @@ uv run pytest
 DUNGEON_WORKSPACE_DIR="$(mktemp -d)" uv run uvicorn dungeon_agent.api.main:app --reload
 ```
 
-The backend needs a generated `AdventurePlan` before it accepts turns. The easiest complete
-experience is the CLI described below; API examples are available through `/docs` while running.
+The backend needs a generated `AdventurePlan` and `PlayerCharacter` before it accepts turns. The
+easiest complete experience is the CLI described below; API examples are available through `/docs`
+while running.
 
 ```sh
 curl http://127.0.0.1:8000/health
@@ -124,8 +125,10 @@ uv run --group tooling dungeon-agent \
   --image-version <microvm-image-version>
 ```
 
-The CLI opens a full-screen TUI with language selection, connection progress, a wrapped story
-transcript, command input, current world state, session usage, and keyboard shortcuts:
+The CLI opens a full-screen TUI with language selection, a generated character briefing, a wrapped
+story transcript, command input, current world state, session usage, and keyboard shortcuts. Every
+session introduces who the player is, what they want, why the objective matters, what they already
+know, and three optional ways to begin before accepting the first action.
 
 - `F1` — show localized help and action examples
 - `F2` — refresh current state
@@ -162,7 +165,7 @@ Gameplay remains fully functional if audio is disabled or the host has no suppor
 Ctrl+C also terminates the session cleanly. Add `--plain` for the stream-based interface used by
 basic terminals and debugging. A non-interactive `--turn "Look around"` run automatically uses
 plain mode. Bedrock calls use required typed tools and explicit output limits: 3,000 tokens for
-one-time adventure design and 1,200 tokens per turn.
+one-time adventure design, 2,000 for protagonist design, and 1,200 tokens per turn.
 
 Claude Sonnet 4.6 is the working default. Sonnet 5 can be selected without code changes once the
 AWS account has model access:
@@ -171,8 +174,8 @@ AWS account has model access:
 play-dungeon --model-id us.anthropic.claude-sonnet-5
 ```
 
-Presentation clients depend on `GamePort`, which exposes structured `GameSnapshot`, `TurnView`,
-and `UsageSnapshot` values. AWS client construction and metrics persistence remain in the CLI
+Presentation clients depend on `GamePort`, which exposes structured `OpeningView`, `GameSnapshot`,
+`TurnView`, and `UsageSnapshot` values. AWS client construction and metrics persistence remain in the CLI
 composition root. A future web client can therefore reuse the orchestration layer without
 importing Textual or parsing terminal-formatted strings.
 
@@ -205,9 +208,10 @@ Run the deterministic generated-world safety evaluation:
 uv run python evals/gameplay_experience.py
 ```
 
-It checks d20 resolution, terminal conditions, state consistency, and rejection of model-proposed
-unknown locations and items. Model selection is evaluated separately on identical English and
-Spanish adventure tasks.
+It checks protagonist persistence and initial roleplay context alongside d20 resolution, terminal
+conditions, state consistency, and rejection of model-proposed unknown locations and items. Model
+selection is evaluated separately on identical English and Spanish tasks, including character
+connection, contradiction, weakness, prior knowledge, and distinct starting approaches.
 
 ```sh
 uv run --group tooling python evals/narration_models.py \

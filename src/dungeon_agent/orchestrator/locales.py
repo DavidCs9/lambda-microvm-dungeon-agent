@@ -50,6 +50,15 @@ class Locale:
     defeat_title: str
     defeat_message: str
     close_game_hint: str
+    character_title: str
+    motivation_label: str
+    connection_label: str
+    strength_label: str
+    flaw_label: str
+    personal_item_label: str
+    known_facts_title: str
+    opening_scene_title: str
+    possible_starts_title: str
 
 
 def _ui_text(ui: dict[str, object], key: str, language: LanguageCode) -> str:
@@ -113,6 +122,15 @@ def load_locale(language: LanguageCode) -> Locale:
         defeat_title=text("defeatTitle"),
         defeat_message=text("defeatMessage"),
         close_game_hint=text("closeGameHint"),
+        character_title=text("characterTitle"),
+        motivation_label=text("motivationLabel"),
+        connection_label=text("connectionLabel"),
+        strength_label=text("strengthLabel"),
+        flaw_label=text("flawLabel"),
+        personal_item_label=text("personalItemLabel"),
+        known_facts_title=text("knownFactsTitle"),
+        opening_scene_title=text("openingSceneTitle"),
+        possible_starts_title=text("possibleStartsTitle"),
     )
 
 

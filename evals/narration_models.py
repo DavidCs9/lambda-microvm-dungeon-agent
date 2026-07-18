@@ -16,6 +16,7 @@ from dungeon_agent.api.adventure import start_adventure
 from dungeon_agent.api.models import LanguageCode
 from dungeon_agent.orchestrator.agents import (
     AdventureArchitect,
+    CharacterArchitect,
     DungeonMaster,
     StructuredBedrockAgent,
 )
@@ -32,6 +33,7 @@ class SampleScore:
     score: int
     adventure_structure: int
     player_agency: int
+    roleplay_potential: int
     turn_adjudication: int
     state_safety: int
     total_tokens: int
@@ -56,20 +58,30 @@ def evaluate_models(client: BedrockRuntimeClient, model_ids: Sequence[str]) -> d
             metrics = SessionMetrics.start(model_id)
             agent = StructuredBedrockAgent(client, model_id, metrics)
             plan = AdventureArchitect(agent).create(language)
-            world = start_adventure(language, plan).model_dump(mode="json")
+            character = CharacterArchitect(agent).create(language, plan)
+            world = start_adventure(language, plan, character).model_dump(mode="json")
             action = (
                 "Improviso un puente con muebles rotos para evitar al guardia"
                 if language == "es"
                 else "I improvise a bridge from broken furniture to avoid the guard"
             )
             turn = DungeonMaster(agent, language).adjudicate(action, world)
-            structure = 25 if len(plan.locations) >= 3 and len(plan.items) >= 2 else 0
+            structure = 20 if len(plan.locations) >= 3 and len(plan.items) >= 2 else 0
             agency = (
-                25
+                20
                 if len(plan.secrets) >= 2 and sum(bool(x.exits) for x in plan.locations) >= 3
-                else 15
+                else 10
             )
-            adjudication = 25 if turn.requires_roll and turn.difficulty is not None else 15
+            roleplay = (
+                20
+                if character.connection_to_adventure
+                and character.contradiction
+                and character.flaw
+                and len(character.known_facts) >= 2
+                and len(character.opening_choices) == 3
+                else 0
+            )
+            adjudication = 20 if turn.requires_roll and turn.difficulty is not None else 10
             known_locations = {location.id for location in plan.locations}
             known_items = {item.id for item in plan.items}
             changes = [turn.success_changes, turn.failure_changes]
@@ -78,15 +90,16 @@ def evaluate_models(client: BedrockRuntimeClient, model_ids: Sequence[str]) -> d
                 and set(change.add_items + change.remove_items).issubset(known_items)
                 for change in changes
             )
-            safety = 25 if safe else 0
+            safety = 20 if safe else 0
             samples.append(
                 SampleScore(
                     model_id=model_id,
                     language=language,
                     title=plan.title,
-                    score=structure + agency + adjudication + safety,
+                    score=structure + agency + roleplay + adjudication + safety,
                     adventure_structure=structure,
                     player_agency=agency,
+                    roleplay_potential=roleplay,
                     turn_adjudication=adjudication,
                     state_safety=safety,
                     total_tokens=metrics.total_tokens,
@@ -110,8 +123,11 @@ def evaluate_models(client: BedrockRuntimeClient, model_ids: Sequence[str]) -> d
         )
     rankings.sort(key=lambda item: (-float(item["qualityScore"]), float(item["medianLatencyMs"])))
     return {
-        "rubricVersion": "2.0",
-        "method": "One generated adventure and one identical creative action per language.",
+        "rubricVersion": "3.0",
+        "method": (
+            "One adventure, one grounded protagonist, and one identical creative action "
+            "per language."
+        ),
         "rankings": rankings,
         "samples": [asdict(sample) for sample in samples],
         "humanPlaytestRecommended": True,

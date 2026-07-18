@@ -11,7 +11,13 @@ from textual.widgets import Footer, Header, Input, Label, RichLog, Select, Stati
 
 from dungeon_agent.api.models import LanguageCode
 from dungeon_agent.audio.contracts import AudioPort, SilentAudio
-from dungeon_agent.orchestrator.contracts import GamePort, GameSnapshot, TurnView, UsageSnapshot
+from dungeon_agent.orchestrator.contracts import (
+    GamePort,
+    GameSnapshot,
+    OpeningView,
+    TurnView,
+    UsageSnapshot,
+)
 from dungeon_agent.orchestrator.locales import LOCALES, Locale
 
 RuntimeFactory = Callable[[Locale], AbstractContextManager[GamePort]]
@@ -92,6 +98,7 @@ class DungeonApp(App[None]):
         self.locale: Locale | None = None
         self.runtime: AbstractContextManager[GamePort] | None = None
         self.game: GamePort | None = None
+        self.opening: OpeningView | None = None
 
     def compose(self) -> ComposeResult:
         yield Header(show_clock=True)
@@ -117,6 +124,7 @@ class DungeonApp(App[None]):
                     yield Static("", id="dice-result", classes="hidden")
                     yield Input(id="command-input")
                 with Vertical(id="sidebar"):
+                    yield Static("", id="character-state", classes="side-section")
                     yield Static("", id="world-state", classes="side-section")
                     yield Static("", id="session-stats", classes="side-section")
             yield Static("", id="connection-status")
@@ -179,17 +187,37 @@ class DungeonApp(App[None]):
         self.query_one("#connecting-message", Label).update(f"Connection failed\n{message}")
         self.query_one("#connecting-detail", Label).update("Ctrl+Q to exit")
 
-    def _show_game(self, opening: str) -> None:
+    def _show_game(self, opening: OpeningView) -> None:
         assert self.locale is not None
+        self.opening = opening
         self.query_one("#connecting-view").add_class("hidden")
         self.query_one("#game-view").remove_class("hidden")
         story = self.query_one("#story", RichLog)
-        story.write(f"[bold cyan]{self.locale.narrator_label}[/bold cyan]")
-        story.write(opening)
+        story.write(f"[bold magenta]{self.locale.character_title}[/bold magenta]")
+        story.write(
+            f"[bold]{opening.character_name}[/bold] ({opening.pronouns}) — "
+            f"{opening.archetype}\n{opening.appearance}"
+        )
+        story.write(opening.background)
+        story.write(f"[bold]{self.locale.motivation_label}:[/bold] {opening.desire}")
+        story.write(f"[bold]{self.locale.connection_label}:[/bold] {opening.connection}")
+        story.write(
+            f"[bold]{self.locale.strength_label}:[/bold] {opening.strength}  ·  "
+            f"[bold]{self.locale.flaw_label}:[/bold] {opening.flaw}"
+        )
+        story.write(f"[bold]{self.locale.personal_item_label}:[/bold] {opening.meaningful_item}")
+        story.write(f"\n[bold cyan]{self.locale.known_facts_title}[/bold cyan]")
+        for fact in opening.known_facts:
+            story.write(f"• {fact}")
+        story.write(f"\n[bold cyan]{self.locale.opening_scene_title}[/bold cyan]")
+        story.write(opening.scene)
+        story.write(f"\n[bold yellow]{self.locale.possible_starts_title}[/bold yellow]")
+        for choice in opening.opening_choices:
+            story.write(f"• {choice}")
         if self.game is not None:
             self.title = self.game.snapshot().title
         self.audio.start()
-        self.speak(opening)
+        self.speak(opening.scene)
         command_input = self.query_one("#command-input", Input)
         command_input.placeholder = self.locale.player_prompt.strip()
         command_input.focus()
@@ -267,6 +295,15 @@ class DungeonApp(App[None]):
     def _refresh_sidebar(self) -> None:
         if self.game is None or self.locale is None:
             return
+        if self.opening is not None:
+            self.query_one("#character-state", Static).update(
+                f"[bold]{self.locale.character_title}[/bold]\n\n"
+                f"[bold]{self.opening.character_name}[/bold]\n"
+                f"{self.opening.archetype}\n\n"
+                f"{self.locale.motivation_label}: {self.opening.desire}\n"
+                f"{self.locale.strength_label}: {self.opening.strength}\n"
+                f"{self.locale.flaw_label}: {self.opening.flaw}"
+            )
         self.query_one("#world-state", Static).update(
             f"[bold]{self.locale.status_label.upper()}[/bold]\n\n"
             f"{self._format_state(self.game.snapshot())}"

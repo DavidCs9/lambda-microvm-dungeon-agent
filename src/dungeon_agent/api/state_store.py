@@ -4,7 +4,13 @@ import os
 from pathlib import Path
 
 from dungeon_agent.api.adventure import initial_world, resolve_turn, start_adventure
-from dungeon_agent.api.models import AdventurePlan, LanguageCode, TurnProposal, WorldState
+from dungeon_agent.api.models import (
+    AdventurePlan,
+    LanguageCode,
+    PlayerCharacter,
+    TurnProposal,
+    WorldState,
+)
 
 
 class StateStore:
@@ -35,9 +41,11 @@ class StateStore:
             self._write(updated)
             return updated
 
-    async def start_adventure(self, language: LanguageCode, plan: AdventurePlan) -> WorldState:
+    async def start_adventure(
+        self, language: LanguageCode, plan: AdventurePlan, player_character: PlayerCharacter
+    ) -> WorldState:
         async with self._lock:
-            updated = start_adventure(language, plan)
+            updated = start_adventure(language, plan, player_character)
             self._write(updated)
             return updated
 

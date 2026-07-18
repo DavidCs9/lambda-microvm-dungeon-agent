@@ -32,6 +32,29 @@ class Item(BaseModel):
     description: str = Field(min_length=5, max_length=300)
 
 
+class PlayerCharacter(BaseModel):
+    """A playable identity deliberately connected to one adventure."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    name: str = Field(min_length=2, max_length=50)
+    pronouns: str = Field(min_length=2, max_length=30)
+    archetype: str = Field(min_length=3, max_length=80)
+    appearance: str = Field(min_length=10, max_length=240)
+    background: str = Field(min_length=30, max_length=500)
+    desire: str = Field(min_length=10, max_length=220)
+    need: str = Field(min_length=10, max_length=220)
+    connection_to_adventure: str = Field(min_length=20, max_length=350)
+    strength: str = Field(min_length=5, max_length=160)
+    flaw: str = Field(min_length=5, max_length=160)
+    contradiction: str = Field(min_length=10, max_length=220)
+    npc_connection: str = Field(min_length=10, max_length=220)
+    meaningful_item: str = Field(min_length=5, max_length=180)
+    open_question: str = Field(min_length=10, max_length=220)
+    known_facts: list[str] = Field(min_length=2, max_length=3)
+    opening_choices: list[str] = Field(min_length=3, max_length=3)
+
+
 class AdventurePlan(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -111,6 +134,7 @@ class AdventureRequest(BaseModel):
 
     language: LanguageCode
     plan: AdventurePlan
+    player_character: PlayerCharacter
 
 
 class TurnResult(BaseModel):
@@ -131,6 +155,7 @@ class WorldState(BaseModel):
     revision: int = Field(ge=0)
     language: LanguageCode
     plan: AdventurePlan | None = None
+    player_character: PlayerCharacter | None = None
     location_id: str | None = None
     inventory: list[str]
     health: int = Field(ge=0, le=3)

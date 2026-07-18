@@ -16,6 +16,7 @@ from dungeon_agent.audio.local import LocalAudioExperience
 from dungeon_agent.audio.polly import PollySpeechSynthesizer
 from dungeon_agent.orchestrator.agents import (
     AdventureArchitect,
+    CharacterArchitect,
     DungeonMaster,
     StructuredBedrockAgent,
 )
@@ -114,6 +115,7 @@ def create_runtime(args: argparse.Namespace, locale: Locale) -> Iterator[Dungeon
         orchestrator = DungeonOrchestrator(
             microvm_session,
             AdventureArchitect(agent),
+            CharacterArchitect(agent),
             DungeonMaster(agent, locale.code),
             metrics,
             locale,
@@ -146,6 +148,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             orchestrator = DungeonOrchestrator(
                 microvm_session,
                 AdventureArchitect(agent),
+                CharacterArchitect(agent),
                 DungeonMaster(agent, locale.code),
                 metrics,
                 locale,

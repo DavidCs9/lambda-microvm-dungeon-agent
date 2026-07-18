@@ -6,9 +6,31 @@ from dungeon_agent.api.models import (
     Character,
     Item,
     Location,
+    PlayerCharacter,
     StateChanges,
     TurnProposal,
 )
+
+
+def sample_player() -> PlayerCharacter:
+    return PlayerCharacter(
+        name="Iria Vale",
+        pronouns="she/her",
+        archetype="Disgraced bell keeper",
+        appearance="A rain-soaked traveler with silver-streaked hair and steady hands.",
+        background="Iria left the village after failing to sound the warning bell years ago.",
+        desire="Prove she can protect the village when it matters.",
+        need="Accept help instead of carrying every failure alone.",
+        connection_to_adventure="The stolen bell symbolizes the mistake that drove her away.",
+        strength="She understands old mechanisms and keeps calm in danger.",
+        flaw="Pride makes her hide uncertainty from potential allies.",
+        contradiction="She distrusts authority but longs for the village's forgiveness.",
+        npc_connection="Mara was her closest friend before Iria fled the village.",
+        meaningful_item="Her father's cracked brass tuning fork.",
+        open_question="Did someone deliberately stop her from sounding the bell years ago?",
+        known_facts=["Mara knows the old mill.", "The tower needs the true bell."],
+        opening_choices=["Question Mara", "Inspect the tower", "Brave the flooded mill"],
+    )
 
 
 def sample_plan() -> AdventurePlan:
@@ -71,7 +93,7 @@ def proposal(**changes: object) -> TurnProposal:
 
 
 def test_generated_adventure_starts_from_validated_plan() -> None:
-    world = start_adventure("en", sample_plan())
+    world = start_adventure("en", sample_plan(), sample_player())
 
     assert world.status == "active"
     assert world.location_id == "square"
@@ -80,7 +102,7 @@ def test_generated_adventure_starts_from_validated_plan() -> None:
 
 
 def test_d20_selects_and_applies_only_matching_branch() -> None:
-    world = start_adventure("en", sample_plan())
+    world = start_adventure("en", sample_plan(), sample_player())
 
     success = resolve_turn(world, "swing across", proposal(), roll=17)
     failure = resolve_turn(world, "swing across", proposal(), roll=4)
@@ -94,7 +116,7 @@ def test_d20_selects_and_applies_only_matching_branch() -> None:
 
 
 def test_model_cannot_invent_unknown_locations_or_items() -> None:
-    world = start_adventure("en", sample_plan())
+    world = start_adventure("en", sample_plan(), sample_player())
 
     with pytest.raises(ValueError, match="unknown location"):
         resolve_turn(
@@ -113,7 +135,7 @@ def test_model_cannot_invent_unknown_locations_or_items() -> None:
 
 
 def test_objective_completion_and_turn_limit_are_authoritative() -> None:
-    world = start_adventure("en", sample_plan())
+    world = start_adventure("en", sample_plan(), sample_player())
     victory = resolve_turn(
         world,
         "ring the bell",

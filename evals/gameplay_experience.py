@@ -10,9 +10,31 @@ from dungeon_agent.api.models import (
     Character,
     Item,
     Location,
+    PlayerCharacter,
     StateChanges,
     TurnProposal,
 )
+
+
+def _player() -> PlayerCharacter:
+    return PlayerCharacter(
+        name="Iria Vale",
+        pronouns="she/her",
+        archetype="Disgraced bell keeper",
+        appearance="A rain-soaked traveler carrying an old brass tuning fork.",
+        background="Iria fled after failing to warn the village during an earlier storm.",
+        desire="Protect the village and earn another chance.",
+        need="Learn to trust allies instead of carrying the danger alone.",
+        connection_to_adventure="The missing bell embodies the failure that drove her away.",
+        strength="She understands bells and ancient mechanisms.",
+        flaw="Pride prevents her from asking for help.",
+        contradiction="She resents the village but risks everything to save it.",
+        npc_connection="Mara was her closest friend before she fled.",
+        meaningful_item="Her father's cracked tuning fork.",
+        open_question="Was the earlier disaster truly Iria's fault?",
+        known_facts=["Mara knows the mill.", "The tower requires the real bell."],
+        opening_choices=["Question Mara", "Inspect the tower", "Enter the flooded mill"],
+    )
 
 
 def _plan() -> AdventurePlan:
@@ -73,7 +95,7 @@ def _proposal(*, success: StateChanges, failure: StateChanges) -> TurnProposal:
 
 
 def evaluate() -> dict[str, object]:
-    initial = start_adventure("en", _plan())
+    initial = start_adventure("en", _plan(), _player())
     proposal = _proposal(
         success=StateChanges(add_items=["rope"], add_facts=["A safe crossing exists"]),
         failure=StateChanges(health_delta=-1, add_facts=["The flood is dangerous"]),
@@ -95,14 +117,19 @@ def evaluate() -> dict[str, object]:
         ),
     )
     dimensions = {
-        "validated_generated_world": 20 if initial.plan is not None else 0,
-        "d20_branching": 20 if success.health == 3 and failure.health == 2 else 0,
-        "creative_state_progress": 20 if "A safe crossing exists" in success.facts else 0,
-        "authoritative_victory": 20 if victory.status == "won" else 0,
-        "state_consistency": 20 if victory.revision == 2 and "rope" in victory.inventory else 0,
+        "validated_generated_world": 15 if initial.plan is not None else 0,
+        "roleplay_context_persisted": 25
+        if initial.player_character is not None
+        and len(initial.player_character.known_facts) >= 2
+        and len(initial.player_character.opening_choices) == 3
+        else 0,
+        "d20_branching": 15 if success.health == 3 and failure.health == 2 else 0,
+        "creative_state_progress": 15 if "A safe crossing exists" in success.facts else 0,
+        "authoritative_victory": 15 if victory.status == "won" else 0,
+        "state_consistency": 15 if victory.revision == 2 and "rope" in victory.inventory else 0,
     }
     return {
-        "rubricVersion": "2.0",
+        "rubricVersion": "3.0",
         "score": sum(dimensions.values()),
         "maximumScore": 100,
         "dimensions": dimensions,

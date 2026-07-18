@@ -6,7 +6,7 @@ from fastapi.testclient import TestClient
 
 from dungeon_agent.api.config import Settings
 from dungeon_agent.api.main import create_app
-from tests.test_adventure import proposal, sample_plan
+from tests.test_adventure import proposal, sample_plan, sample_player
 
 
 @pytest.fixture
@@ -23,7 +23,11 @@ def test_health_reports_ready(client: TestClient) -> None:
 def test_adventure_and_turn_persist_in_world(client: TestClient) -> None:
     started = client.put(
         "/v1/adventure",
-        json={"language": "en", "plan": sample_plan().model_dump(mode="json")},
+        json={
+            "language": "en",
+            "plan": sample_plan().model_dump(mode="json"),
+            "player_character": sample_player().model_dump(mode="json"),
+        },
     )
     assert started.status_code == 200
     assert started.json()["plan"]["title"] == "The Storm Bell"
@@ -63,7 +67,11 @@ def test_unknown_route_returns_not_found(client: TestClient) -> None:
 def test_invalid_dm_state_change_returns_explainable_conflict(client: TestClient) -> None:
     client.put(
         "/v1/adventure",
-        json={"language": "en", "plan": sample_plan().model_dump(mode="json")},
+        json={
+            "language": "en",
+            "plan": sample_plan().model_dump(mode="json"),
+            "player_character": sample_player().model_dump(mode="json"),
+        },
     )
     invalid = proposal(
         requires_roll=False,

@@ -56,7 +56,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         payload: AdventureRequest,
         store: StoreDependency,
     ) -> WorldState:
-        return await store.start_adventure(payload.language, payload.plan)
+        return await store.start_adventure(payload.language, payload.plan, payload.player_character)
 
     @app.post("/v1/turns", response_model=WorldState, tags=["world"])
     async def apply_turn(payload: TurnRequest, store: StoreDependency) -> WorldState:

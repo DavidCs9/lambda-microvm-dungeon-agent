@@ -3,30 +3,32 @@ from unittest.mock import Mock
 
 import pytest
 
-from dungeon_agent.orchestrator.agents import AdventureArchitect, DungeonMaster
+from dungeon_agent.orchestrator.agents import AdventureArchitect, CharacterArchitect, DungeonMaster
 from dungeon_agent.orchestrator.game import DungeonOrchestrator
 from dungeon_agent.orchestrator.locales import SPANISH, select_language
 from dungeon_agent.orchestrator.observability import SessionMetrics
 from dungeon_agent.orchestrator.session import MicrovmSession
-from tests.test_adventure import proposal, sample_plan
+from tests.test_adventure import proposal, sample_plan, sample_player
 
 
 def orchestrator_with_mocks(
     *, language: str = "en"
-) -> tuple[DungeonOrchestrator, Mock, Mock, Mock, SessionMetrics]:
+) -> tuple[DungeonOrchestrator, Mock, Mock, Mock, Mock, SessionMetrics]:
     session = Mock(spec=MicrovmSession)
     architect = Mock(spec=AdventureArchitect)
+    character_architect = Mock(spec=CharacterArchitect)
     dungeon_master = Mock(spec=DungeonMaster)
     metrics = SessionMetrics.start("us.amazon.nova-micro-v1:0")
     locale = SPANISH if language == "es" else None
     orchestrator = DungeonOrchestrator(
         session,
         architect,
+        character_architect,
         dungeon_master,
         metrics,
         *(tuple([locale]) if locale is not None else ()),
     )
-    return orchestrator, session, architect, dungeon_master, metrics
+    return orchestrator, session, architect, character_architect, dungeon_master, metrics
 
 
 def world_data(*, status: str = "active") -> dict[str, object]:
@@ -34,6 +36,7 @@ def world_data(*, status: str = "active") -> dict[str, object]:
         "revision": 1,
         "language": "en",
         "plan": sample_plan().model_dump(mode="json"),
+        "player_character": sample_player().model_dump(mode="json"),
         "location_id": "square",
         "inventory": [],
         "health": 3,
@@ -52,17 +55,19 @@ def world_data(*, status: str = "active") -> dict[str, object]:
 
 
 def test_opening_generates_and_starts_a_new_adventure() -> None:
-    orchestrator, session, architect, _, _ = orchestrator_with_mocks()
+    orchestrator, session, architect, character_architect, _, _ = orchestrator_with_mocks()
     architect.create.return_value = sample_plan()
+    character_architect.create.return_value = sample_player()
     session.start_adventure.return_value = world_data()
 
-    assert orchestrator.opening_scene() == sample_plan().opening
+    assert orchestrator.opening_scene().character_name == "Iria Vale"
     architect.create.assert_called_once_with("en")
+    character_architect.create.assert_called_once_with("en", sample_plan())
     session.start_adventure.assert_called_once()
 
 
 def test_free_form_action_is_adjudicated_then_validated_by_microvm() -> None:
-    orchestrator, session, _, dungeon_master, _ = orchestrator_with_mocks()
+    orchestrator, session, _, _, dungeon_master, _ = orchestrator_with_mocks()
     session.read_world.return_value = world_data()
     dungeon_master.adjudicate.return_value = proposal()
     session.apply_turn.return_value = world_data()
@@ -78,7 +83,7 @@ def test_free_form_action_is_adjudicated_then_validated_by_microvm() -> None:
 
 
 def test_rejected_model_change_is_repaired_once() -> None:
-    orchestrator, session, _, dungeon_master, _ = orchestrator_with_mocks()
+    orchestrator, session, _, _, dungeon_master, _ = orchestrator_with_mocks()
     session.read_world.return_value = world_data()
     first, repaired = proposal(), proposal(requires_roll=False, difficulty=None)
     dungeon_master.adjudicate.side_effect = [first, repaired]
@@ -95,7 +100,7 @@ def test_rejected_model_change_is_repaired_once() -> None:
 
 
 def test_generated_state_summary_is_human_readable() -> None:
-    orchestrator, session, _, _, _ = orchestrator_with_mocks()
+    orchestrator, session, _, _, _, _ = orchestrator_with_mocks()
     session.read_world.return_value = world_data()
 
     assert orchestrator.state_summary() == (
@@ -116,7 +121,7 @@ def test_spanish_is_an_official_language_option(monkeypatch: pytest.MonkeyPatch)
 
 
 def test_stats_summary_includes_tokens_and_cost() -> None:
-    orchestrator, _, _, _, metrics = orchestrator_with_mocks(language="es")
+    orchestrator, _, _, _, _, metrics = orchestrator_with_mocks(language="es")
     metrics.record(input_tokens=1_000, output_tokens=100, latency_ms=750)
 
     assert "Tokens totales: 1,100" in orchestrator.stats_summary()
@@ -125,7 +130,7 @@ def test_stats_summary_includes_tokens_and_cost() -> None:
 
 @pytest.mark.parametrize("action", ["", "   ", "x" * 501])
 def test_orchestrator_rejects_invalid_actions(action: str) -> None:
-    orchestrator, session, _, dungeon_master, _ = orchestrator_with_mocks()
+    orchestrator, session, _, _, dungeon_master, _ = orchestrator_with_mocks()
 
     with pytest.raises(ValueError):
         orchestrator.take_turn(action)

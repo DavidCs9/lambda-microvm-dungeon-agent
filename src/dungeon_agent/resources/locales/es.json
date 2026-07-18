@@ -42,7 +42,16 @@
     "victoryMessage": "Completaste el objetivo de la aventura.",
     "defeatTitle": "SE ACABÓ EL TIEMPO",
     "defeatMessage": "Esta aventura terminó. En la siguiente sesión te espera una totalmente nueva.",
-    "closeGameHint": "Presiona Enter o Ctrl+Q para terminar"
+    "closeGameHint": "Presiona Enter o Ctrl+Q para terminar",
+    "characterTitle": "TU PERSONAJE",
+    "motivationLabel": "Lo que deseas",
+    "connectionLabel": "Por qué estás aquí",
+    "strengthLabel": "Fortaleza",
+    "flawLabel": "Debilidad",
+    "personalItemLabel": "Objeto personal",
+    "knownFactsTitle": "LO QUE YA SABES",
+    "openingSceneTitle": "LA SITUACIÓN",
+    "possibleStartsTitle": "PODRÍAS COMENZAR ASÍ (O INTENTAR CUALQUIER OTRA COSA)"
   },
   "adventure": {
     "initialStory": "Estás solo dentro de una pequeña taberna cerrada. Encuentra la llave y sal por la puerta principal.",

@@ -1,6 +1,6 @@
 from dungeon_agent.api.models import AdventurePlan
-from dungeon_agent.orchestrator.agents import AdventureArchitect, DungeonMaster
-from dungeon_agent.orchestrator.contracts import GameSnapshot, TurnView, UsageSnapshot
+from dungeon_agent.orchestrator.agents import AdventureArchitect, CharacterArchitect, DungeonMaster
+from dungeon_agent.orchestrator.contracts import GameSnapshot, OpeningView, TurnView, UsageSnapshot
 from dungeon_agent.orchestrator.locales import ENGLISH, Locale
 from dungeon_agent.orchestrator.observability import SessionMetrics
 from dungeon_agent.orchestrator.session import MicrovmSession
@@ -17,21 +17,39 @@ class DungeonOrchestrator:
         self,
         session: MicrovmSession,
         architect: AdventureArchitect,
+        character_architect: CharacterArchitect,
         dungeon_master: DungeonMaster,
         metrics: SessionMetrics,
         locale: Locale = ENGLISH,
     ) -> None:
         self.session = session
         self.architect = architect
+        self.character_architect = character_architect
         self.dungeon_master = dungeon_master
         self.metrics = metrics
         self.locale = locale
         self._world: dict[str, object] | None = None
 
-    def opening_scene(self) -> str:
+    def opening_scene(self) -> OpeningView:
         plan = self.architect.create(self.locale.code)
-        self._world = self.session.start_adventure(self.locale.code, plan)
-        return plan.opening
+        character = self.character_architect.create(self.locale.code, plan)
+        self._world = self.session.start_adventure(self.locale.code, plan, character)
+        return OpeningView(
+            title=plan.title,
+            scene=plan.opening,
+            character_name=character.name,
+            pronouns=character.pronouns,
+            archetype=character.archetype,
+            appearance=character.appearance,
+            background=character.background,
+            desire=character.desire,
+            connection=character.connection_to_adventure,
+            strength=character.strength,
+            flaw=character.flaw,
+            meaningful_item=character.meaningful_item,
+            known_facts=tuple(character.known_facts),
+            opening_choices=tuple(character.opening_choices),
+        )
 
     def take_turn(self, action: str) -> TurnView:
         normalized = action.strip()
@@ -152,7 +170,8 @@ def _optional_integer(value: object) -> int | None:
 
 def play(orchestrator: DungeonOrchestrator, one_turn: str | None, locale: Locale) -> None:
     print(locale.welcome)
-    print(orchestrator.opening_scene())
+    opening = orchestrator.opening_scene()
+    print(_plain_opening(opening, locale))
     if one_turn is not None:
         print(orchestrator.take_turn(one_turn).narration)
         return
@@ -188,3 +207,22 @@ def play(orchestrator: DungeonOrchestrator, one_turn: str | None, locale: Locale
                 return
         except ValueError as error:
             print(f"\n{error}. {locale.invalid_action_hint}\n")
+
+
+def _plain_opening(opening: OpeningView, locale: Locale) -> str:
+    known = "\n".join(f"  - {fact}" for fact in opening.known_facts)
+    choices = "\n".join(f"  - {choice}" for choice in opening.opening_choices)
+    return (
+        f"{locale.character_title}\n"
+        f"{opening.character_name} ({opening.pronouns}) — {opening.archetype}\n"
+        f"{opening.appearance}\n\n"
+        f"{opening.background}\n\n"
+        f"{locale.motivation_label}: {opening.desire}\n"
+        f"{locale.connection_label}: {opening.connection}\n"
+        f"{locale.strength_label}: {opening.strength}\n"
+        f"{locale.flaw_label}: {opening.flaw}\n"
+        f"{locale.personal_item_label}: {opening.meaningful_item}\n\n"
+        f"{locale.known_facts_title}\n{known}\n\n"
+        f"{locale.opening_scene_title}\n{opening.scene}\n\n"
+        f"{locale.possible_starts_title}\n{choices}"
+    )

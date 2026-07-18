@@ -6,7 +6,13 @@ from decimal import Decimal
 from textual.widgets import Label
 
 from dungeon_agent.api.models import LanguageCode
-from dungeon_agent.orchestrator.contracts import GamePort, GameSnapshot, TurnView, UsageSnapshot
+from dungeon_agent.orchestrator.contracts import (
+    GamePort,
+    GameSnapshot,
+    OpeningView,
+    TurnView,
+    UsageSnapshot,
+)
 from dungeon_agent.orchestrator.locales import Locale
 from dungeon_agent.tui.app import DungeonApp
 
@@ -16,8 +22,23 @@ class FakeGame:
         self.actions: list[str] = []
         self.status = status
 
-    def opening_scene(self) -> str:
-        return "Una puerta espera entre las sombras."
+    def opening_scene(self) -> OpeningView:
+        return OpeningView(
+            title="La Campana Perdida",
+            scene="Una puerta espera entre las sombras.",
+            character_name="Iria",
+            pronouns="ella",
+            archetype="Campanera exiliada",
+            appearance="Una viajera empapada con mirada firme.",
+            background="Huyó tras fallar al pueblo y ahora ha regresado.",
+            desire="Salvar el pueblo esta vez.",
+            connection="La campana robada representa su antiguo fracaso.",
+            strength="Entiende mecanismos antiguos.",
+            flaw="Le cuesta pedir ayuda.",
+            meaningful_item="Un diapasón roto.",
+            known_facts=("Mara conoce el molino.", "La torre necesita la campana."),
+            opening_choices=("Hablar con Mara", "Examinar la torre", "Ir al molino"),
+        )
 
     def take_turn(self, action: str) -> TurnView:
         self.actions.append(action)

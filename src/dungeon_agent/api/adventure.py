@@ -5,6 +5,7 @@ import secrets
 from dungeon_agent.api.models import (
     AdventurePlan,
     LanguageCode,
+    PlayerCharacter,
     StateChanges,
     TurnProposal,
     TurnResult,
@@ -23,11 +24,14 @@ def initial_world(language: LanguageCode = "en") -> WorldState:
     )
 
 
-def start_adventure(language: LanguageCode, plan: AdventurePlan) -> WorldState:
+def start_adventure(
+    language: LanguageCode, plan: AdventurePlan, player_character: PlayerCharacter
+) -> WorldState:
     return WorldState(
         revision=0,
         language=language,
         plan=plan,
+        player_character=player_character,
         location_id=plan.starting_location_id,
         inventory=[],
         health=3,
