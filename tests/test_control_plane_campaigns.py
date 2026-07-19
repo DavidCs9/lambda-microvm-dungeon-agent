@@ -17,6 +17,7 @@ from dungeon_agent.control_plane.domain.models import (
     CampaignId,
     CampaignRecord,
     CreateCampaignCommand,
+    OpeningDocument,
 )
 from dungeon_agent.control_plane.identifiers import new_campaign_id
 from dungeon_agent.control_plane.persistence.errors import (
@@ -283,7 +284,9 @@ def test_mark_campaign_ready_persists_opening_title() -> None:
     assert saved is not None
     assert saved.opening_title == opening.title
     assert result["status"] == CampaignStatus.READY.value
-    assert result["opening"]["title"] == opening.title
+    stashed = result["opening"]
+    assert isinstance(stashed, dict)
+    assert stashed["title"] == opening.title
 
 
 def test_emit_campaign_ready_reuses_stashed_opening() -> None:
@@ -307,7 +310,7 @@ def test_emit_campaign_ready_reuses_stashed_opening() -> None:
     class CountingLoader:
         calls = 0
 
-        def load_opening(self, character_ref: str):
+        def load_opening(self, character_ref: str) -> OpeningDocument:
             self.calls += 1
             return sandbox_opening("en")
 
