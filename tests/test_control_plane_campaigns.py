@@ -333,6 +333,7 @@ def test_emit_campaign_ready_reuses_stashed_opening() -> None:
     events = repository.list_after(CAMPAIGN_ID, 0)
     assert events[-1].payload.opening.title == "Stashed title"  # type: ignore[union-attr]
 
+
 def _campaign_event(sequence: int, *, suffix: str) -> CampaignEvent:
     return CampaignEvent(
         event_id=f"evt_01J0000000000000000000000{suffix}",
