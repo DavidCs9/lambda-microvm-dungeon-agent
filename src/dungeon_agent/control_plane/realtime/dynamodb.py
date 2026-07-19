@@ -70,9 +70,7 @@ class DynamoDbConnectionRepository:
     def list_subscribers(self, session_id: SessionId) -> tuple[ConnectionRecord, ...]:
         return self._subscribers_of(self._session_pk(session_id))
 
-    def list_campaign_subscribers(
-        self, campaign_id: CampaignId
-    ) -> tuple[ConnectionRecord, ...]:
+    def list_campaign_subscribers(self, campaign_id: CampaignId) -> tuple[ConnectionRecord, ...]:
         return self._subscribers_of(self._campaign_pk(campaign_id))
 
     def _subscribers_of(self, aggregate_pk: str) -> tuple[ConnectionRecord, ...]:
@@ -113,9 +111,7 @@ class DynamoDbConnectionRepository:
         }
 
     @classmethod
-    def _subscription_item(
-        cls, connection: ConnectionRecord, target_pk: str
-    ) -> dict[str, object]:
+    def _subscription_item(cls, connection: ConnectionRecord, target_pk: str) -> dict[str, object]:
         return {
             "PK": target_pk,
             "SK": cls._subscription_sk(connection.connection_id),

@@ -3,8 +3,8 @@ from datetime import UTC, datetime, timedelta
 import pytest
 from pydantic import ValidationError
 
-from dungeon_agent.control_plane.application import DefaultCampaignFactory
 from dungeon_agent.control_plane.agents.metrics import RoleMetricsCollector
+from dungeon_agent.control_plane.application import DefaultCampaignFactory
 from dungeon_agent.control_plane.domain.enums import (
     CampaignPhase,
     CampaignStatus,

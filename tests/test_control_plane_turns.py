@@ -280,9 +280,12 @@ def test_worker_skips_a_duplicate_async_delivery() -> None:
         clock=lambda: NOW,
     )
 
-    assert worker.handle(_worker_command(new_turn_id()).model_dump(mode="json", by_alias=True))[
-        "status"
-    ] == "skipped"
+    assert (
+        worker.handle(_worker_command(new_turn_id()).model_dump(mode="json", by_alias=True))[
+            "status"
+        ]
+        == "skipped"
+    )
 
 
 def test_worker_failure_returns_the_session_to_ready() -> None:
@@ -308,8 +311,9 @@ def test_worker_failure_returns_the_session_to_ready() -> None:
         clock=lambda: NOW,
     )
 
-    assert worker.handle(_worker_command(turn_id).model_dump(mode="json", by_alias=True))[
-        "status"
-    ] == "failed"
+    assert (
+        worker.handle(_worker_command(turn_id).model_dump(mode="json", by_alias=True))["status"]
+        == "failed"
+    )
     session = repository.get(SESSION_ID)
     assert session is not None and session.status is SessionStatus.READY

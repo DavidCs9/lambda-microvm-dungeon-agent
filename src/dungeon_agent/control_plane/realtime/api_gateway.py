@@ -89,14 +89,14 @@ class ApiGatewayWebSocketAdapter:
                 )
             return _response(200)
         campaign_id = _CAMPAIGN_ID.validate_python(raw_campaign_id)
-        missed = self._service.subscribe_campaign(
+        missed_campaign = self._service.subscribe_campaign(
             connection_id,
             owner_id,
             campaign_id,
             after_sequence=after,
         )
-        for missed_event in missed:
-            self._sender.send(connection_id, missed_event.model_dump_json(by_alias=True).encode())
+        for campaign_event in missed_campaign:
+            self._sender.send(connection_id, campaign_event.model_dump_json(by_alias=True).encode())
         return _response(200)
 
 

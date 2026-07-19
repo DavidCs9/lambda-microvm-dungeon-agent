@@ -142,9 +142,7 @@ class InMemoryCampaignRepository:
             if existing_id is not None:
                 return self._campaigns[existing_id]
             if campaign.campaign_id in self._campaigns:
-                raise CampaignAlreadyExistsError(
-                    f"campaign already exists: {campaign.campaign_id}"
-                )
+                raise CampaignAlreadyExistsError(f"campaign already exists: {campaign.campaign_id}")
             self._campaigns[campaign.campaign_id] = campaign
             self._idempotency[lookup_key] = campaign.campaign_id
             self._events[campaign.campaign_id] = {}
@@ -155,9 +153,7 @@ class InMemoryCampaignRepository:
         with self._lock:
             return self._campaigns.get(campaign_id)
 
-    def find_by_idempotency_key(
-        self, owner_id: str, idempotency_key: str
-    ) -> CampaignRecord | None:
+    def find_by_idempotency_key(self, owner_id: str, idempotency_key: str) -> CampaignRecord | None:
         """Find the campaign produced by one owner's creation request."""
         with self._lock:
             campaign_id = self._idempotency.get((owner_id, idempotency_key))
@@ -212,6 +208,4 @@ class InMemoryCampaignRepository:
     def count_by_owner(self, owner_id: str) -> int:
         """Count every campaign one owner has created."""
         with self._lock:
-            return sum(
-                1 for campaign in self._campaigns.values() if campaign.owner_id == owner_id
-            )
+            return sum(1 for campaign in self._campaigns.values() if campaign.owner_id == owner_id)

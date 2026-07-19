@@ -141,7 +141,9 @@ def test_lifecycle_allows_forward_progress_and_rejects_terminal_changes() -> Non
     require_status_transition(SessionStatus.REQUESTED, SessionStatus.CREATING)
     require_phase_transition(SessionPhase.WAITING_FOR_MICROVM, SessionPhase.INITIALIZING_GAME)
     require_campaign_status_transition(CampaignStatus.CREATING, CampaignStatus.READY)
-    require_campaign_phase_transition(CampaignPhase.CREATING_ADVENTURE, CampaignPhase.CREATING_CHARACTER)
+    require_campaign_phase_transition(
+        CampaignPhase.CREATING_ADVENTURE, CampaignPhase.CREATING_CHARACTER
+    )
 
     with pytest.raises(ValueError, match="invalid session status transition"):
         require_status_transition(SessionStatus.COMPLETED, SessionStatus.ACTIVE)

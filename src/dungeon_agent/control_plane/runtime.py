@@ -230,12 +230,8 @@ def _build_workflow() -> DurableSessionWorkflowStub:
         _REPOSITORY,
         _REPOSITORY,
         campaigns=_CAMPAIGN_REPOSITORY,
-        campaign_adventures=DynamoDbCampaignAdventurePlans(
-            artifact_client, _CAMPAIGN_TABLE_NAME
-        ),
-        campaign_characters=DynamoDbCampaignCharacterBundles(
-            artifact_client, _CAMPAIGN_TABLE_NAME
-        ),
+        campaign_adventures=DynamoDbCampaignAdventurePlans(artifact_client, _CAMPAIGN_TABLE_NAME),
+        campaign_characters=DynamoDbCampaignCharacterBundles(artifact_client, _CAMPAIGN_TABLE_NAME),
         adventures=DynamoDbAdventurePlans(artifact_client, _TABLE_NAME),
         characters=DynamoDbCharacterBundles(artifact_client, _TABLE_NAME),
         microvms=_microvm_manager(),
