@@ -177,11 +177,13 @@ def _build_http_adapter() -> ApiGatewayHttpAdapter:
         turns=_build_turn_invoker(),
         delivery=_build_delivery(),
     )
+    artifact_client = cast(DynamoDbArtifactClient, boto3.client("dynamodb", config=_CONFIG))
     campaigns = CampaignHttpHandlers(
         _CAMPAIGN_REPOSITORY,
         _CAMPAIGN_REPOSITORY,
         starter,
         DefaultCampaignFactory(),
+        openings=DynamoDbCampaignCharacterBundles(artifact_client, _CAMPAIGN_TABLE_NAME),
     )
     return ApiGatewayHttpAdapter(sessions, campaigns, allow_sandbox_identity=True)
 

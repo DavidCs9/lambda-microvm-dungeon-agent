@@ -9,7 +9,7 @@ from uuid import uuid4
 
 from pydantic import TypeAdapter, ValidationError
 
-from dungeon_agent.control_plane.domain.enums import ErrorCode
+from dungeon_agent.control_plane.domain.enums import CampaignStatus, ErrorCode
 from dungeon_agent.control_plane.domain.models import CampaignId, SessionId
 from dungeon_agent.control_plane.http.handlers import (
     CampaignHttpHandlers,
@@ -71,10 +71,14 @@ class ApiGatewayHttpAdapter:
                 result = self._list_events(event, identity, correlation_id)
             elif route_key == "POST /campaigns":
                 result = self._create_campaign(event, headers, identity, correlation_id)
+            elif route_key == "GET /campaigns":
+                result = self._list_campaigns(event, identity, correlation_id)
             elif route_key == "GET /campaigns/{campaignId}":
                 result = self._get_campaign(event, identity, correlation_id)
             elif route_key == "GET /campaigns/{campaignId}/events":
                 result = self._list_campaign_events(event, identity, correlation_id)
+            elif route_key == "GET /campaigns/{campaignId}/opening":
+                result = self._get_campaign_opening(event, identity, correlation_id)
             else:
                 result = self._handlers.error(
                     status_code=404,
@@ -140,6 +144,18 @@ class ApiGatewayHttpAdapter:
             correlation_id=correlation_id,
         )
 
+    def _list_campaigns(
+        self,
+        event: Mapping[str, Any],
+        identity: AuthenticatedIdentity,
+        correlation_id: str,
+    ) -> HttpResult:
+        return self._campaigns.list_campaigns(
+            identity,
+            status=_campaign_status_filter(event),
+            correlation_id=correlation_id,
+        )
+
     def _get_campaign(
         self,
         event: Mapping[str, Any],
@@ -148,6 +164,19 @@ class ApiGatewayHttpAdapter:
     ) -> HttpResult:
         campaign_id = _path_parameter(event, "campaignId", CAMPAIGN_ID_ADAPTER)
         return self._campaigns.get_campaign(
+            identity,
+            campaign_id,
+            correlation_id=correlation_id,
+        )
+
+    def _get_campaign_opening(
+        self,
+        event: Mapping[str, Any],
+        identity: AuthenticatedIdentity,
+        correlation_id: str,
+    ) -> HttpResult:
+        campaign_id = _path_parameter(event, "campaignId", CAMPAIGN_ID_ADAPTER)
+        return self._campaigns.get_campaign_opening(
             identity,
             campaign_id,
             correlation_id=correlation_id,
@@ -289,3 +318,13 @@ def _replay_after(event: Mapping[str, Any]) -> int:
     if after < 0:
         raise ValueError("after must be non-negative")
     return after
+
+
+def _campaign_status_filter(event: Mapping[str, Any]) -> str | None:
+    query = event.get("queryStringParameters") or {}
+    if not isinstance(query, Mapping):
+        raise ValueError("queryStringParameters must be an object")
+    status = query.get("status")
+    if status is None or status == "":
+        return None
+    return CampaignStatus(str(status)).value

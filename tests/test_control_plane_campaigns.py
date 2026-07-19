@@ -210,6 +210,19 @@ def test_in_memory_campaign_count_by_owner() -> None:
     assert repository.count_by_owner("user_nobody") == 0
 
 
+def test_in_memory_list_by_owner_is_owner_scoped() -> None:
+    repository = InMemoryCampaignRepository()
+    mine = make_campaign()
+    theirs = make_campaign(campaign_id="cam_01J00000000000000000000009").model_copy(
+        update={"owner_id": "other_user"}
+    )
+    repository.create(mine, "create-request-001")
+    repository.create(theirs, "create-request-002")
+
+    listed = repository.list_by_owner("user_demo")
+    assert [campaign.campaign_id for campaign in listed] == [mine.campaign_id]
+
+
 def _campaign_event(sequence: int, *, suffix: str) -> CampaignEvent:
     return CampaignEvent(
         event_id=f"evt_01J0000000000000000000000{suffix}",

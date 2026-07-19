@@ -209,3 +209,17 @@ class InMemoryCampaignRepository:
         """Count every campaign one owner has created."""
         with self._lock:
             return sum(1 for campaign in self._campaigns.values() if campaign.owner_id == owner_id)
+
+    def list_by_owner(
+        self, owner_id: str, *, status: str | None = None
+    ) -> tuple[CampaignRecord, ...]:
+        """Return one owner's campaigns, newest first, capped for the list route."""
+        with self._lock:
+            campaigns = [
+                campaign
+                for campaign in self._campaigns.values()
+                if campaign.owner_id == owner_id
+                and (status is None or campaign.status.value == status)
+            ]
+        campaigns.sort(key=lambda campaign: campaign.created_at, reverse=True)
+        return tuple(campaigns[:50])

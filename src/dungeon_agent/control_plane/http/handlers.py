@@ -2,6 +2,7 @@
 
 from collections.abc import Callable
 from datetime import UTC, datetime
+from typing import Protocol
 
 from dungeon_agent.control_plane.application.events import append_session_event
 from dungeon_agent.control_plane.application.turns import TurnWorkerInvoker
@@ -21,6 +22,7 @@ from dungeon_agent.control_plane.domain.models import (
     CreateSessionWorkflowInput,
     ErrorDetail,
     ErrorEnvelope,
+    OpeningDocument,
     SessionId,
     SessionRecord,
     SubmitTurnCommand,
@@ -40,10 +42,12 @@ from dungeon_agent.control_plane.http.models import (
     AuthenticatedIdentity,
     CampaignEnvelope,
     CampaignEventListEnvelope,
+    CampaignListEnvelope,
     CreateCampaignRequest,
     CreateSessionRequest,
     EventListEnvelope,
     HttpResult,
+    OpeningEnvelope,
     SessionEnvelope,
     SubmitActionRequest,
     TurnAcceptedEnvelope,
@@ -52,6 +56,10 @@ from dungeon_agent.control_plane.identifiers import new_turn_id
 from dungeon_agent.control_plane.persistence.errors import SessionRevisionConflictError
 
 Clock = Callable[[], datetime]
+
+
+class CampaignOpeningLoader(Protocol):
+    def load_opening(self, character_ref: str) -> OpeningDocument: ...
 
 
 class SessionHttpHandlers:
@@ -502,6 +510,7 @@ class CampaignHttpHandlers:
         workflows: WorkflowStarterPort,
         campaign_factory: CampaignFactoryPort,
         *,
+        openings: CampaignOpeningLoader | None = None,
         clock: Clock | None = None,
         max_campaigns_per_owner: int = 10,
     ) -> None:
@@ -509,6 +518,7 @@ class CampaignHttpHandlers:
         self._events = events
         self._workflows = workflows
         self._campaign_factory = campaign_factory
+        self._openings = openings
         self._clock = clock or _utc_now
         self._max_campaigns_per_owner = max_campaigns_per_owner
 
@@ -564,6 +574,24 @@ class CampaignHttpHandlers:
             return self._dependency_error(correlation_id)
         return self._accepted(campaign, correlation_id)
 
+    def list_campaigns(
+        self,
+        identity: AuthenticatedIdentity,
+        *,
+        status: str | None = None,
+        correlation_id: str,
+    ) -> HttpResult:
+        """List an owner's campaigns for resume discovery, optionally filtered by status."""
+        try:
+            campaigns = self._campaigns.list_by_owner(identity.owner_id, status=status)
+        except Exception:
+            return self._dependency_error(correlation_id)
+        return HttpResult(
+            status_code=200,
+            body=CampaignListEnvelope(campaigns=campaigns),
+            correlation_id=correlation_id,
+        )
+
     def get_campaign(
         self,
         identity: AuthenticatedIdentity,
@@ -583,6 +611,42 @@ class CampaignHttpHandlers:
         return HttpResult(
             status_code=200,
             body=CampaignEnvelope(campaign=campaign),
+            correlation_id=correlation_id,
+        )
+
+    def get_campaign_opening(
+        self,
+        identity: AuthenticatedIdentity,
+        campaign_id: CampaignId,
+        *,
+        correlation_id: str,
+    ) -> HttpResult:
+        """Return the opening for a ready campaign without replaying event history."""
+        try:
+            campaign = self._campaigns.get(campaign_id)
+        except Exception:
+            return self._dependency_error(correlation_id)
+        access_error = self._access_error(identity, campaign, correlation_id)
+        if access_error is not None:
+            return access_error
+        assert campaign is not None
+        if campaign.status is not CampaignStatus.READY:
+            return self.error(
+                status_code=409,
+                code=ErrorCode.CAMPAIGN_CONFLICT,
+                message="The campaign is not ready for play.",
+                retryable=True,
+                correlation_id=correlation_id,
+            )
+        if self._openings is None or campaign.character_ref is None:
+            return self._dependency_error(correlation_id)
+        try:
+            opening = self._openings.load_opening(campaign.character_ref)
+        except Exception:
+            return self._dependency_error(correlation_id)
+        return HttpResult(
+            status_code=200,
+            body=OpeningEnvelope(campaign_id=campaign_id, opening=opening),
             correlation_id=correlation_id,
         )
 

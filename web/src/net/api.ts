@@ -1,6 +1,8 @@
 import type {
   CampaignEnvelope,
+  CampaignListEnvelope,
   LanguageCode,
+  OpeningEnvelope,
   SessionEnvelope,
   TurnAcceptedEnvelope,
 } from "./types";
@@ -48,6 +50,15 @@ export class ApiClient {
 
   getCampaign(campaignId: string): Promise<CampaignEnvelope> {
     return this.request<CampaignEnvelope>("GET", `/campaigns/${campaignId}`);
+  }
+
+  listCampaigns(status?: string): Promise<CampaignListEnvelope> {
+    const query = status ? `?status=${encodeURIComponent(status)}` : "";
+    return this.request<CampaignListEnvelope>("GET", `/campaigns${query}`);
+  }
+
+  getCampaignOpening(campaignId: string): Promise<OpeningEnvelope> {
+    return this.request<OpeningEnvelope>("GET", `/campaigns/${campaignId}/opening`);
   }
 
   createSession(campaignId: string, language: LanguageCode = "es"): Promise<SessionEnvelope> {

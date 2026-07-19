@@ -278,6 +278,37 @@ class DynamoDbCampaignRepository:
             total += count
         return total
 
+    def list_by_owner(
+        self, owner_id: str, *, status: str | None = None
+    ) -> tuple[CampaignRecord, ...]:
+        """List one owner's campaigns via ``ByOwner``, newest ``createdAt`` first.
+
+        The GSI has no sort key, so order is applied in process. Soft lab cap: 50.
+        """
+        paginator = self._client.get_paginator("query")
+        query: dict[str, object] = {
+            "TableName": self._table_name,
+            "IndexName": "ByOwner",
+            "KeyConditionExpression": "ownerId = :owner",
+            "ExpressionAttributeValues": {":owner": self._string(owner_id)},
+        }
+        if status is not None:
+            query["FilterExpression"] = "#status = :status"
+            query["ExpressionAttributeNames"] = {"#status": "status"}
+            values = query["ExpressionAttributeValues"]
+            assert isinstance(values, dict)
+            values[":status"] = self._string(status)
+        campaigns: list[CampaignRecord] = []
+        for page in paginator.paginate(**query):
+            raw_items = page.get("Items", [])
+            if not isinstance(raw_items, list):
+                raise RuntimeError("DynamoDB list query returned invalid campaign items")
+            campaigns.extend(
+                self._campaign_from_item(item) for item in raw_items if isinstance(item, Mapping)
+            )
+        campaigns.sort(key=lambda campaign: campaign.created_at, reverse=True)
+        return tuple(campaigns[:50])
+
     @classmethod
     def _campaign_item(cls, campaign: CampaignRecord) -> Item:
         return {

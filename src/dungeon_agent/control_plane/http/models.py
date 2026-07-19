@@ -11,6 +11,7 @@ from dungeon_agent.control_plane.domain.models import (
     CampaignId,
     CampaignRecord,
     ErrorEnvelope,
+    OpeningDocument,
     SessionEvent,
     SessionId,
     SessionRecord,
@@ -59,6 +60,21 @@ class CampaignEnvelope(ContractModel):
     campaign: CampaignRecord
 
 
+class CampaignListEnvelope(ContractModel):
+    """Owner-scoped campaign list for resume discovery."""
+
+    version: Literal[1] = 1
+    campaigns: tuple[CampaignRecord, ...]
+
+
+class OpeningEnvelope(ContractModel):
+    """Opening document for a ready campaign, loaded without event replay."""
+
+    version: Literal[1] = 1
+    campaign_id: CampaignId
+    opening: OpeningDocument
+
+
 class TurnAcceptedEnvelope(ContractModel):
     """Acknowledgement that an action was checked out for asynchronous adjudication."""
 
@@ -89,6 +105,8 @@ class CampaignEventListEnvelope(ContractModel):
 HttpBody = (
     SessionEnvelope
     | CampaignEnvelope
+    | CampaignListEnvelope
+    | OpeningEnvelope
     | TurnAcceptedEnvelope
     | EventListEnvelope
     | CampaignEventListEnvelope

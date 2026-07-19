@@ -52,6 +52,17 @@ export interface CampaignEnvelope {
   campaign: CampaignRecord;
 }
 
+export interface CampaignListEnvelope {
+  version: 1;
+  campaigns: CampaignRecord[];
+}
+
+export interface OpeningEnvelope {
+  version: 1;
+  campaignId: string;
+  opening: OpeningDocument;
+}
+
 export interface SessionEnvelope {
   version: 1;
   session: SessionRecord;
@@ -88,6 +99,8 @@ export interface ControlPlaneEvent {
 
 export type ApiOk =
   | CampaignEnvelope
+  | CampaignListEnvelope
+  | OpeningEnvelope
   | SessionEnvelope
   | TurnAcceptedEnvelope
   | ControlPlaneEvent[];
