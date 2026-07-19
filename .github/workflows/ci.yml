@@ -14,8 +14,63 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  changes:
+    name: Detect changes
+    runs-on: ubuntu-latest
+    outputs:
+      run_ci: ${{ steps.detect.outputs.run_ci }}
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7.0.0
+        with:
+          fetch-depth: 0
+      - name: Decide whether code CI is needed
+        id: detect
+        run: |
+          set -euo pipefail
+          if [[ "${{ github.event_name }}" == "pull_request" ]]; then
+            base="${{ github.event.pull_request.base.sha }}"
+            head="${{ github.event.pull_request.head.sha }}"
+          else
+            base="${{ github.event.before }}"
+            head="${{ github.sha }}"
+          fi
+
+          # New branch / force-push with no useful before SHA: run full CI.
+          if [[ -z "${base}" || "${base}" == "0000000000000000000000000000000000000000" ]]; then
+            echo "run_ci=true" >> "$GITHUB_OUTPUT"
+            echo "No usable base SHA; running full CI."
+            exit 0
+          fi
+
+          mapfile -t files < <(git diff --name-only "${base}" "${head}")
+          if [[ "${#files[@]}" -eq 0 ]]; then
+            echo "run_ci=true" >> "$GITHUB_OUTPUT"
+            echo "Empty diff; running full CI."
+            exit 0
+          fi
+
+          non_md=()
+          for path in "${files[@]}"; do
+            if [[ "${path}" != *.md ]]; then
+              non_md+=("${path}")
+            fi
+          done
+
+          if [[ "${#non_md[@]}" -eq 0 ]]; then
+            echo "run_ci=false" >> "$GITHUB_OUTPUT"
+            echo "Markdown-only change; skipping heavy CI jobs."
+            printf '%s\n' "${files[@]}"
+          else
+            echo "run_ci=true" >> "$GITHUB_OUTPUT"
+            echo "Non-markdown files changed; running full CI."
+            printf '%s\n' "${non_md[@]}"
+          fi
+
   test:
     name: Python 3.14
+    needs: changes
+    if: needs.changes.outputs.run_ci == 'true'
     runs-on: ubuntu-latest
     steps:
       - name: Check out repository
@@ -38,6 +93,8 @@ jobs:
 
   container:
     name: Build ARM64 container
+    needs: changes
+    if: needs.changes.outputs.run_ci == 'true'
     runs-on: ubuntu-latest
     steps:
       - name: Check out repository
@@ -55,6 +112,8 @@ jobs:
 
   package:
     name: Package release source
+    needs: changes
+    if: needs.changes.outputs.run_ci == 'true'
     runs-on: ubuntu-latest
     steps:
       - name: Check out repository
