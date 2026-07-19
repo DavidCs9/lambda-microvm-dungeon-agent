@@ -3,7 +3,11 @@ from unittest.mock import Mock
 import pytest
 from pydantic import ValidationError
 
-from dungeon_agent.control_plane.agents import CharacterArchitect, StructuredBedrockAgent
+from dungeon_agent.control_plane.agents import (
+    AdventureArchitect,
+    CharacterArchitect,
+    StructuredBedrockAgent,
+)
 from dungeon_agent.orchestrator.observability import SessionMetrics
 from tests.test_adventure import sample_plan, sample_player
 
@@ -116,3 +120,22 @@ def test_character_architect_grounds_protagonist_in_adventure() -> None:
     prompt = request["messages"][0]["content"][0]["text"]
     assert '"adventure"' in prompt
     assert "Spanish" in prompt
+
+
+def test_adventure_architect_injects_theme_seed_into_prompt() -> None:
+    client = Mock()
+    client.converse.return_value = response_for(
+        "create_adventure", sample_plan().model_dump(mode="json")
+    )
+    architect = AdventureArchitect(
+        StructuredBedrockAgent(client, "test-model", SessionMetrics.start("test-model"))
+    )
+
+    architect.create("es", theme_seed="a ferry stuck between two dawns")
+
+    request = client.converse.call_args.kwargs
+    prompt = request["messages"][0]["content"][0]["text"]
+    system = request["system"][0]["text"]
+    assert "a ferry stuck between two dawns" in prompt
+    assert "Spanish" in prompt
+    assert "silenced village bell" in system
