@@ -31,17 +31,23 @@ Resources:
           AttributeType: S
         - AttributeName: ownerId
           AttributeType: S
+        - AttributeName: campaignId
+          AttributeType: S
       KeySchema:
         - AttributeName: PK
           KeyType: HASH
         - AttributeName: SK
           KeyType: RANGE
       GlobalSecondaryIndexes:
-        # DynamoDB allows only one GSI create per table update. ByCampaign is added in a
-        # follow-up deploy after ByOwner is ACTIVE.
         - IndexName: ByOwner
           KeySchema:
             - AttributeName: ownerId
+              KeyType: HASH
+          Projection:
+            ProjectionType: ALL
+        - IndexName: ByCampaign
+          KeySchema:
+            - AttributeName: campaignId
               KeyType: HASH
           Projection:
             ProjectionType: ALL
