@@ -9,9 +9,10 @@ import type {
   SessionRecord,
 } from "../net/types";
 import { RealtimeClient, type WsStatus } from "../net/ws";
+import { humanError } from "../ui/copy";
 
 const PLAYER_KEY = "dungeon-agent.playerId";
-const DICE_CLEAR_MS = 1400;
+export const PLAYER_LANGUAGE = "es" as const;
 
 export type Screen = "landing" | "ritual" | "phase" | "opening" | "play" | "outcome";
 
@@ -36,7 +37,13 @@ export interface GameState {
   phaseKind: "campaign" | "session" | null;
   turnPending: boolean;
   narrationStream: string;
-  turnLog: Array<{ turnId: string; narration: string; success?: boolean; roll?: number }>;
+  turnLog: Array<{
+    turnId: string;
+    narration: string;
+    success?: boolean;
+    roll?: number;
+    action?: string;
+  }>;
   diceBeat: DiceBeat;
   outcome: "won" | "lost" | "abandoned" | null;
   errorMessage: string | null;
@@ -45,7 +52,7 @@ export interface GameState {
 type Listener = () => void;
 
 const listeners = new Set<Listener>();
-let diceClearTimer: number | null = null;
+let pendingActionText = "";
 
 function loadPlayerId(): string {
   try {
@@ -120,14 +127,29 @@ export function useGameStore<T>(selector: (s: GameState) => T): T {
   );
 }
 
-function errorMessageOf(error: unknown): string {
+function errorCodeOf(error: unknown): string | null {
   if (error instanceof ApiError) {
-    return error.message;
+    const body = error.body;
+    if (typeof body === "object" && body !== null && "error" in body) {
+      const code = (body as { error?: { code?: unknown } }).error?.code;
+      if (typeof code === "string") {
+        return code;
+      }
+    }
+  }
+  return null;
+}
+
+function errorMessageOf(error: unknown): string {
+  const code = errorCodeOf(error);
+  if (code) {
+    console.warn(`API error code: ${code}`);
+    return humanError(code);
   }
   if (error instanceof Error) {
-    return error.message;
+    console.warn(`API error: ${error.message}`);
   }
-  return String(error);
+  return humanError(null);
 }
 
 function ensureConfigured(): void {
@@ -136,21 +158,6 @@ function ensureConfigured(): void {
       "Missing VITE_HTTP_URL / VITE_WS_URL. Copy web/.env.example to web/.env.local.",
     );
   }
-}
-
-function clearDiceTimer(): void {
-  if (diceClearTimer !== null) {
-    window.clearTimeout(diceClearTimer);
-    diceClearTimer = null;
-  }
-}
-
-function scheduleDiceClear(): void {
-  clearDiceTimer();
-  diceClearTimer = window.setTimeout(() => {
-    diceClearTimer = null;
-    setState({ diceBeat: null });
-  }, DICE_CLEAR_MS);
 }
 
 function payloadTurnId(payload: Record<string, unknown> | undefined): string {
@@ -283,6 +290,7 @@ function applyEvent(event: ControlPlaneEvent): void {
         return;
       }
       const code = typeof payload.code === "string" ? payload.code : "campaign_creation_failed";
+      console.warn(`campaign.creation.failed: ${code}`);
       setState({
         campaign: {
           ...campaign,
@@ -290,7 +298,7 @@ function applyEvent(event: ControlPlaneEvent): void {
           phase: "failed",
           lastEventSequence: Math.max(campaign.lastEventSequence, event.sequence),
         },
-        errorMessage: code,
+        errorMessage: humanError(code),
         screen: state.screen === "phase" ? "phase" : "ritual",
       });
       return;
@@ -354,6 +362,7 @@ function applyEvent(event: ControlPlaneEvent): void {
     }
     case "session.creation.failed": {
       const code = typeof payload.code === "string" ? payload.code : "session_creation_failed";
+      console.warn(`session.creation.failed: ${code}`);
       setState({
         session: session
           ? {
@@ -363,7 +372,7 @@ function applyEvent(event: ControlPlaneEvent): void {
               lastEventSequence: Math.max(session.lastEventSequence, event.sequence),
             }
           : null,
-        errorMessage: code,
+        errorMessage: humanError(code),
         phaseLabel: null,
         phaseKind: null,
         screen: "opening",
@@ -381,6 +390,7 @@ function applyEvent(event: ControlPlaneEvent): void {
         },
         turnPending: true,
         narrationStream: "",
+        diceBeat: null,
         errorMessage: null,
       });
       return;
@@ -393,7 +403,6 @@ function applyEvent(event: ControlPlaneEvent): void {
       const roll = typeof payload.roll === "number" ? payload.roll : 0;
       const difficulty = typeof payload.difficulty === "number" ? payload.difficulty : 0;
       const success = payload.success === true;
-      clearDiceTimer();
       setState({
         session: {
           ...session,
@@ -433,7 +442,9 @@ function applyEvent(event: ControlPlaneEvent): void {
         ...(dice && dice.turnId === turnId
           ? { success: dice.success, roll: dice.roll }
           : {}),
+        ...(pendingActionText ? { action: pendingActionText } : {}),
       };
+      pendingActionText = "";
       setState({
         session: {
           ...session,
@@ -446,7 +457,6 @@ function applyEvent(event: ControlPlaneEvent): void {
         narrationStream: narration,
         turnLog: [...state.turnLog, entry],
       });
-      scheduleDiceClear();
       return;
     }
     case "session.completed": {
@@ -552,7 +562,7 @@ export const gameActions = {
         outcome: null,
         expectedRevision: 0,
       });
-      const envelope = await api.createCampaign("es");
+      const envelope = await api.createCampaign(PLAYER_LANGUAGE);
       const campaign = envelope.campaign;
       setState({
         campaign,
@@ -634,7 +644,7 @@ export const gameActions = {
   async startSession(): Promise<void> {
     const campaign = state.campaign;
     if (!campaign || campaign.status !== "ready") {
-      setState({ errorMessage: "Campaign must be ready before starting a session" });
+      setState({ errorMessage: humanError("validation_failed") });
       return;
     }
     syncClients(state.playerId);
@@ -654,7 +664,7 @@ export const gameActions = {
         diceBeat: null,
         outcome: null,
       });
-      const envelope = await api.createSession(campaign.campaignId, "es");
+      const envelope = await api.createSession(campaign.campaignId, PLAYER_LANGUAGE);
       const session = envelope.session;
       setState({
         session,
@@ -680,11 +690,13 @@ export const gameActions = {
       return;
     }
     syncClients(state.playerId);
+    pendingActionText = trimmed;
     setState({ turnPending: true, narrationStream: "", errorMessage: null });
     try {
       ensureConfigured();
       await api.submitAction(session.sessionId, trimmed, state.expectedRevision);
     } catch (error) {
+      pendingActionText = "";
       setState({
         turnPending: false,
         errorMessage: errorMessageOf(error),
@@ -701,13 +713,7 @@ export const gameActions = {
     void gameActions.startSession();
   },
 
-  dismissDiceBeat(): void {
-    clearDiceTimer();
-    setState({ diceBeat: null });
-  },
-
   resetToLanding(): void {
-    clearDiceTimer();
     setState({
       ...createInitialState(state.playerId),
       wsStatus: state.wsStatus,

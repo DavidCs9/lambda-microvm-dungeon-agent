@@ -560,6 +560,9 @@ def test_list_campaigns_returns_only_owner_campaigns() -> None:
     body = _body(response)
     ids = [campaign["campaignId"] for campaign in body["campaigns"]]
     assert ids == [CAMPAIGN_ID]
+    listed = body["campaigns"][0]
+    assert "openingTitle" in listed
+    assert "createdAt" in listed
 
 
 def test_get_campaign_opening_ready_and_not_ready() -> None:

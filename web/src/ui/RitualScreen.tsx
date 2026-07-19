@@ -1,14 +1,14 @@
 import { motion } from "framer-motion";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { gameActions, useGameStore } from "../state/store";
-import {
-  EmberButton,
-  ErrorLine,
-  GhostButton,
-  QuietMeta,
-  ScreenShell,
-  wsStatusLabel,
-} from "./shared";
+import { Card, EmberButton, ErrorLine, QuietMeta, ScreenShell, wsStatusLabel } from "./shared";
+
+function formatDate(value: string | undefined): string {
+  if (!value) return "";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "";
+  return date.toLocaleDateString("es", { day: "2-digit", month: "short", year: "numeric" });
+}
 
 export function RitualScreen() {
   const playerId = useGameStore((s) => s.playerId);
@@ -18,7 +18,10 @@ export function RitualScreen() {
   const campaignsLoading = useGameStore((s) => s.campaignsLoading);
   const [busy, setBusy] = useState(false);
   const [resumingId, setResumingId] = useState<string | null>(null);
-  const [listOpen, setListOpen] = useState(false);
+
+  useEffect(() => {
+    void gameActions.loadCampaigns();
+  }, []);
 
   async function onForge() {
     if (busy || resumingId) return;
@@ -28,12 +31,6 @@ export function RitualScreen() {
     } finally {
       setBusy(false);
     }
-  }
-
-  async function onShowCampaigns() {
-    if (busy || resumingId) return;
-    setListOpen(true);
-    await gameActions.loadCampaigns();
   }
 
   async function onResume(campaignId: string) {
@@ -69,46 +66,42 @@ export function RitualScreen() {
           {busy ? "Forjando…" : "Forjar campaña"}
         </EmberButton>
 
-        <GhostButton
-          disabled={busy || campaignsLoading || !!resumingId}
-          onClick={() => void onShowCampaigns()}
-        >
-          {campaignsLoading ? "Cargando…" : "Mis campañas"}
-        </GhostButton>
-
-        {listOpen && !campaignsLoading ? (
-          <div className="mt-8 w-full max-w-sm text-left">
-            {campaigns.length === 0 ? (
-              <p className="text-center text-sm text-[var(--muted)]">Sin campañas listas</p>
-            ) : (
-              <ul className="flex flex-col gap-3">
-                {campaigns.map((campaign) => {
-                  const shortId = campaign.campaignId.slice(-8);
-                  const selected = resumingId === campaign.campaignId;
-                  return (
-                    <li key={campaign.campaignId}>
-                      <button
-                        type="button"
-                        disabled={busy || !!resumingId}
-                        onClick={() => void onResume(campaign.campaignId)}
-                        className="flex w-full items-center justify-between border-b border-[var(--line)] px-1 py-3 text-left transition hover:border-[var(--ember)]/50 disabled:opacity-40"
-                      >
-                        <span className="text-base text-[var(--ink)] [font-family:var(--font-display)]">
-                          {selected ? "Reanudando…" : `…${shortId}`}
-                        </span>
-                        <span className="text-xs tracking-[0.18em] text-[var(--muted)] uppercase">
-                          {campaign.language}
-                        </span>
-                      </button>
-                    </li>
-                  );
-                })}
-              </ul>
-            )}
-          </div>
-        ) : null}
-
         <ErrorLine message={errorMessage} />
+
+        <div className="mt-14 w-full max-w-sm text-left">
+          <p className="mb-4 text-center text-xs tracking-[0.22em] text-[var(--muted)] uppercase [font-family:var(--font-ui)]">
+            Campañas listas
+          </p>
+
+          {campaignsLoading ? (
+            <p className="text-center text-sm text-[var(--muted)] [font-family:var(--font-ui)]">
+              Cargando…
+            </p>
+          ) : campaigns.length === 0 ? (
+            <p className="text-center text-sm text-[var(--muted)] [font-family:var(--font-ui)]">
+              Aún no hay campañas. Forja la primera.
+            </p>
+          ) : (
+            <ul className="flex flex-col gap-3">
+              {campaigns.map((campaign) => {
+                const title = campaign.openingTitle?.trim() || `…${campaign.campaignId.slice(-8)}`;
+                const date = formatDate(campaign.createdAt);
+                const meta = [date, campaign.language].filter(Boolean).join(" · ");
+                return (
+                  <li key={campaign.campaignId}>
+                    <Card
+                      title={resumingId === campaign.campaignId ? "Reanudando…" : title}
+                      meta={meta}
+                      disabled={busy || !!resumingId}
+                      selected={resumingId === campaign.campaignId}
+                      onClick={() => void onResume(campaign.campaignId)}
+                    />
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+        </div>
 
         <QuietMeta>
           {playerId} · {wsStatusLabel(wsStatus)}

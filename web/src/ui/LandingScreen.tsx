@@ -59,7 +59,7 @@ export function LandingScreen() {
         />
 
         {missingEnv ? (
-          <p className="mt-8 max-w-sm text-sm leading-relaxed text-[#e8a07a]">
+          <p className="mt-8 max-w-sm text-sm leading-relaxed text-[var(--danger)]">
             Falta configurar el entorno: define VITE_HTTP_URL y VITE_WS_URL en
             web/.env.local.
           </p>
