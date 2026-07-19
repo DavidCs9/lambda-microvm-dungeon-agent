@@ -9,7 +9,13 @@ from datetime import UTC, datetime
 from typing import Protocol, cast
 
 from dungeon_agent.control_plane.domain.models import MicrovmLaunchResult, SessionId
-from dungeon_agent.domain.game import AdventurePlan, LanguageCode, PlayerCharacter, WorldState
+from dungeon_agent.domain.game import (
+    AdventurePlan,
+    LanguageCode,
+    PlayerCharacter,
+    TurnProposal,
+    WorldState,
+)
 from dungeon_agent.microvm import HttpResult, request_json
 
 _TERMINAL_STATES = {"TERMINATED"}
@@ -70,8 +76,8 @@ class _NullMetrics:
         del operation, latency_ms
 
 
-class RehydrationNotSupportedError(RuntimeError):
-    """Raised when the current MicroVM API cannot restore a supplied snapshot."""
+class TurnRejectedError(RuntimeError):
+    """Raised when the MicroVM rules API rejects a Dungeon Master proposal."""
 
 
 @dataclass(frozen=True)
@@ -148,19 +154,7 @@ class LambdaMicrovmManager:
         character: PlayerCharacter,
     ) -> WorldState:
         started = self._monotonic()
-        microvm = self._client.get_microvm(microvmIdentifier=microvm_id)
-        if microvm.get("state") != "RUNNING":
-            microvm = self.wait_until_running(microvm_id)
-        endpoint = self._required_string(microvm, "endpoint")
-        token_response = self._client.create_microvm_auth_token(
-            microvmIdentifier=microvm_id,
-            expirationInMinutes=30,
-            allowedPorts=[{"port": 8080}],
-        )
-        auth_token = token_response.get("authToken")
-        if not isinstance(auth_token, Mapping):
-            raise RuntimeError("MicroVM auth response did not contain authToken")
-        token = self._required_string(cast(Mapping[str, object], auth_token), "X-aws-proxy-auth")
+        endpoint, token = self._endpoint_and_token(microvm_id)
         result = self._requester(
             endpoint,
             token,
@@ -178,23 +172,39 @@ class LambdaMicrovmManager:
         self._metrics.record("initialization", self._elapsed_ms(started))
         return world
 
+    def apply_turn(self, microvm_id: str, action: str, proposal: TurnProposal) -> WorldState:
+        started = self._monotonic()
+        endpoint, token = self._endpoint_and_token(microvm_id)
+        result = self._requester(
+            endpoint,
+            token,
+            "POST",
+            "/v1/turns",
+            {
+                "action": action,
+                "proposal": cast(dict[str, object], proposal.model_dump(mode="json")),
+            },
+        )
+        if result.status == 409:
+            raise TurnRejectedError(f"MicroVM rejected the proposal: {result.body}")
+        if not 200 <= result.status < 300:
+            raise RuntimeError(f"apply turn returned HTTP {result.status}: {result.body}")
+        world = WorldState.model_validate(result.body)
+        self._metrics.record("turn", self._elapsed_ms(started))
+        return world
+
+    def is_running(self, microvm_id: str) -> bool:
+        try:
+            microvm = self._client.get_microvm(microvmIdentifier=microvm_id)
+        except Exception:
+            return False
+        return microvm.get("state") == "RUNNING"
+
     def rehydrate(self, session_id: SessionId, state: WorldState) -> MicrovmLaunchResult:
-        self._require_rehydratable_state(state)
-        assert state.plan is not None
-        assert state.player_character is not None
         started = self._monotonic()
         launch = self.launch(session_id)
         try:
-            restored = self.initialize(
-                launch.microvm_id,
-                state.language,
-                state.plan,
-                state.player_character,
-            )
-            if restored != state:
-                raise RehydrationNotSupportedError(
-                    "MicroVM initialization did not reproduce the requested snapshot"
-                )
+            self.restore(launch.microvm_id, state)
         except Exception as error:
             try:
                 self.terminate(launch.microvm_id)
@@ -204,11 +214,44 @@ class LambdaMicrovmManager:
         self._metrics.record("rehydration", self._elapsed_ms(started))
         return launch
 
+    def restore(self, microvm_id: str, state: WorldState) -> None:
+        endpoint, token = self._endpoint_and_token(microvm_id)
+        result = self._requester(
+            endpoint,
+            token,
+            "PUT",
+            "/v1/state",
+            cast(dict[str, object], state.model_dump(mode="json")),
+        )
+        if not 200 <= result.status < 300:
+            raise RuntimeError(f"restore MicroVM returned HTTP {result.status}: {result.body}")
+        restored = WorldState.model_validate(result.body)
+        if restored.revision != state.revision:
+            raise RuntimeError(
+                f"MicroVM restored revision {restored.revision}, expected {state.revision}"
+            )
+
     def terminate(self, microvm_id: str) -> None:
         started = self._monotonic()
         self._client.terminate_microvm(microvmIdentifier=microvm_id)
         self._wait_for_state(microvm_id, "TERMINATED")
         self._metrics.record("termination", self._elapsed_ms(started))
+
+    def _endpoint_and_token(self, microvm_id: str) -> tuple[str, str]:
+        microvm = self._client.get_microvm(microvmIdentifier=microvm_id)
+        if microvm.get("state") != "RUNNING":
+            microvm = self.wait_until_running(microvm_id)
+        endpoint = self._required_string(microvm, "endpoint")
+        token_response = self._client.create_microvm_auth_token(
+            microvmIdentifier=microvm_id,
+            expirationInMinutes=30,
+            allowedPorts=[{"port": 8080}],
+        )
+        auth_token = token_response.get("authToken")
+        if not isinstance(auth_token, Mapping):
+            raise RuntimeError("MicroVM auth response did not contain authToken")
+        token = self._required_string(cast(Mapping[str, object], auth_token), "X-aws-proxy-auth")
+        return endpoint, token
 
     def _resolve_latest_image(self) -> _ImageVersion:
         image_identifier = self._image_name_or_arn
@@ -249,24 +292,6 @@ class LambdaMicrovmManager:
                 raise RuntimeError(f"MicroVM entered {state}: {reason}")
             self._sleep(self._poll_interval_seconds)
         raise TimeoutError(f"Timed out waiting for MicroVM {microvm_id} to reach {expected_state}")
-
-    def _require_rehydratable_state(self, state: WorldState) -> None:
-        if state.plan is None or state.player_character is None:
-            raise RehydrationNotSupportedError("Cannot rehydrate a world without an adventure")
-        is_initial = (
-            state.revision == 0
-            and state.status == "active"
-            and state.location_id == state.plan.starting_location_id
-            and not state.inventory
-            and state.health == 3
-            and not state.facts
-            and state.last_result is None
-        )
-        if not is_initial:
-            raise RehydrationNotSupportedError(
-                "The current MicroVM API can only restore an initial adventure; "
-                "it has no full-state restore endpoint"
-            )
 
     def _connector(self, connector: str) -> str:
         return (

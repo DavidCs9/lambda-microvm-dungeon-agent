@@ -3,11 +3,11 @@
 from dungeon_agent.control_plane.microvms.manager import (
     LambdaMicrovmManager,
     MicrovmMetrics,
-    RehydrationNotSupportedError,
+    TurnRejectedError,
 )
 
 __all__ = [
     "LambdaMicrovmManager",
     "MicrovmMetrics",
-    "RehydrationNotSupportedError",
+    "TurnRejectedError",
 ]

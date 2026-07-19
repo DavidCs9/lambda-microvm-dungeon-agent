@@ -5,7 +5,7 @@ from datetime import datetime
 from pydantic import Field, model_validator
 
 from dungeon_agent.control_plane.domain.base import ContractModel
-from dungeon_agent.control_plane.domain.models import OwnerId, SessionId
+from dungeon_agent.control_plane.domain.models import CampaignId, OwnerId, SessionId
 
 
 class ConnectionRecord(ContractModel):
@@ -14,6 +14,7 @@ class ConnectionRecord(ContractModel):
     connected_at: datetime
     expires_at: int = Field(gt=0)
     session_id: SessionId | None = None
+    campaign_id: CampaignId | None = None
     after_sequence: int = Field(default=0, ge=0)
 
     @model_validator(mode="after")

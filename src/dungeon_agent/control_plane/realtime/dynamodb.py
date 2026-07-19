@@ -1,11 +1,11 @@
-"""DynamoDB connection records with TTL and session subscriptions."""
+"""DynamoDB connection records with TTL and aggregate subscriptions."""
 
 from collections.abc import Mapping
 from typing import Protocol
 
 from boto3.dynamodb.conditions import Key
 
-from dungeon_agent.control_plane.domain.models import SessionId
+from dungeon_agent.control_plane.domain.models import CampaignId, SessionId
 from dungeon_agent.control_plane.realtime.models import ConnectionRecord
 
 
@@ -42,11 +42,14 @@ class DynamoDbConnectionRepository:
         return ConnectionRecord.model_validate_json(document)
 
     def subscribe(self, connection: ConnectionRecord) -> None:
-        if connection.session_id is None:
-            raise ValueError("a subscription requires a session_id")
+        target_pk = self._subscription_pk(connection)
+        if target_pk is None:
+            raise ValueError("a subscription requires a session_id or campaign_id")
         previous = self.get(connection.connection_id)
-        if previous is not None and previous.session_id not in {None, connection.session_id}:
-            self._delete_subscription(previous)
+        if previous is not None:
+            previous_pk = self._subscription_pk(previous)
+            if previous_pk is not None and previous_pk != target_pk:
+                self._delete_subscription(previous)
         self._table.update_item(
             Key={"PK": self._connection_pk(connection.connection_id), "SK": "METADATA"},
             UpdateExpression="SET #document = :document, #expiresAt = :expiresAt",
@@ -56,7 +59,7 @@ class DynamoDbConnectionRepository:
                 ":expiresAt": connection.expires_at,
             },
         )
-        self._table.put_item(Item=self._subscription_item(connection))
+        self._table.put_item(Item=self._subscription_item(connection, target_pk))
 
     def delete(self, connection_id: str) -> None:
         connection = self.get(connection_id)
@@ -65,9 +68,17 @@ class DynamoDbConnectionRepository:
         self._table.delete_item(Key={"PK": self._connection_pk(connection_id), "SK": "METADATA"})
 
     def list_subscribers(self, session_id: SessionId) -> tuple[ConnectionRecord, ...]:
+        return self._subscribers_of(self._session_pk(session_id))
+
+    def list_campaign_subscribers(
+        self, campaign_id: CampaignId
+    ) -> tuple[ConnectionRecord, ...]:
+        return self._subscribers_of(self._campaign_pk(campaign_id))
+
+    def _subscribers_of(self, aggregate_pk: str) -> tuple[ConnectionRecord, ...]:
         response = self._table.query(
             KeyConditionExpression=(
-                Key("PK").eq(self._session_pk(session_id)) & Key("SK").begins_with("CONNECTION#")
+                Key("PK").eq(aggregate_pk) & Key("SK").begins_with("CONNECTION#")
             ),
             ConsistentRead=True,
         )
@@ -81,11 +92,12 @@ class DynamoDbConnectionRepository:
         )
 
     def _delete_subscription(self, connection: ConnectionRecord) -> None:
-        if connection.session_id is None:
+        target_pk = self._subscription_pk(connection)
+        if target_pk is None:
             return
         self._table.delete_item(
             Key={
-                "PK": self._session_pk(connection.session_id),
+                "PK": target_pk,
                 "SK": self._subscription_sk(connection.connection_id),
             }
         )
@@ -101,15 +113,24 @@ class DynamoDbConnectionRepository:
         }
 
     @classmethod
-    def _subscription_item(cls, connection: ConnectionRecord) -> dict[str, object]:
-        assert connection.session_id is not None
+    def _subscription_item(
+        cls, connection: ConnectionRecord, target_pk: str
+    ) -> dict[str, object]:
         return {
-            "PK": cls._session_pk(connection.session_id),
+            "PK": target_pk,
             "SK": cls._subscription_sk(connection.connection_id),
             "entityType": "SUBSCRIPTION",
             "expiresAt": connection.expires_at,
             "document": connection.model_dump_json(by_alias=True),
         }
+
+    @classmethod
+    def _subscription_pk(cls, connection: ConnectionRecord) -> str | None:
+        if connection.session_id is not None:
+            return cls._session_pk(connection.session_id)
+        if connection.campaign_id is not None:
+            return cls._campaign_pk(connection.campaign_id)
+        return None
 
     @staticmethod
     def _connection_pk(connection_id: str) -> str:
@@ -118,6 +139,10 @@ class DynamoDbConnectionRepository:
     @staticmethod
     def _session_pk(session_id: str) -> str:
         return f"SESSION#{session_id}"
+
+    @staticmethod
+    def _campaign_pk(campaign_id: str) -> str:
+        return f"CAMPAIGN#{campaign_id}"
 
     @staticmethod
     def _subscription_sk(connection_id: str) -> str:

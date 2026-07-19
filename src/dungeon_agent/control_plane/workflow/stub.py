@@ -1,21 +1,21 @@
-"""Durable Wave 1 workflow tasks backed by the session repositories."""
+"""Durable session workflow tasks backed by the session repositories."""
 
 from collections.abc import Callable, Mapping
 from datetime import UTC, datetime
 from typing import Protocol, cast
 
 from dungeon_agent.control_plane.domain.enums import (
+    CampaignStatus,
     ErrorCode,
     EventType,
-    OpeningBlockKind,
     SessionPhase,
     SessionStatus,
 )
 from dungeon_agent.control_plane.domain.models import (
+    CampaignId,
     CreateSessionWorkflowInput,
     CreationFailedPayload,
     CreationStartedPayload,
-    OpeningBlock,
     OpeningDocument,
     PhaseChangedPayload,
     SessionEvent,
@@ -24,50 +24,84 @@ from dungeon_agent.control_plane.domain.models import (
     SessionRecord,
 )
 from dungeon_agent.control_plane.domain.ports import (
+    CampaignRepository,
+    EventDeliveryPort,
     EventRepository,
     MicrovmManagerPort,
     SessionRepository,
 )
 from dungeon_agent.control_plane.identifiers import new_event_id
-from dungeon_agent.control_plane.steps.adventure import AdventureStep
-from dungeon_agent.control_plane.steps.character import (
-    AdventurePlanLoader,
-    CharacterStep,
-    CharacterStepInput,
-)
-from dungeon_agent.domain.game import LanguageCode, PlayerCharacter
+from dungeon_agent.control_plane.workflow.sandbox import sandbox_opening
+from dungeon_agent.domain.game import AdventurePlan, LanguageCode, PlayerCharacter, WorldState
 
 Clock = Callable[[], datetime]
 
 
-class CharacterArtifactLoader(Protocol):
+class SessionAdventureStore(Protocol):
+    """Save and load the session's forked adventure copy."""
+
+    def save(self, session_id: SessionId, adventure: AdventurePlan) -> str: ...
+
+    def load(self, adventure_ref: str) -> AdventurePlan: ...
+
+
+class SessionCharacterStore(Protocol):
+    """Save and load the session's forked character and opening copies."""
+
+    def save(
+        self,
+        session_id: SessionId,
+        character: PlayerCharacter,
+        opening: OpeningDocument,
+    ) -> str: ...
+
     def load_character(self, character_ref: str) -> PlayerCharacter: ...
 
     def load_opening(self, character_ref: str) -> OpeningDocument: ...
 
 
+class CampaignAdventureLoader(Protocol):
+    def load(self, adventure_ref: str) -> AdventurePlan: ...
+
+
+class CampaignCharacterLoader(Protocol):
+    def load_character(self, character_ref: str) -> PlayerCharacter: ...
+
+    def load_opening(self, character_ref: str) -> OpeningDocument: ...
+
+
+class WorldSnapshotStore(Protocol):
+    def save(self, session_id: SessionId, world: WorldState) -> None: ...
+
+
 class DurableSessionWorkflowStub:
-    """Persist workflow progress while expensive Wave 2 operations remain stubbed."""
+    """Start a model-free play session by forking a ready campaign."""
 
     def __init__(
         self,
         sessions: SessionRepository,
         events: EventRepository,
         *,
-        adventure_step: AdventureStep | None = None,
-        character_step: CharacterStep | None = None,
-        adventures: AdventurePlanLoader | None = None,
-        characters: CharacterArtifactLoader | None = None,
+        campaigns: CampaignRepository | None = None,
+        campaign_adventures: CampaignAdventureLoader | None = None,
+        campaign_characters: CampaignCharacterLoader | None = None,
+        adventures: SessionAdventureStore | None = None,
+        characters: SessionCharacterStore | None = None,
         microvms: MicrovmManagerPort | None = None,
+        snapshots: WorldSnapshotStore | None = None,
+        delivery: EventDeliveryPort | None = None,
         clock: Clock | None = None,
     ) -> None:
         self._sessions = sessions
         self._events = events
-        self._adventure_step = adventure_step
-        self._character_step = character_step
+        self._campaigns = campaigns
+        self._campaign_adventures = campaign_adventures
+        self._campaign_characters = campaign_characters
         self._adventures = adventures
         self._characters = characters
         self._microvms = microvms
+        self._snapshots = snapshots
+        self._delivery = delivery
         self._clock = clock or (lambda: datetime.now(UTC))
 
     def handle(self, event: Mapping[str, object]) -> dict[str, object]:
@@ -131,28 +165,18 @@ class DurableSessionWorkflowStub:
                 session_id: SessionId = _required_string(state, "sessionId")
                 launched = self._microvms.launch(session_id)
                 state["microvmRef"] = launched.microvm_id
-        elif operation == "GenerateAdventure":
-            if self._adventure_step is None:
+        elif operation == "ForkCampaignIntoSession":
+            if (
+                self._campaigns is None
+                or self._campaign_adventures is None
+                or self._campaign_characters is None
+                or self._adventures is None
+                or self._characters is None
+            ):
                 state["adventureRef"] = "sandbox://adventure"
-            else:
-                adventure_result = self._adventure_step.execute(_workflow_input(state))
-                state["adventureRef"] = adventure_result.adventure_ref
-                state["adventureLatencyMs"] = adventure_result.latency_ms
-        elif operation == "GenerateCharacter":
-            if self._character_step is None:
                 state["characterRef"] = "sandbox://character"
             else:
-                character_result = self._character_step.execute(
-                    CharacterStepInput(
-                        session_id=_required_string(state, "sessionId"),
-                        language=_required_string(state, "language"),
-                        correlation_id=_required_string(state, "correlationId"),
-                        adventure_ref=_required_string(state, "adventureRef"),
-                        adventure_latency_ms=_required_int(state, "adventureLatencyMs"),
-                    )
-                )
-                state["characterRef"] = character_result.character_ref
-                state["characterLatencyMs"] = character_result.latency_ms
+                self._fork_campaign(state)
         elif operation == "InitializeMicrovmGame":
             if self._microvms is None or self._adventures is None or self._characters is None:
                 state["stateRevision"] = 0
@@ -164,6 +188,8 @@ class DurableSessionWorkflowStub:
                     self._characters.load_character(_required_string(state, "characterRef")),
                 )
                 state["stateRevision"] = world.revision
+                if self._snapshots is not None:
+                    self._snapshots.save(_required_string(state, "sessionId"), world)
         elif operation == "MarkSessionReady":
             session = self._update_session(
                 state,
@@ -177,7 +203,7 @@ class DurableSessionWorkflowStub:
         elif operation == "EmitSessionReady":
             session = self._required_session(state)
             opening = (
-                _sandbox_opening(session.language)
+                sandbox_opening(session.language)
                 if self._characters is None
                 else self._characters.load_opening(_required_string(state, "characterRef"))
             )
@@ -219,6 +245,31 @@ class DurableSessionWorkflowStub:
                 now,
             )
         return state
+
+    def _fork_campaign(self, state: dict[str, object]) -> None:
+        """Copy the campaign snapshot into session-owned artifacts exactly once."""
+        assert self._campaigns is not None
+        assert self._campaign_adventures is not None
+        assert self._campaign_characters is not None
+        assert self._adventures is not None
+        assert self._characters is not None
+        campaign_id: CampaignId = _required_string(state, "campaignId")
+        campaign = self._campaigns.get(campaign_id)
+        if campaign is None:
+            raise ValueError(f"campaign does not exist: {campaign_id}")
+        if campaign.owner_id != _required_string(state, "ownerId"):
+            raise PermissionError("campaign does not belong to this player")
+        if campaign.status is not CampaignStatus.READY:
+            raise ValueError(f"campaign is not ready: {campaign_id}")
+        if campaign.adventure_ref is None or campaign.character_ref is None:
+            raise ValueError(f"campaign is missing artifacts: {campaign_id}")
+        session_id: SessionId = _required_string(state, "sessionId")
+        adventure = self._campaign_adventures.load(campaign.adventure_ref)
+        character = self._campaign_characters.load_character(campaign.character_ref)
+        opening = self._campaign_characters.load_opening(campaign.character_ref)
+        state["adventureRef"] = self._adventures.save(session_id, adventure)
+        state["characterRef"] = self._characters.save(session_id, character, opening)
+        state["campaignRevision"] = campaign.revision
 
     def _required_session(self, state: Mapping[str, object]) -> SessionRecord:
         session_id: SessionId = _required_string(state, "sessionId")
@@ -274,77 +325,11 @@ class DurableSessionWorkflowStub:
             payload=payload,
         )
         self._events.append(event, expected_previous_sequence=current.last_event_sequence)
-
-
-def _sandbox_opening(language: LanguageCode) -> OpeningDocument:
-    if language == "es":
-        title = "La torre silenciosa"
-        texts = (
-            (
-                "identidad",
-                OpeningBlockKind.IDENTITY,
-                "Eres Elia, la antigua guardiana de la campana.",
-            ),
-            (
-                "historia",
-                OpeningBlockKind.BACKGROUND,
-                "Regresaste al pueblo después de una larga ausencia.",
-            ),
-            (
-                "motivacion",
-                OpeningBlockKind.MOTIVATION,
-                "Quieres encontrar a tu hermano antes de la tormenta.",
-            ),
-            ("pista_1", OpeningBlockKind.KNOWLEDGE, "La campana desapareció durante la noche."),
-            ("pista_2", OpeningBlockKind.KNOWLEDGE, "Mara vio luces cerca del molino."),
-            (
-                "situacion",
-                OpeningBlockKind.SITUATION,
-                "La plaza se inunda y la torre permanece en silencio.",
-            ),
-            ("accion_1", OpeningBlockKind.POSSIBLE_ACTION, "Investigar la torre."),
-            ("accion_2", OpeningBlockKind.POSSIBLE_ACTION, "Hablar con Mara."),
-            ("accion_3", OpeningBlockKind.POSSIBLE_ACTION, "Cruzar hacia el molino."),
-        )
-    else:
-        title = "The silent tower"
-        texts = (
-            ("identity", OpeningBlockKind.IDENTITY, "You are Elia, the former keeper of the bell."),
-            (
-                "background",
-                OpeningBlockKind.BACKGROUND,
-                "You returned to the village after a long absence.",
-            ),
-            (
-                "motivation",
-                OpeningBlockKind.MOTIVATION,
-                "You want to find your brother before the storm.",
-            ),
-            ("clue_1", OpeningBlockKind.KNOWLEDGE, "The bell disappeared during the night."),
-            ("clue_2", OpeningBlockKind.KNOWLEDGE, "Mara saw lights near the mill."),
-            (
-                "situation",
-                OpeningBlockKind.SITUATION,
-                "The square is flooding and the tower remains silent.",
-            ),
-            ("action_1", OpeningBlockKind.POSSIBLE_ACTION, "Investigate the tower."),
-            ("action_2", OpeningBlockKind.POSSIBLE_ACTION, "Talk to Mara."),
-            ("action_3", OpeningBlockKind.POSSIBLE_ACTION, "Cross toward the mill."),
-        )
-    return OpeningDocument(
-        language=language,
-        title=title,
-        blocks=tuple(
-            OpeningBlock(
-                id=block_id,
-                position=index,
-                kind=kind,
-                text=text,
-                narratable=kind is not OpeningBlockKind.POSSIBLE_ACTION,
-            )
-            for index, (block_id, kind, text) in enumerate(texts)
-        ),
-    )
+        if self._delivery is not None:
+            try:
+                self._delivery.deliver(current.owner_id, event)
+            except Exception as delivery_error:
+                print(f"event delivery failed: {type(delivery_error).__name__}")
 
 
 def _required_string(value: Mapping[str, object], key: str) -> str:
@@ -352,27 +337,6 @@ def _required_string(value: Mapping[str, object], key: str) -> str:
     if not isinstance(result, str) or not result:
         raise ValueError(f"{key} must be a non-empty string")
     return result
-
-
-def _required_int(value: Mapping[str, object], key: str) -> int:
-    result = value.get(key)
-    if not isinstance(result, int) or isinstance(result, bool) or result < 0:
-        raise ValueError(f"{key} must be a non-negative integer")
-    return result
-
-
-def _workflow_input(state: Mapping[str, object]) -> CreateSessionWorkflowInput:
-    return CreateSessionWorkflowInput.model_validate(
-        {
-            "schemaVersion": state.get("schemaVersion", 1),
-            "sessionId": state.get("sessionId"),
-            "ownerId": state.get("ownerId"),
-            "language": state.get("language"),
-            "idempotencyKey": state.get("idempotencyKey"),
-            "correlationId": state.get("correlationId"),
-            "requestedAt": state.get("requestedAt"),
-        }
-    )
 
 
 def _parse_time(value: str) -> datetime:

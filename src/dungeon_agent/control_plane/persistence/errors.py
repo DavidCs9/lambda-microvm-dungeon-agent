@@ -15,3 +15,15 @@ class SessionRevisionConflictError(PersistenceConflictError):
 
 class EventSequenceConflictError(PersistenceConflictError):
     """Raised when an event is not the next event for its session."""
+
+
+class CampaignAlreadyExistsError(PersistenceConflictError):
+    """Raised when a campaign ID already belongs to another creation request."""
+
+
+class CampaignRevisionConflictError(PersistenceConflictError):
+    """Raised when a campaign update was based on a stale revision."""
+
+
+class CampaignEventSequenceConflictError(PersistenceConflictError):
+    """Raised when an event is not the next event for its campaign."""

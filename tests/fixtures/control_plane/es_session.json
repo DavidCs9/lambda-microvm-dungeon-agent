@@ -4,6 +4,8 @@
     "sessionId": "ses_01J00000000000000000000002",
     "ownerId": "usuario_demo_es",
     "language": "es",
+    "campaignId": "cam_01J00000000000000000000001",
+    "campaignRevision": 1,
     "idempotencyKey": "crear-sesion-demo-es-001",
     "correlationId": "corr-demo-espanol-001",
     "requestedAt": "2026-07-18T22:00:00Z"
@@ -19,6 +21,8 @@
     "lastEventSequence": 5,
     "createdAt": "2026-07-18T22:00:00Z",
     "updatedAt": "2026-07-18T22:01:35Z",
+    "campaignId": "cam_01J00000000000000000000001",
+    "campaignRevision": 1,
     "workflowExecutionArn": "arn:aws:states:us-east-2:123456789012:execution:create-session:demo-es",
     "activeMicrovmId": "mvm-demo-espanol"
   },

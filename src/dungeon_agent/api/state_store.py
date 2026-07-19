@@ -55,6 +55,26 @@ class StateStore:
             self._write(updated)
             return updated
 
+    async def restore(self, snapshot: WorldState) -> WorldState:
+        """Replace the world with a control-plane snapshot after basic integrity checks."""
+        async with self._lock:
+            self._validate_snapshot(snapshot)
+            self._write(snapshot)
+            return snapshot
+
+    @staticmethod
+    def _validate_snapshot(snapshot: WorldState) -> None:
+        if snapshot.plan is None or snapshot.player_character is None:
+            raise ValueError("snapshot has no adventure")
+        if snapshot.status != "active":
+            raise ValueError("only an active adventure can be restored")
+        location_ids = {location.id for location in snapshot.plan.locations}
+        if snapshot.location_id not in location_ids:
+            raise ValueError("snapshot location is not part of its adventure")
+        item_ids = {item.id for item in snapshot.plan.items}
+        if any(item not in item_ids for item in snapshot.inventory):
+            raise ValueError("snapshot inventory contains an unknown item")
+
     def _read(self) -> WorldState:
         return WorldState.model_validate_json(self.state_path.read_text(encoding="utf-8"))
 

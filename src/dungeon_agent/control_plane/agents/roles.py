@@ -77,6 +77,8 @@ class CharacterArchitect:
                 "without revealing its secrets. Give the player room to choose their personality "
                 "and actions. The three opening choices must represent investigation, social "
                 "interaction, and a risky direct approach; they are examples, never restrictions. "
+                "Respect the field length limits in the schema and prefer short, vivid "
+                "phrases over long prose. "
                 "Do not copy characters or settings from commercial fiction."
             ),
             prompt=json.dumps(

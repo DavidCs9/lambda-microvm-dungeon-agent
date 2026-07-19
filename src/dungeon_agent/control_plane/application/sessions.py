@@ -27,4 +27,6 @@ class DefaultSessionFactory:
             last_event_sequence=0,
             created_at=now,
             updated_at=now,
+            campaign_id=command.campaign_id,
+            campaign_revision=command.campaign_revision,
         )

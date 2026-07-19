@@ -2,7 +2,7 @@
 
 from threading import RLock
 
-from dungeon_agent.control_plane.domain.models import SessionId
+from dungeon_agent.control_plane.domain.models import CampaignId, SessionId
 from dungeon_agent.control_plane.realtime.models import ConnectionRecord
 
 
@@ -32,4 +32,14 @@ class InMemoryConnectionRepository:
                 connection
                 for connection in self._connections.values()
                 if connection.session_id == session_id
+            )
+
+    def list_campaign_subscribers(
+        self, campaign_id: CampaignId
+    ) -> tuple[ConnectionRecord, ...]:
+        with self._lock:
+            return tuple(
+                connection
+                for connection in self._connections.values()
+                if connection.campaign_id == campaign_id
             )

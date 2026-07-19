@@ -7,10 +7,14 @@ from pydantic import Field
 
 from dungeon_agent.control_plane.domain.base import ContractModel
 from dungeon_agent.control_plane.domain.models import (
+    CampaignEvent,
+    CampaignId,
+    CampaignRecord,
     ErrorEnvelope,
     SessionEvent,
     SessionId,
     SessionRecord,
+    TurnId,
 )
 from dungeon_agent.domain.game import LanguageCode
 
@@ -25,6 +29,20 @@ class CreateSessionRequest(ContractModel):
     """Player-controlled fields accepted by ``POST /sessions``."""
 
     language: LanguageCode
+    campaign_id: CampaignId
+
+
+class CreateCampaignRequest(ContractModel):
+    """Player-controlled fields accepted by ``POST /campaigns``."""
+
+    language: LanguageCode
+
+
+class SubmitActionRequest(ContractModel):
+    """Player-controlled fields accepted by ``POST /sessions/{sessionId}/actions``."""
+
+    action: str = Field(min_length=1, max_length=500)
+    expected_revision: int = Field(ge=0)
 
 
 class SessionEnvelope(ContractModel):
@@ -32,6 +50,22 @@ class SessionEnvelope(ContractModel):
 
     version: Literal[1] = 1
     session: SessionRecord
+
+
+class CampaignEnvelope(ContractModel):
+    """Stable wrapper used by campaign create and read responses."""
+
+    version: Literal[1] = 1
+    campaign: CampaignRecord
+
+
+class TurnAcceptedEnvelope(ContractModel):
+    """Acknowledgement that an action was checked out for asynchronous adjudication."""
+
+    version: Literal[1] = 1
+    session_id: SessionId
+    turn_id: TurnId
+    status: Literal["started", "duplicate"]
 
 
 class EventListEnvelope(ContractModel):
@@ -43,7 +77,23 @@ class EventListEnvelope(ContractModel):
     next_sequence: int = Field(ge=0)
 
 
-HttpBody = SessionEnvelope | EventListEnvelope | ErrorEnvelope
+class CampaignEventListEnvelope(ContractModel):
+    """Ordered, reconnect-safe campaign event replay response."""
+
+    version: Literal[1] = 1
+    campaign_id: CampaignId
+    events: tuple[CampaignEvent, ...]
+    next_sequence: int = Field(ge=0)
+
+
+HttpBody = (
+    SessionEnvelope
+    | CampaignEnvelope
+    | TurnAcceptedEnvelope
+    | EventListEnvelope
+    | CampaignEventListEnvelope
+    | ErrorEnvelope
+)
 
 
 @dataclass(frozen=True, slots=True)

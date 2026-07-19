@@ -8,9 +8,10 @@ from pydantic import Field
 
 from dungeon_agent.control_plane.domain.base import ContractModel
 from dungeon_agent.control_plane.domain.models import (
+    ArtifactRef,
+    CampaignId,
     CorrelationId,
-    CreateSessionWorkflowInput,
-    SessionId,
+    CreateCampaignWorkflowInput,
 )
 from dungeon_agent.control_plane.domain.ports import AdventureArchitectPort
 from dungeon_agent.domain.game import AdventurePlan, LanguageCode
@@ -19,17 +20,17 @@ from dungeon_agent.domain.game import AdventurePlan, LanguageCode
 class AdventurePlanStore(Protocol):
     """Persist a validated plan and return its opaque location."""
 
-    def save(self, session_id: SessionId, adventure: AdventurePlan) -> str: ...
+    def save(self, campaign_id: CampaignId, adventure: AdventurePlan) -> str: ...
 
 
 class AdventureStepResult(ContractModel):
-    """Small state passed to the next session-creation step."""
+    """Small state passed to the next campaign-creation step."""
 
     schema_version: Literal[1] = 1
-    session_id: SessionId
+    campaign_id: CampaignId
     language: LanguageCode
     correlation_id: CorrelationId
-    adventure_ref: str = Field(min_length=3, max_length=2_048)
+    adventure_ref: ArtifactRef
     latency_ms: int = Field(ge=0)
 
 
@@ -47,14 +48,14 @@ class AdventureStep:
         self._plans = plans
         self._monotonic = monotonic
 
-    def execute(self, workflow_input: CreateSessionWorkflowInput) -> AdventureStepResult:
+    def execute(self, workflow_input: CreateCampaignWorkflowInput) -> AdventureStepResult:
         started = self._monotonic()
         generated = self._architect.create(workflow_input.language)
         adventure = AdventurePlan.model_validate(generated.model_dump(mode="python"))
-        adventure_ref = self._plans.save(workflow_input.session_id, adventure)
+        adventure_ref = self._plans.save(workflow_input.campaign_id, adventure)
         latency_ms = max(0, round((self._monotonic() - started) * 1_000))
         return AdventureStepResult(
-            session_id=workflow_input.session_id,
+            campaign_id=workflow_input.campaign_id,
             language=workflow_input.language,
             correlation_id=workflow_input.correlation_id,
             adventure_ref=adventure_ref,
@@ -64,5 +65,5 @@ class AdventureStep:
     def handle(self, raw_input: Mapping[str, object]) -> dict[str, object]:
         """Validate wire input and return an alias-serialized workflow payload."""
 
-        workflow_input = CreateSessionWorkflowInput.model_validate(raw_input)
+        workflow_input = CreateCampaignWorkflowInput.model_validate(raw_input)
         return self.execute(workflow_input).model_dump(mode="json", by_alias=True)

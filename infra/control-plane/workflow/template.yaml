@@ -29,11 +29,59 @@ Resources:
           AttributeType: S
         - AttributeName: SK
           AttributeType: S
+        - AttributeName: ownerId
+          AttributeType: S
+        - AttributeName: campaignId
+          AttributeType: S
       KeySchema:
         - AttributeName: PK
           KeyType: HASH
         - AttributeName: SK
           KeyType: RANGE
+      GlobalSecondaryIndexes:
+        - IndexName: ByOwner
+          KeySchema:
+            - AttributeName: ownerId
+              KeyType: HASH
+          Projection:
+            ProjectionType: ALL
+        - IndexName: ByCampaign
+          KeySchema:
+            - AttributeName: campaignId
+              KeyType: HASH
+          Projection:
+            ProjectionType: ALL
+      SSESpecification:
+        SSEEnabled: true
+      TimeToLiveSpecification:
+        AttributeName: expiresAt
+        Enabled: true
+
+  CampaignTable:
+    Type: AWS::DynamoDB::Table
+    DeletionPolicy: Delete
+    UpdateReplacePolicy: Delete
+    Properties:
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: PK
+          AttributeType: S
+        - AttributeName: SK
+          AttributeType: S
+        - AttributeName: ownerId
+          AttributeType: S
+      KeySchema:
+        - AttributeName: PK
+          KeyType: HASH
+        - AttributeName: SK
+          KeyType: RANGE
+      GlobalSecondaryIndexes:
+        - IndexName: ByOwner
+          KeySchema:
+            - AttributeName: ownerId
+              KeyType: HASH
+          Projection:
+            ProjectionType: ALL
       SSESpecification:
         SSEEnabled: true
       TimeToLiveSpecification:
@@ -55,7 +103,7 @@ Resources:
   ControlPlaneApiFunction:
     Type: AWS::Serverless::Function
     Properties:
-      Description: Sandbox HTTP control plane for session creation and replay.
+      Description: Sandbox HTTP control plane for session creation, turns, and replay.
       Runtime: python3.14
       Architectures: [arm64]
       CodeUri: ../../../dist/control-plane-bundle
@@ -65,18 +113,40 @@ Resources:
       Environment:
         Variables:
           TABLE_NAME: !Ref SessionTable
+          CAMPAIGN_TABLE_NAME: !Ref CampaignTable
           STATE_MACHINE_ARN: !GetAtt CreateSessionStateMachine.Arn
+          CAMPAIGN_STATE_MACHINE_ARN: !GetAtt CreateCampaignStateMachine.Arn
+          TURN_WORKER_FUNCTION_NAME: !Ref TurnWorkerFunction
+          WS_MANAGEMENT_ENDPOINT: !Sub "https://${ControlPlaneWebSocketApi}.execute-api.${AWS::Region}.${AWS::URLSuffix}/prod"
       Policies:
         - DynamoDBCrudPolicy:
             TableName: !Ref SessionTable
+        - DynamoDBCrudPolicy:
+            TableName: !Ref CampaignTable
         - StepFunctionsExecutionPolicy:
             StateMachineName: !GetAtt CreateSessionStateMachine.Name
+        - StepFunctionsExecutionPolicy:
+            StateMachineName: !GetAtt CreateCampaignStateMachine.Name
+        - Statement:
+            - Effect: Allow
+              Action: lambda:InvokeFunction
+              Resource: !GetAtt TurnWorkerFunction.Arn
+            - Effect: Allow
+              Action: execute-api:ManageConnections
+              Resource: !Sub "arn:${AWS::Partition}:execute-api:${AWS::Region}:${AWS::AccountId}:${ControlPlaneWebSocketApi}/prod/*"
       Events:
         CreateSession:
           Type: HttpApi
           Properties:
             ApiId: !Ref ControlPlaneHttpApi
             Path: /sessions
+            Method: POST
+            PayloadFormatVersion: "2.0"
+        SubmitAction:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref ControlPlaneHttpApi
+            Path: /sessions/{sessionId}/actions
             Method: POST
             PayloadFormatVersion: "2.0"
         GetSession:
@@ -91,6 +161,27 @@ Resources:
           Properties:
             ApiId: !Ref ControlPlaneHttpApi
             Path: /sessions/{sessionId}/events
+            Method: GET
+            PayloadFormatVersion: "2.0"
+        CreateCampaign:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref ControlPlaneHttpApi
+            Path: /campaigns
+            Method: POST
+            PayloadFormatVersion: "2.0"
+        GetCampaign:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref ControlPlaneHttpApi
+            Path: /campaigns/{campaignId}
+            Method: GET
+            PayloadFormatVersion: "2.0"
+        ListCampaignEvents:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref ControlPlaneHttpApi
+            Path: /campaigns/{campaignId}/events
             Method: GET
             PayloadFormatVersion: "2.0"
 
@@ -123,7 +214,9 @@ Resources:
                   - dynamodb:PutItem
                   - dynamodb:Query
                   - dynamodb:TransactWriteItems
-                Resource: !GetAtt SessionTable.Arn
+                Resource:
+                  - !GetAtt SessionTable.Arn
+                  - !GetAtt CampaignTable.Arn
               - Effect: Allow
                 Action:
                   - bedrock:InvokeModel
@@ -138,6 +231,11 @@ Resources:
                   - lambda:TerminateMicrovm
                   - lambda:PassNetworkConnector
                 Resource: "*"
+              - Effect: Allow
+                Action:
+                  - execute-api:ManageConnections
+                Resource: !Sub >-
+                  arn:${AWS::Partition}:execute-api:${AWS::Region}:${AWS::AccountId}:${ControlPlaneWebSocketApi}/prod/*
 
   WorkflowTaskFunction:
     Type: AWS::Serverless::Function
@@ -154,8 +252,10 @@ Resources:
       Environment:
         Variables:
           TABLE_NAME: !Ref SessionTable
+          CAMPAIGN_TABLE_NAME: !Ref CampaignTable
           BEDROCK_MODEL_ID: !Ref BedrockModelId
           MICROVM_IMAGE_NAME: !Ref MicrovmImageName
+          WS_MANAGEMENT_ENDPOINT: !Sub "https://${ControlPlaneWebSocketApi}.execute-api.${AWS::Region}.${AWS::URLSuffix}/prod"
 
   WorkflowTaskLogGroup:
     Type: AWS::Logs::LogGroup
@@ -163,6 +263,33 @@ Resources:
     UpdateReplacePolicy: Delete
     Properties:
       LogGroupName: !Sub "/aws/lambda/${AWS::StackName}-workflow-stub"
+      RetentionInDays: !Ref LogRetentionDays
+
+  TurnWorkerFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Description: Authoritative turn adjudication against the session MicroVM.
+      FunctionName: !Sub "${AWS::StackName}-turn-worker"
+      Runtime: python3.14
+      Architectures: [arm64]
+      CodeUri: ../../../dist/control-plane-bundle
+      Handler: dungeon_agent.control_plane.runtime.turn_handler
+      MemorySize: 512
+      Timeout: 300
+      Role: !GetAtt WorkflowTaskRole.Arn
+      Environment:
+        Variables:
+          TABLE_NAME: !Ref SessionTable
+          BEDROCK_MODEL_ID: !Ref BedrockModelId
+          MICROVM_IMAGE_NAME: !Ref MicrovmImageName
+          WS_MANAGEMENT_ENDPOINT: !Sub "https://${ControlPlaneWebSocketApi}.execute-api.${AWS::Region}.${AWS::URLSuffix}/prod"
+
+  TurnWorkerLogGroup:
+    Type: AWS::Logs::LogGroup
+    DeletionPolicy: Delete
+    UpdateReplacePolicy: Delete
+    Properties:
+      LogGroupName: !Sub "/aws/lambda/${AWS::StackName}-turn-worker"
       RetentionInDays: !Ref LogRetentionDays
 
   CreateSessionStateMachineRole:
@@ -403,236 +530,6 @@ Resources:
               Payload:
                 operation: WaitForMicrovm
                 phase: waiting_for_microvm
-                state.$: "$"
-                workflowExecutionArn.$: "$$.Execution.Id"
-                stateEnteredAt.$: "$$.State.EnteredTime"
-                retryCount.$: "$$.State.RetryCount"
-            OutputPath: "$.Payload"
-            Retry:
-              - ErrorEquals:
-                  - RetriableDependencyError
-                  - Lambda.ServiceException
-                  - Lambda.AWSLambdaException
-                  - Lambda.SdkClientException
-                  - Lambda.TooManyRequestsException
-                  - States.Timeout
-                IntervalSeconds: 2
-                MaxAttempts: 3
-                BackoffRate: 2.0
-                MaxDelaySeconds: 30
-                JitterStrategy: FULL
-            Catch:
-              - ErrorEquals:
-                  - ValidationError
-                  - AuthorizationError
-                ResultPath: "$.failure"
-                Next: MarkSessionFailed
-              - ErrorEquals:
-                  - States.ALL
-                ResultPath: "$.failure"
-                Next: MarkSessionFailed
-            Next: EmitCreatingAdventure
-
-          EmitCreatingAdventure:
-            Type: Task
-            Resource: !Sub "arn:${AWS::Partition}:states:::lambda:invoke"
-            TimeoutSeconds: 30
-            Parameters:
-              FunctionName: !GetAtt WorkflowTaskFunction.Arn
-              Payload:
-                operation: EmitCreatingAdventure
-                phase: creating_adventure
-                state.$: "$"
-                workflowExecutionArn.$: "$$.Execution.Id"
-                stateEnteredAt.$: "$$.State.EnteredTime"
-                retryCount.$: "$$.State.RetryCount"
-            OutputPath: "$.Payload"
-            Retry:
-              - ErrorEquals:
-                  - RetriableDependencyError
-                  - Lambda.ServiceException
-                  - Lambda.AWSLambdaException
-                  - Lambda.SdkClientException
-                  - Lambda.TooManyRequestsException
-                  - States.Timeout
-                IntervalSeconds: 2
-                MaxAttempts: 3
-                BackoffRate: 2.0
-                MaxDelaySeconds: 30
-                JitterStrategy: FULL
-            Catch:
-              - ErrorEquals:
-                  - ValidationError
-                  - AuthorizationError
-                ResultPath: "$.failure"
-                Next: MarkSessionFailed
-              - ErrorEquals:
-                  - States.ALL
-                ResultPath: "$.failure"
-                Next: MarkSessionFailed
-            Next: GenerateAdventure
-
-          GenerateAdventure:
-            Type: Task
-            Resource: !Sub "arn:${AWS::Partition}:states:::lambda:invoke"
-            TimeoutSeconds: 180
-            Parameters:
-              FunctionName: !GetAtt WorkflowTaskFunction.Arn
-              Payload:
-                operation: GenerateAdventure
-                state.$: "$"
-                workflowExecutionArn.$: "$$.Execution.Id"
-                stateEnteredAt.$: "$$.State.EnteredTime"
-                retryCount.$: "$$.State.RetryCount"
-            OutputPath: "$.Payload"
-            Retry:
-              - ErrorEquals:
-                  - RetriableDependencyError
-                  - Lambda.ServiceException
-                  - Lambda.AWSLambdaException
-                  - Lambda.SdkClientException
-                  - Lambda.TooManyRequestsException
-                  - States.Timeout
-                IntervalSeconds: 2
-                MaxAttempts: 3
-                BackoffRate: 2.0
-                MaxDelaySeconds: 30
-                JitterStrategy: FULL
-            Catch:
-              - ErrorEquals:
-                  - ValidationError
-                  - AuthorizationError
-                ResultPath: "$.failure"
-                Next: MarkSessionFailed
-              - ErrorEquals:
-                  - States.ALL
-                ResultPath: "$.failure"
-                Next: MarkSessionFailed
-            Next: PersistAdventure
-
-          PersistAdventure:
-            Type: Task
-            Resource: !Sub "arn:${AWS::Partition}:states:::lambda:invoke"
-            TimeoutSeconds: 30
-            Parameters:
-              FunctionName: !GetAtt WorkflowTaskFunction.Arn
-              Payload:
-                operation: PersistAdventure
-                state.$: "$"
-                workflowExecutionArn.$: "$$.Execution.Id"
-                stateEnteredAt.$: "$$.State.EnteredTime"
-                retryCount.$: "$$.State.RetryCount"
-            OutputPath: "$.Payload"
-            Retry:
-              - ErrorEquals:
-                  - RetriableDependencyError
-                  - Lambda.ServiceException
-                  - Lambda.AWSLambdaException
-                  - Lambda.SdkClientException
-                  - Lambda.TooManyRequestsException
-                  - States.Timeout
-                IntervalSeconds: 2
-                MaxAttempts: 3
-                BackoffRate: 2.0
-                MaxDelaySeconds: 30
-                JitterStrategy: FULL
-            Catch:
-              - ErrorEquals:
-                  - ValidationError
-                  - AuthorizationError
-                ResultPath: "$.failure"
-                Next: MarkSessionFailed
-              - ErrorEquals:
-                  - States.ALL
-                ResultPath: "$.failure"
-                Next: MarkSessionFailed
-            Next: EmitCreatingCharacter
-
-          EmitCreatingCharacter:
-            Type: Task
-            Resource: !Sub "arn:${AWS::Partition}:states:::lambda:invoke"
-            TimeoutSeconds: 30
-            Parameters:
-              FunctionName: !GetAtt WorkflowTaskFunction.Arn
-              Payload:
-                operation: EmitCreatingCharacter
-                phase: creating_character
-                state.$: "$"
-                workflowExecutionArn.$: "$$.Execution.Id"
-                stateEnteredAt.$: "$$.State.EnteredTime"
-                retryCount.$: "$$.State.RetryCount"
-            OutputPath: "$.Payload"
-            Retry:
-              - ErrorEquals:
-                  - RetriableDependencyError
-                  - Lambda.ServiceException
-                  - Lambda.AWSLambdaException
-                  - Lambda.SdkClientException
-                  - Lambda.TooManyRequestsException
-                  - States.Timeout
-                IntervalSeconds: 2
-                MaxAttempts: 3
-                BackoffRate: 2.0
-                MaxDelaySeconds: 30
-                JitterStrategy: FULL
-            Catch:
-              - ErrorEquals:
-                  - ValidationError
-                  - AuthorizationError
-                ResultPath: "$.failure"
-                Next: MarkSessionFailed
-              - ErrorEquals:
-                  - States.ALL
-                ResultPath: "$.failure"
-                Next: MarkSessionFailed
-            Next: GenerateCharacter
-
-          GenerateCharacter:
-            Type: Task
-            Resource: !Sub "arn:${AWS::Partition}:states:::lambda:invoke"
-            TimeoutSeconds: 180
-            Parameters:
-              FunctionName: !GetAtt WorkflowTaskFunction.Arn
-              Payload:
-                operation: GenerateCharacter
-                state.$: "$"
-                workflowExecutionArn.$: "$$.Execution.Id"
-                stateEnteredAt.$: "$$.State.EnteredTime"
-                retryCount.$: "$$.State.RetryCount"
-            OutputPath: "$.Payload"
-            Retry:
-              - ErrorEquals:
-                  - RetriableDependencyError
-                  - Lambda.ServiceException
-                  - Lambda.AWSLambdaException
-                  - Lambda.SdkClientException
-                  - Lambda.TooManyRequestsException
-                  - States.Timeout
-                IntervalSeconds: 2
-                MaxAttempts: 3
-                BackoffRate: 2.0
-                MaxDelaySeconds: 30
-                JitterStrategy: FULL
-            Catch:
-              - ErrorEquals:
-                  - ValidationError
-                  - AuthorizationError
-                ResultPath: "$.failure"
-                Next: MarkSessionFailed
-              - ErrorEquals:
-                  - States.ALL
-                ResultPath: "$.failure"
-                Next: MarkSessionFailed
-            Next: PersistCharacter
-
-          PersistCharacter:
-            Type: Task
-            Resource: !Sub "arn:${AWS::Partition}:states:::lambda:invoke"
-            TimeoutSeconds: 30
-            Parameters:
-              FunctionName: !GetAtt WorkflowTaskFunction.Arn
-              Payload:
-                operation: PersistCharacter
                 state.$: "$"
                 workflowExecutionArn.$: "$$.Execution.Id"
                 stateEnteredAt.$: "$$.State.EnteredTime"
@@ -1060,10 +957,58 @@ Resources:
       ComparisonOperator: GreaterThanOrEqualToThreshold
       TreatMissingData: notBreaching
 
+  ControlPlaneWebSocketApi:
+    Type: AWS::Serverless::WebSocketApi
+    Properties:
+      RouteSelectionExpression: "$request.body.action"
+      StageName: prod
+      Routes:
+        $connect:
+          FunctionArn: !GetAtt ControlPlaneRealtimeFunction.Arn
+        $disconnect:
+          FunctionArn: !GetAtt ControlPlaneRealtimeFunction.Arn
+        subscribe:
+          FunctionArn: !GetAtt ControlPlaneRealtimeFunction.Arn
+        ping:
+          FunctionArn: !GetAtt ControlPlaneRealtimeFunction.Arn
+
+  ControlPlaneRealtimeFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Description: Sandbox WebSocket connect, subscribe, ping, and disconnect handler.
+      FunctionName: !Sub "${AWS::StackName}-realtime"
+      Runtime: python3.14
+      Architectures: [arm64]
+      CodeUri: ../../../dist/control-plane-bundle
+      Handler: dungeon_agent.control_plane.runtime.websocket_handler
+      MemorySize: 256
+      Timeout: 15
+      Environment:
+        Variables:
+          TABLE_NAME: !Ref SessionTable
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref SessionTable
+        - Statement:
+            - Effect: Allow
+              Action: execute-api:ManageConnections
+              Resource: !Sub "arn:${AWS::Partition}:execute-api:${AWS::Region}:${AWS::AccountId}:${ControlPlaneWebSocketApi}/prod/*"
+
+  ControlPlaneRealtimeLogGroup:
+    Type: AWS::Logs::LogGroup
+    DeletionPolicy: Delete
+    UpdateReplacePolicy: Delete
+    Properties:
+      LogGroupName: !Sub "/aws/lambda/${AWS::StackName}-realtime"
+      RetentionInDays: !Ref LogRetentionDays
+
 Outputs:
   ApiUrl:
     Description: Public sandbox endpoint. Send x-player-id on every request.
     Value: !Sub "https://${ControlPlaneHttpApi}.execute-api.${AWS::Region}.${AWS::URLSuffix}"
+  WebSocketUrl:
+    Description: Sandbox realtime endpoint. Connect with a playerId query parameter.
+    Value: !Sub "wss://${ControlPlaneWebSocketApi}.execute-api.${AWS::Region}.${AWS::URLSuffix}/prod"
   SessionTableName:
     Description: DynamoDB table containing sessions and durable events.
     Value: !Ref SessionTable

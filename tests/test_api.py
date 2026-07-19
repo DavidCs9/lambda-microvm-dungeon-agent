@@ -46,6 +46,41 @@ def test_adventure_and_turn_persist_in_world(client: TestClient) -> None:
     assert client.get("/v1/world").json() == world
 
 
+def test_restore_replaces_the_world_with_a_valid_snapshot(client: TestClient) -> None:
+    started = client.put(
+        "/v1/adventure",
+        json={
+            "language": "en",
+            "plan": sample_plan().model_dump(mode="json"),
+            "player_character": sample_player().model_dump(mode="json"),
+        },
+    )
+    snapshot = started.json()
+    snapshot["facts"] = ["The bridge held."]
+    snapshot["revision"] = 3
+
+    restored = client.put("/v1/state", json=snapshot)
+
+    assert restored.status_code == 200
+    assert client.get("/v1/world").json() == snapshot
+
+
+def test_restore_rejects_an_invalid_snapshot(client: TestClient) -> None:
+    started = client.put(
+        "/v1/adventure",
+        json={
+            "language": "en",
+            "plan": sample_plan().model_dump(mode="json"),
+            "player_character": sample_player().model_dump(mode="json"),
+        },
+    )
+    snapshot = started.json()
+    snapshot["status"] = "won"
+
+    assert client.put("/v1/state", json=snapshot).status_code == 409
+    assert client.get("/v1/world").json() == started.json()
+
+
 def test_language_can_be_selected_while_planning(client: TestClient) -> None:
     response = client.put("/v1/language", json={"language": "es"})
 

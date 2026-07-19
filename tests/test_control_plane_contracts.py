@@ -7,8 +7,16 @@ import pytest
 from pydantic import ValidationError
 
 from dungeon_agent.api import models as api_models
-from dungeon_agent.control_plane.domain.enums import EventType, SessionPhase, SessionStatus
+from dungeon_agent.control_plane.domain.enums import (
+    CampaignPhase,
+    CampaignStatus,
+    EventType,
+    SessionPhase,
+    SessionStatus,
+)
 from dungeon_agent.control_plane.domain.lifecycle import (
+    require_campaign_phase_transition,
+    require_campaign_status_transition,
     require_phase_transition,
     require_status_transition,
 )
@@ -67,7 +75,20 @@ def test_event_type_rejects_the_wrong_payload() -> None:
             type=EventType.SESSION_READY,
             occurred_at=datetime.now(UTC),
             correlation_id="corr-wrong-payload",
-            payload=PhaseChangedPayload(phase=SessionPhase.CREATING_ADVENTURE, elapsed_ms=10),
+            payload=PhaseChangedPayload(phase=SessionPhase.STARTING_MICROVM, elapsed_ms=10),
+        )
+
+
+def test_session_event_rejects_campaign_event_types() -> None:
+    with pytest.raises(ValidationError, match="is not a session event"):
+        SessionEvent(
+            event_id="evt_01J00000000000000000000004",
+            session_id="ses_01J00000000000000000000000",
+            sequence=1,
+            type=EventType.CAMPAIGN_READY,
+            occurred_at=datetime.now(UTC),
+            correlation_id="corr-wrong-family",
+            payload=PhaseChangedPayload(phase=SessionPhase.READY, elapsed_ms=10),
         )
 
 
@@ -92,6 +113,8 @@ def test_workflow_timestamps_require_a_timezone() -> None:
             session_id="ses_01J00000000000000000000000",
             owner_id="user_demo",
             language="en",
+            campaign_id="cam_01J00000000000000000000000",
+            campaign_revision=0,
             idempotency_key="idempotent-demo",
             correlation_id="corr-timezone-demo",
             requested_at=datetime(2026, 7, 18, 12, 0),
@@ -116,12 +139,18 @@ def test_turn_command_carries_idempotency_and_expected_revision() -> None:
 
 def test_lifecycle_allows_forward_progress_and_rejects_terminal_changes() -> None:
     require_status_transition(SessionStatus.REQUESTED, SessionStatus.CREATING)
-    require_phase_transition(SessionPhase.CREATING_CHARACTER, SessionPhase.INITIALIZING_GAME)
+    require_phase_transition(SessionPhase.WAITING_FOR_MICROVM, SessionPhase.INITIALIZING_GAME)
+    require_campaign_status_transition(CampaignStatus.CREATING, CampaignStatus.READY)
+    require_campaign_phase_transition(CampaignPhase.CREATING_ADVENTURE, CampaignPhase.CREATING_CHARACTER)
 
     with pytest.raises(ValueError, match="invalid session status transition"):
         require_status_transition(SessionStatus.COMPLETED, SessionStatus.ACTIVE)
     with pytest.raises(ValueError, match="invalid session phase transition"):
-        require_phase_transition(SessionPhase.CREATING_ADVENTURE, SessionPhase.READY)
+        require_phase_transition(SessionPhase.WAITING_FOR_MICROVM, SessionPhase.PLAYING)
+    with pytest.raises(ValueError, match="invalid campaign phase transition"):
+        require_campaign_phase_transition(CampaignPhase.CREATING_ADVENTURE, CampaignPhase.READY)
+    with pytest.raises(ValueError, match="invalid campaign status transition"):
+        require_campaign_status_transition(CampaignStatus.READY, CampaignStatus.CREATING)
 
 
 def test_current_imports_reexport_neutral_game_contracts() -> None:

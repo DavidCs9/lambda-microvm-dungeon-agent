@@ -8,7 +8,7 @@ import pytest
 from dungeon_agent.control_plane.domain.models import SessionId
 from dungeon_agent.control_plane.microvms import (
     LambdaMicrovmManager,
-    RehydrationNotSupportedError,
+    TurnRejectedError,
 )
 from dungeon_agent.domain.game import (
     AdventurePlan,
@@ -16,6 +16,8 @@ from dungeon_agent.domain.game import (
     Item,
     Location,
     PlayerCharacter,
+    StateChanges,
+    TurnProposal,
     WorldState,
 )
 from dungeon_agent.microvm import HttpResult
@@ -314,18 +316,77 @@ def test_terminate_waits_for_the_terminal_state() -> None:
 def test_rehydrate_recreates_an_initial_snapshot() -> None:
     client = FakeMicrovmClient()
     world = _world()
+    requester = FakeRequester(world)
 
-    result = _manager(client, requester=FakeRequester(world)).rehydrate(SESSION_ID, world)
+    result = _manager(client, requester=requester).rehydrate(SESSION_ID, world)
 
     assert result.microvm_id == "mvm-123"
     assert client.auth_calls == ["mvm-123"]
+    assert requester.calls[0]["method"] == "PUT"
+    assert requester.calls[0]["path"] == "/v1/state"
 
 
-def test_rehydrate_rejects_advanced_state_before_launching() -> None:
+def test_rehydrate_restores_an_advanced_snapshot() -> None:
     client = FakeMicrovmClient()
     advanced = _world().model_copy(update={"revision": 1, "facts": ["The key was found."]})
+    requester = FakeRequester(advanced)
 
-    with pytest.raises(RehydrationNotSupportedError, match="no full-state restore endpoint"):
-        _manager(client).rehydrate(SESSION_ID, advanced)
+    result = _manager(client, requester=requester).rehydrate(SESSION_ID, advanced)
 
-    assert client.run_calls == []
+    assert result.microvm_id == "mvm-123"
+    assert requester.calls[0]["path"] == "/v1/state"
+    assert requester.calls[0]["payload"] == advanced.model_dump(mode="json")
+
+
+def test_apply_turn_returns_the_authoritative_world() -> None:
+    client = FakeMicrovmClient()
+    world = _world().model_copy(update={"revision": 1})
+    requester = FakeRequester(world)
+
+    result = _manager(client, requester=requester).apply_turn(
+        "mvm-123", "Open the tower door.", _proposal()
+    )
+
+    assert result.revision == 1
+    assert client.auth_calls == ["mvm-123"]
+    assert requester.calls[0]["method"] == "POST"
+    assert requester.calls[0]["path"] == "/v1/turns"
+
+
+def test_apply_turn_rejection_is_repairable_feedback() -> None:
+    class RejectingRequester(FakeRequester):
+        def __call__(
+            self,
+            endpoint: str,
+            token: str,
+            method: str,
+            path: str,
+            payload: dict[str, object] | None = None,
+        ) -> HttpResult:
+            super().__call__(endpoint, token, method, path, payload)
+            return HttpResult(status=409, body={"detail": "unknown location"}, latency_ms=4)
+
+    client = FakeMicrovmClient()
+
+    with pytest.raises(TurnRejectedError, match="unknown location"):
+        _manager(client, requester=RejectingRequester(_world())).apply_turn(
+            "mvm-123", "Teleport home.", _proposal()
+        )
+
+
+def test_is_running_reflects_the_microvm_state() -> None:
+    assert _manager(FakeMicrovmClient(("RUNNING",))).is_running("mvm-123") is True
+    assert _manager(FakeMicrovmClient(("TERMINATED",))).is_running("mvm-123") is False
+
+
+def _proposal() -> TurnProposal:
+    return TurnProposal(
+        intent="Open the locked bell tower door.",
+        requires_roll=True,
+        difficulty=12,
+        success_narration="The iron key turns and the door swings open.",
+        failure_narration="The key jams and the noise echoes across the square.",
+        success_changes=StateChanges(location_id="tower"),
+        failure_changes=StateChanges(add_facts=["The tower door sticks in damp weather."]),
+        suggestions=["Try the key again.", "Ask Mara for help.", "Search the mill for oil."],
+    )

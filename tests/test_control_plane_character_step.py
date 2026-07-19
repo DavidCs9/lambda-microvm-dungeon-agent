@@ -4,10 +4,14 @@ import pytest
 from pydantic import ValidationError
 
 from dungeon_agent.control_plane.domain.enums import OpeningBlockKind
-from dungeon_agent.control_plane.domain.models import OpeningDocument, SessionId
+from dungeon_agent.control_plane.domain.models import CampaignId, OpeningDocument
 from dungeon_agent.control_plane.steps.character import CharacterStep
 from dungeon_agent.domain.game import AdventurePlan, LanguageCode, PlayerCharacter
 from tests.test_adventure import sample_plan, sample_player
+
+CAMPAIGN_ID: CampaignId = "cam_01J00000000000000000000000"
+ADVENTURE_REF = f"dynamodb://CAMPAIGN#{CAMPAIGN_ID}/ARTIFACT#ADVENTURE"
+CHARACTER_REF = f"dynamodb://CAMPAIGN#{CAMPAIGN_ID}/ARTIFACT#CHARACTER"
 
 
 class FakeCharacterArchitect:
@@ -36,21 +40,21 @@ class MemoryCharacterBundleStore:
 
     def save(
         self,
-        session_id: SessionId,
+        campaign_id: CampaignId,
         character: PlayerCharacter,
         opening: OpeningDocument,
     ) -> str:
-        self.saved[session_id] = (character, opening)
-        return f"dynamodb://sessions/{session_id}/character"
+        self.saved[campaign_id] = (character, opening)
+        return CHARACTER_REF
 
 
 def step_input(language: LanguageCode) -> dict[str, object]:
     return {
         "schemaVersion": 1,
-        "sessionId": "ses_01J00000000000000000000000",
+        "campaignId": CAMPAIGN_ID,
         "language": language,
         "correlationId": "corr-character-step",
-        "adventureRef": ("dynamodb://sessions/ses_01J00000000000000000000000/adventure"),
+        "adventureRef": ADVENTURE_REF,
         "latencyMs": 812,
     }
 
@@ -78,17 +82,17 @@ def test_step_loads_adventure_and_persists_character_with_ordered_opening(
 
     assert result == {
         "schemaVersion": 1,
-        "sessionId": "ses_01J00000000000000000000000",
+        "campaignId": CAMPAIGN_ID,
         "language": language,
         "correlationId": "corr-character-step",
-        "adventureRef": ("dynamodb://sessions/ses_01J00000000000000000000000/adventure"),
-        "characterRef": ("dynamodb://sessions/ses_01J00000000000000000000000/character"),
+        "adventureRef": ADVENTURE_REF,
+        "characterRef": CHARACTER_REF,
         "latencyMs": 250,
     }
     assert adventures.loaded_refs == [result["adventureRef"]]
     assert architect.calls == [(language, sample_plan())]
 
-    character, opening = characters.saved["ses_01J00000000000000000000000"]
+    character, opening = characters.saved[CAMPAIGN_ID]
     assert character.name == "Iria Vale"
     assert opening.language == language
     assert opening.title == "The Storm Bell"

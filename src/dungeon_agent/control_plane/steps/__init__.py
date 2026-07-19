@@ -7,7 +7,10 @@ from dungeon_agent.control_plane.steps.adventure import (
 )
 from dungeon_agent.control_plane.steps.artifacts import (
     DynamoDbAdventurePlans,
+    DynamoDbCampaignAdventurePlans,
+    DynamoDbCampaignCharacterBundles,
     DynamoDbCharacterBundles,
+    DynamoDbWorldSnapshots,
 )
 from dungeon_agent.control_plane.steps.character import (
     CharacterStep,
@@ -23,5 +26,8 @@ __all__ = [
     "CharacterStepInput",
     "CharacterStepResult",
     "DynamoDbAdventurePlans",
+    "DynamoDbCampaignAdventurePlans",
+    "DynamoDbCampaignCharacterBundles",
     "DynamoDbCharacterBundles",
+    "DynamoDbWorldSnapshots",
 ]

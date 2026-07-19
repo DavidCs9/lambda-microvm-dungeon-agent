@@ -9,10 +9,11 @@ from pydantic import Field
 from dungeon_agent.control_plane.domain.base import ContractModel
 from dungeon_agent.control_plane.domain.enums import OpeningBlockKind
 from dungeon_agent.control_plane.domain.models import (
+    ArtifactRef,
+    CampaignId,
     CorrelationId,
     OpeningBlock,
     OpeningDocument,
-    SessionId,
 )
 from dungeon_agent.control_plane.domain.ports import CharacterArchitectPort
 from dungeon_agent.domain.game import AdventurePlan, LanguageCode, PlayerCharacter
@@ -29,7 +30,7 @@ class CharacterBundleStore(Protocol):
 
     def save(
         self,
-        session_id: SessionId,
+        campaign_id: CampaignId,
         character: PlayerCharacter,
         opening: OpeningDocument,
     ) -> str: ...
@@ -39,22 +40,22 @@ class CharacterStepInput(ContractModel):
     """Small hand-off from the Adventure Architect step."""
 
     schema_version: Literal[1] = 1
-    session_id: SessionId
+    campaign_id: CampaignId
     language: LanguageCode
     correlation_id: CorrelationId
-    adventure_ref: str = Field(min_length=3, max_length=2_048)
+    adventure_ref: ArtifactRef
     adventure_latency_ms: int = Field(alias="latencyMs", ge=0)
 
 
 class CharacterStepResult(ContractModel):
-    """Small state passed to the MicroVM initialization steps."""
+    """Small state passed to the campaign readiness steps."""
 
     schema_version: Literal[1] = 1
-    session_id: SessionId
+    campaign_id: CampaignId
     language: LanguageCode
     correlation_id: CorrelationId
-    adventure_ref: str = Field(min_length=3, max_length=2_048)
-    character_ref: str = Field(min_length=3, max_length=2_048)
+    adventure_ref: ArtifactRef
+    character_ref: ArtifactRef
     latency_ms: int = Field(ge=0)
 
 
@@ -81,10 +82,10 @@ class CharacterStep:
         generated = self._architect.create(step_input.language, adventure)
         character = PlayerCharacter.model_validate(generated.model_dump(mode="python"))
         opening = _build_opening(step_input.language, adventure, character)
-        character_ref = self._characters.save(step_input.session_id, character, opening)
+        character_ref = self._characters.save(step_input.campaign_id, character, opening)
         latency_ms = max(0, round((self._monotonic() - started) * 1_000))
         return CharacterStepResult(
-            session_id=step_input.session_id,
+            campaign_id=step_input.campaign_id,
             language=step_input.language,
             correlation_id=step_input.correlation_id,
             adventure_ref=step_input.adventure_ref,

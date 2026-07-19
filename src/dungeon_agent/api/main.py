@@ -65,6 +65,13 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         except ValueError as error:
             raise HTTPException(status_code=409, detail=str(error)) from error
 
+    @app.put("/v1/state", response_model=WorldState, tags=["world"])
+    async def restore_state(payload: WorldState, store: StoreDependency) -> WorldState:
+        try:
+            return await store.restore(payload)
+        except ValueError as error:
+            raise HTTPException(status_code=409, detail=str(error)) from error
+
     return app
 
 

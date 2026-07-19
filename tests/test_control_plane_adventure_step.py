@@ -4,10 +4,12 @@ from datetime import UTC, datetime
 import pytest
 from pydantic import ValidationError
 
-from dungeon_agent.control_plane.domain.models import CreateSessionWorkflowInput, SessionId
+from dungeon_agent.control_plane.domain.models import CampaignId, CreateCampaignWorkflowInput
 from dungeon_agent.control_plane.steps.adventure import AdventureStep
 from dungeon_agent.domain.game import AdventurePlan, LanguageCode
 from tests.test_adventure import sample_plan
+
+CAMPAIGN_ID: CampaignId = "cam_01J00000000000000000000000"
 
 
 class FakeArchitect:
@@ -24,14 +26,14 @@ class MemoryAdventurePlanStore:
     def __init__(self) -> None:
         self.saved: dict[str, AdventurePlan] = {}
 
-    def save(self, session_id: SessionId, adventure: AdventurePlan) -> str:
-        self.saved[session_id] = adventure
-        return f"dynamodb://sessions/{session_id}/adventure"
+    def save(self, campaign_id: CampaignId, adventure: AdventurePlan) -> str:
+        self.saved[campaign_id] = adventure
+        return f"dynamodb://CAMPAIGN#{campaign_id}/ARTIFACT#ADVENTURE"
 
 
-def workflow_input(language: LanguageCode) -> CreateSessionWorkflowInput:
-    return CreateSessionWorkflowInput(
-        session_id="ses_01J00000000000000000000000",
+def workflow_input(language: LanguageCode) -> CreateCampaignWorkflowInput:
+    return CreateCampaignWorkflowInput(
+        campaign_id=CAMPAIGN_ID,
         owner_id="user_demo",
         language=language,
         idempotency_key="adventure-step-demo",
@@ -57,14 +59,14 @@ def test_step_persists_validated_bilingual_plan_and_returns_small_reference(
 
     assert result == {
         "schemaVersion": 1,
-        "sessionId": "ses_01J00000000000000000000000",
+        "campaignId": CAMPAIGN_ID,
         "language": language,
         "correlationId": "corr-adventure-step",
-        "adventureRef": "dynamodb://sessions/ses_01J00000000000000000000000/adventure",
+        "adventureRef": f"dynamodb://CAMPAIGN#{CAMPAIGN_ID}/ARTIFACT#ADVENTURE",
         "latencyMs": 125,
     }
     assert architect.languages == [language]
-    assert plans.saved["ses_01J00000000000000000000000"].title == "The Storm Bell"
+    assert plans.saved[CAMPAIGN_ID].title == "The Storm Bell"
     assert "secrets" not in result
     assert "adventure" not in result
 

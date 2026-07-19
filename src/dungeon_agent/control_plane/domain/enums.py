@@ -16,13 +16,26 @@ class SessionPhase(StrEnum):
     REQUESTED = "requested"
     STARTING_MICROVM = "starting_microvm"
     WAITING_FOR_MICROVM = "waiting_for_microvm"
-    CREATING_ADVENTURE = "creating_adventure"
-    CREATING_CHARACTER = "creating_character"
     INITIALIZING_GAME = "initializing_game"
     READY = "ready"
     PLAYING = "playing"
     REHYDRATING = "rehydrating"
     COMPLETED = "completed"
+    FAILED = "failed"
+
+
+class CampaignStatus(StrEnum):
+    REQUESTED = "requested"
+    CREATING = "creating"
+    READY = "ready"
+    FAILED = "failed"
+
+
+class CampaignPhase(StrEnum):
+    REQUESTED = "requested"
+    CREATING_ADVENTURE = "creating_adventure"
+    CREATING_CHARACTER = "creating_character"
+    READY = "ready"
     FAILED = "failed"
 
 
@@ -36,6 +49,10 @@ class EventType(StrEnum):
     NARRATION_DELTA = "narration.delta"
     TURN_COMPLETED = "turn.completed"
     SESSION_COMPLETED = "session.completed"
+    CAMPAIGN_CREATION_STARTED = "campaign.creation.started"
+    CAMPAIGN_PHASE_CHANGED = "campaign.phase.changed"
+    CAMPAIGN_CREATION_FAILED = "campaign.creation.failed"
+    CAMPAIGN_READY = "campaign.ready"
 
 
 class OpeningBlockKind(StrEnum):
@@ -54,5 +71,9 @@ class ErrorCode(StrEnum):
     SESSION_NOT_FOUND = "session_not_found"
     SESSION_CONFLICT = "session_conflict"
     SESSION_CREATION_FAILED = "session_creation_failed"
+    CAMPAIGN_NOT_FOUND = "campaign_not_found"
+    CAMPAIGN_CONFLICT = "campaign_conflict"
+    CAMPAIGN_CREATION_FAILED = "campaign_creation_failed"
+    QUOTA_EXCEEDED = "quota_exceeded"
     DEPENDENCY_UNAVAILABLE = "dependency_unavailable"
     INTERNAL_ERROR = "internal_error"
