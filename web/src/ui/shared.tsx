@@ -78,6 +78,31 @@ export function EmberButton({
   );
 }
 
+export function GhostButton({
+  children,
+  onClick,
+  disabled,
+  type = "button",
+  className = "",
+}: {
+  children: ReactNode;
+  onClick?: () => void;
+  disabled?: boolean;
+  type?: "button" | "submit";
+  className?: string;
+}) {
+  return (
+    <button
+      type={type}
+      onClick={onClick}
+      disabled={disabled}
+      className={`relative mt-4 inline-flex min-h-12 items-center justify-center border border-[var(--line)] bg-transparent px-10 py-3 text-base tracking-[0.18em] text-[var(--muted)] uppercase transition duration-300 [font-family:var(--font-display)] hover:border-[var(--ember)]/60 hover:text-[var(--ink)] disabled:cursor-not-allowed disabled:opacity-40 ${className}`}
+    >
+      {children}
+    </button>
+  );
+}
+
 export function GhostField({
   id,
   label,

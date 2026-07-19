@@ -55,6 +55,10 @@ class CampaignRepository(Protocol):
 
     def count_by_owner(self, owner_id: str) -> int: ...
 
+    def list_by_owner(
+        self, owner_id: str, *, status: str | None = None
+    ) -> tuple[CampaignRecord, ...]: ...
+
 
 class EventRepository(Protocol):
     def append(self, event: SessionEvent, *, expected_previous_sequence: int) -> None: ...

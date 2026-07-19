@@ -27,6 +27,8 @@ export interface GameState {
   playerId: string;
   wsStatus: WsStatus;
   campaign: CampaignRecord | null;
+  campaigns: CampaignRecord[];
+  campaignsLoading: boolean;
   session: SessionRecord | null;
   opening: OpeningDocument | null;
   expectedRevision: number;
@@ -70,6 +72,8 @@ function createInitialState(playerId: string): GameState {
     playerId,
     wsStatus: "disconnected",
     campaign: null,
+    campaigns: [],
+    campaignsLoading: false,
     session: null,
     opening: null,
     expectedRevision: 0,
@@ -535,6 +539,7 @@ export const gameActions = {
         phaseKind: "campaign",
         phaseLabel: "requested",
         errorMessage: null,
+        campaigns: [],
         session: null,
         opening: null,
         turnLog: [],
@@ -558,6 +563,67 @@ export const gameActions = {
         screen: "ritual",
         phaseLabel: null,
         phaseKind: null,
+      });
+    }
+  },
+
+  async loadCampaigns(): Promise<void> {
+    syncClients(state.playerId);
+    setState({ campaignsLoading: true, errorMessage: null });
+    try {
+      ensureConfigured();
+      const envelope = await api.listCampaigns("ready");
+      setState({
+        campaigns: envelope.campaigns,
+        campaignsLoading: false,
+        screen: "ritual",
+      });
+    } catch (error) {
+      setState({
+        campaignsLoading: false,
+        errorMessage: errorMessageOf(error),
+        screen: "ritual",
+      });
+    }
+  },
+
+  async resumeCampaign(campaignId: string): Promise<void> {
+    syncClients(state.playerId);
+    try {
+      ensureConfigured();
+      if (!realtime.connected) {
+        realtime.connect();
+      }
+      setState({ errorMessage: null });
+      const [campaignEnvelope, openingEnvelope] = await Promise.all([
+        api.getCampaign(campaignId),
+        api.getCampaignOpening(campaignId),
+      ]);
+      const campaign = campaignEnvelope.campaign;
+      const opening = parseOpening(openingEnvelope.opening);
+      if (!opening) {
+        throw new Error("La apertura de la campaña no es válida.");
+      }
+      setState({
+        campaign,
+        opening,
+        screen: "opening",
+        phaseLabel: null,
+        phaseKind: null,
+        session: null,
+        turnLog: [],
+        narrationStream: "",
+        turnPending: false,
+        diceBeat: null,
+        outcome: null,
+        expectedRevision: 0,
+        errorMessage: null,
+      });
+      realtime.subscribeCampaign(campaign.campaignId, campaign.lastEventSequence);
+    } catch (error) {
+      setState({
+        errorMessage: errorMessageOf(error),
+        screen: "ritual",
       });
     }
   },

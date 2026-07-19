@@ -125,6 +125,26 @@ class FakeCampaignRepository:
     def count_by_owner(self, owner_id: str) -> int:
         return sum(1 for campaign in self.records.values() if campaign.owner_id == owner_id)
 
+    def list_by_owner(
+        self, owner_id: str, *, status: str | None = None
+    ) -> tuple[CampaignRecord, ...]:
+        campaigns = [
+            campaign
+            for campaign in self.records.values()
+            if campaign.owner_id == owner_id
+            and (status is None or campaign.status.value == status)
+        ]
+        campaigns.sort(key=lambda campaign: campaign.created_at, reverse=True)
+        return tuple(campaigns[:50])
+
+
+class FakeOpeningLoader:
+    def load_opening(self, character_ref: str):
+        from dungeon_agent.control_plane.workflow.sandbox import sandbox_opening
+
+        assert character_ref
+        return sandbox_opening("es")
+
 
 class FakeCampaignEventRepository:
     def __init__(self) -> None:
@@ -229,6 +249,7 @@ def _adapter() -> tuple[
         FakeCampaignEventRepository(),
         workflows,
         DefaultCampaignFactory(),
+        openings=FakeOpeningLoader(),
         clock=lambda: NOW,
     )
     return (
@@ -525,3 +546,42 @@ def _phase_event(sequence: int) -> SessionEvent:
             elapsed_ms=sequence * 100,
         ),
     )
+
+
+def test_list_campaigns_returns_only_owner_campaigns() -> None:
+    adapter, _, _, _, _, campaigns = _adapter()
+    other_id: CampaignId = "cam_01J00000000000000000000009"
+    campaigns.records[other_id] = ready_campaign("other_user").model_copy(
+        update={"campaign_id": other_id}
+    )
+
+    response = adapter(_event("GET /campaigns"))
+    assert response["statusCode"] == 200
+    body = _body(response)
+    ids = [campaign["campaignId"] for campaign in body["campaigns"]]
+    assert ids == [CAMPAIGN_ID]
+
+
+def test_get_campaign_opening_ready_and_not_ready() -> None:
+    adapter, _, _, _, _, campaigns = _adapter()
+
+    ready = adapter(_event("GET /campaigns/{campaignId}/opening", campaign_id=CAMPAIGN_ID))
+    assert ready["statusCode"] == 200
+    ready_body = _body(ready)
+    assert ready_body["campaignId"] == CAMPAIGN_ID
+    assert ready_body["opening"]["title"]
+
+    campaigns.records[CAMPAIGN_ID] = CampaignRecord(
+        campaign_id=CAMPAIGN_ID,
+        owner_id="user_demo",
+        language="en",
+        status=CampaignStatus.REQUESTED,
+        phase=CampaignPhase.REQUESTED,
+        revision=0,
+        last_event_sequence=0,
+        created_at=NOW,
+        updated_at=NOW,
+    )
+    conflict = adapter(_event("GET /campaigns/{campaignId}/opening", campaign_id=CAMPAIGN_ID))
+    assert conflict["statusCode"] == 409
+    assert _body(conflict)["error"]["code"] == "campaign_conflict"

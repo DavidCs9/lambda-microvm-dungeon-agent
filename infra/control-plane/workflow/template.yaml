@@ -170,6 +170,13 @@ Resources:
             Path: /campaigns
             Method: POST
             PayloadFormatVersion: "2.0"
+        ListCampaigns:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref ControlPlaneHttpApi
+            Path: /campaigns
+            Method: GET
+            PayloadFormatVersion: "2.0"
         GetCampaign:
           Type: HttpApi
           Properties:
@@ -182,6 +189,13 @@ Resources:
           Properties:
             ApiId: !Ref ControlPlaneHttpApi
             Path: /campaigns/{campaignId}/events
+            Method: GET
+            PayloadFormatVersion: "2.0"
+        GetCampaignOpening:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref ControlPlaneHttpApi
+            Path: /campaigns/{campaignId}/opening
             Method: GET
             PayloadFormatVersion: "2.0"
 
