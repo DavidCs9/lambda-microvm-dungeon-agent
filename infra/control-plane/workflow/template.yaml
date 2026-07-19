@@ -597,6 +597,44 @@ Resources:
                   - States.ALL
                 ResultPath: "$.failure"
                 Next: MarkSessionFailed
+            Next: ForkCampaignIntoSession
+
+          ForkCampaignIntoSession:
+            Type: Task
+            Resource: !Sub "arn:${AWS::Partition}:states:::lambda:invoke"
+            TimeoutSeconds: 60
+            Parameters:
+              FunctionName: !GetAtt WorkflowTaskFunction.Arn
+              Payload:
+                operation: ForkCampaignIntoSession
+                state.$: "$"
+                workflowExecutionArn.$: "$$.Execution.Id"
+                stateEnteredAt.$: "$$.State.EnteredTime"
+                retryCount.$: "$$.State.RetryCount"
+            OutputPath: "$.Payload"
+            Retry:
+              - ErrorEquals:
+                  - RetriableDependencyError
+                  - Lambda.ServiceException
+                  - Lambda.AWSLambdaException
+                  - Lambda.SdkClientException
+                  - Lambda.TooManyRequestsException
+                  - States.Timeout
+                IntervalSeconds: 2
+                MaxAttempts: 3
+                BackoffRate: 2.0
+                MaxDelaySeconds: 30
+                JitterStrategy: FULL
+            Catch:
+              - ErrorEquals:
+                  - ValidationError
+                  - AuthorizationError
+                ResultPath: "$.failure"
+                Next: MarkSessionFailed
+              - ErrorEquals:
+                  - States.ALL
+                ResultPath: "$.failure"
+                Next: MarkSessionFailed
             Next: InitializeMicrovmGame
 
           InitializeMicrovmGame:
