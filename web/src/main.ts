@@ -23,8 +23,8 @@ const submitActionBtn = el<HTMLButtonElement>("submit-action");
 const eventList = el("event-list");
 const lastEventEl = el("last-event");
 
-httpUrlEl.textContent = httpUrl || "(set VITE_HTTP_URL in web/.env.local)";
-wsUrlEl.textContent = wsUrl || "(set VITE_WS_URL in web/.env.local)";
+httpUrlEl.textContent = httpUrl || "(define VITE_HTTP_URL en web/.env.local)";
+wsUrlEl.textContent = wsUrl || "(define VITE_WS_URL en web/.env.local)";
 
 playerInput.value = localStorage.getItem(PLAYER_KEY) ?? "lab_player_1";
 
