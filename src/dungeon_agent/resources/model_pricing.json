@@ -4,8 +4,12 @@
     "us.amazon.nova-micro-v1:0": {
       "input": "0.035",
       "output": "0.14"
+    },
+    "us.anthropic.claude-sonnet-4-6": {
+      "input": "3.00",
+      "output": "15.00"
     }
   },
   "source": "https://aws.amazon.com/bedrock/pricing/",
-  "verifiedAt": "2026-07-18"
+  "verifiedAt": "2026-07-19"
 }
