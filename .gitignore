@@ -14,7 +14,12 @@ build/
 .env
 .env.*
 !.env.example
+!**/.env.example
 *.zip
 .aws-sam/
 .idea/
 .vscode/
+
+# Web client
+web/node_modules/
+web/dist/

@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Dungeon Agent — cliente de laboratorio</title>
+    <link rel="stylesheet" href="/src/styles.css" />
+  </head>
+  <body>
+    <main>
+      <h1>Dungeon Agent</h1>
+      <p class="lede">Cliente web v0 (español) contra el control plane sandbox.</p>
+
+      <section id="setup">
+        <h2>Configuración</h2>
+        <label>
+          playerId
+          <input id="player-id" type="text" autocomplete="username" minlength="3" maxlength="100" />
+        </label>
+        <dl class="urls">
+          <dt>HTTP</dt>
+          <dd id="http-url"></dd>
+          <dt>WebSocket</dt>
+          <dd id="ws-url"></dd>
+        </dl>
+        <div class="row">
+          <button id="connect-ws" type="button">Conectar WebSocket</button>
+          <span id="ws-status" class="status">desconectado</span>
+        </div>
+      </section>
+
+      <section id="campaign">
+        <h2>Campaña</h2>
+        <div class="row">
+          <button id="create-campaign" type="button">Crear campaña</button>
+          <button id="refresh-campaign" type="button" disabled>Actualizar</button>
+        </div>
+        <p id="campaign-meta" class="meta">Sin campaña todavía.</p>
+      </section>
+
+      <section id="play">
+        <h2>Jugar</h2>
+        <div class="row">
+          <button id="create-session" type="button" disabled>Crear sesión</button>
+          <button id="refresh-session" type="button" disabled>Actualizar</button>
+        </div>
+        <p id="session-meta" class="meta">Esperando una campaña lista.</p>
+        <label>
+          Acción
+          <textarea id="action-text" rows="3" maxlength="500" disabled placeholder="¿Qué haces?"></textarea>
+        </label>
+        <button id="submit-action" type="button" disabled>Enviar acción</button>
+      </section>
+
+      <section id="events">
+        <h2>Registro de eventos</h2>
+        <ul id="event-list"></ul>
+        <h3>Último evento (JSON)</h3>
+        <pre id="last-event">{}</pre>
+      </section>
+    </main>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>
