@@ -76,7 +76,8 @@ game orchestration without importing Textual or parsing terminal output.
 
 See [Architecture](docs/architecture.md), [RFC 0001](docs/rfcs/0001-web-control-plane.md),
 [RFC 0002](docs/rfcs/0002-campaign-play-split.md),
-[RFC 0003](docs/rfcs/0003-videogame-web-client.md), the
+[RFC 0003](docs/rfcs/0003-videogame-web-client.md),
+[RFC 0004](docs/rfcs/0004-resume-existing-campaign.md), the
 [web control plane plan](docs/plans/web-control-plane.md), and [Security](docs/security.md) for the
 detailed design and next implementation phase.
 
