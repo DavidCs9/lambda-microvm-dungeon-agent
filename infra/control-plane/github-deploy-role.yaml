@@ -1,0 +1,182 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: Least-privilege GitHub OIDC role that deploys the control-plane sandbox stack.
+
+Parameters:
+  GitHubOidcProviderArn:
+    Type: String
+    AllowedPattern: ^arn:aws[a-z-]*:iam::[0-9]{12}:oidc-provider/token\.actions\.githubusercontent\.com$
+    Description: ARN of the account-level GitHub Actions OIDC provider.
+  ArtifactBucketName:
+    Type: String
+    MinLength: 3
+    Description: Artifact bucket output from the MicroVM bootstrap stack.
+  ControlPlaneStackName:
+    Type: String
+    Default: dungeon-agent-control-plane-sandbox
+    AllowedPattern: ^[A-Za-z][A-Za-z0-9-]*$
+    Description: CloudFormation stack name the workflow is allowed to deploy.
+  GitHubOwner:
+    Type: String
+    Default: DavidCs9
+    AllowedPattern: ^[A-Za-z0-9-]+$
+  GitHubOwnerId:
+    Type: Number
+    Default: 105255351
+  GitHubRepository:
+    Type: String
+    Default: lambda-microvm-dungeon-agent
+    AllowedPattern: ^[A-Za-z0-9_.-]+$
+  GitHubRepositoryId:
+    Type: Number
+    Default: 1305119029
+  GitHubEnvironment:
+    Type: String
+    Default: sandbox
+    AllowedPattern: ^[A-Za-z0-9_.-]+$
+
+Resources:
+  GitHubControlPlaneDeployRole:
+    Type: AWS::IAM::Role
+    Properties:
+      Description: Deploys the dungeon-agent control-plane sandbox stack from GitHub Actions.
+      MaxSessionDuration: 3600
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Federated: !Ref GitHubOidcProviderArn
+            Action: sts:AssumeRoleWithWebIdentity
+            Condition:
+              StringEquals:
+                token.actions.githubusercontent.com:aud: sts.amazonaws.com
+                token.actions.githubusercontent.com:sub: !Sub >-
+                  repo:${GitHubOwner}@${GitHubOwnerId}/${GitHubRepository}@${GitHubRepositoryId}:environment:${GitHubEnvironment}
+      Policies:
+        - PolicyName: DeployControlPlaneSandbox
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Sid: ReadBootstrapAndTargetStacks
+                Effect: Allow
+                Action: cloudformation:DescribeStacks
+                Resource: "*"
+              - Sid: ManageControlPlaneStack
+                Effect: Allow
+                Action:
+                  - cloudformation:CreateChangeSet
+                  - cloudformation:CreateStack
+                  - cloudformation:DeleteChangeSet
+                  - cloudformation:DescribeChangeSet
+                  - cloudformation:DescribeStackEvents
+                  - cloudformation:DescribeStackResource
+                  - cloudformation:DescribeStackResources
+                  - cloudformation:ExecuteChangeSet
+                  - cloudformation:GetTemplate
+                  - cloudformation:GetTemplateSummary
+                  - cloudformation:ListChangeSets
+                  - cloudformation:ListStackResources
+                  - cloudformation:UpdateStack
+                Resource:
+                  - !Sub >-
+                    arn:${AWS::Partition}:cloudformation:${AWS::Region}:${AWS::AccountId}:stack/${ControlPlaneStackName}/*
+                  - !Sub >-
+                    arn:${AWS::Partition}:cloudformation:${AWS::Region}:${AWS::AccountId}:stack/${ControlPlaneStackName}
+                  - !Sub >-
+                    arn:${AWS::Partition}:cloudformation:${AWS::Region}:aws:transform/Serverless-2016-10-31
+              - Sid: UploadControlPlaneArtifacts
+                Effect: Allow
+                Action:
+                  - s3:PutObject
+                  - s3:GetObject
+                  - s3:AbortMultipartUpload
+                Resource: !Sub "arn:${AWS::Partition}:s3:::${ArtifactBucketName}/artifacts/control-plane/*"
+              - Sid: ListArtifactBucket
+                Effect: Allow
+                Action:
+                  - s3:ListBucket
+                  - s3:GetBucketLocation
+                Resource: !Sub "arn:${AWS::Partition}:s3:::${ArtifactBucketName}"
+                Condition:
+                  StringLike:
+                    s3:prefix:
+                      - artifacts/control-plane/*
+                      - artifacts/control-plane
+              - Sid: ProvisionControlPlaneServices
+                Effect: Allow
+                Action:
+                  - apigateway:*
+                  - cloudwatch:DeleteAlarms
+                  - cloudwatch:DescribeAlarms
+                  - cloudwatch:PutMetricAlarm
+                  - cloudwatch:TagResource
+                  - cloudwatch:UntagResource
+                  - dynamodb:CreateTable
+                  - dynamodb:DeleteTable
+                  - dynamodb:DescribeTable
+                  - dynamodb:DescribeTimeToLive
+                  - dynamodb:ListTagsOfResource
+                  - dynamodb:TagResource
+                  - dynamodb:UntagResource
+                  - dynamodb:UpdateContinuousBackups
+                  - dynamodb:UpdateTable
+                  - dynamodb:UpdateTimeToLive
+                  - events:DeleteRule
+                  - events:DescribeRule
+                  - events:PutRule
+                  - events:PutTargets
+                  - events:RemoveTargets
+                  - events:TagResource
+                  - events:UntagResource
+                  - iam:AttachRolePolicy
+                  - iam:CreateRole
+                  - iam:DeleteRole
+                  - iam:DeleteRolePolicy
+                  - iam:DetachRolePolicy
+                  - iam:GetRole
+                  - iam:GetRolePolicy
+                  - iam:PassRole
+                  - iam:PutRolePolicy
+                  - iam:TagRole
+                  - iam:UntagRole
+                  - iam:UpdateAssumeRolePolicy
+                  - lambda:AddPermission
+                  - lambda:CreateFunction
+                  - lambda:DeleteFunction
+                  - lambda:GetFunction
+                  - lambda:GetFunctionCodeSigningConfig
+                  - lambda:GetFunctionConfiguration
+                  - lambda:GetPolicy
+                  - lambda:ListTags
+                  - lambda:ListVersionsByFunction
+                  - lambda:RemovePermission
+                  - lambda:TagResource
+                  - lambda:UntagResource
+                  - lambda:UpdateFunctionCode
+                  - lambda:UpdateFunctionConfiguration
+                  - logs:CreateLogGroup
+                  - logs:DeleteLogGroup
+                  - logs:DescribeLogGroups
+                  - logs:ListTagsForResource
+                  - logs:PutRetentionPolicy
+                  - logs:TagResource
+                  - logs:UntagResource
+                  - sqs:CreateQueue
+                  - sqs:DeleteQueue
+                  - sqs:GetQueueAttributes
+                  - sqs:SetQueueAttributes
+                  - sqs:TagQueue
+                  - sqs:UntagQueue
+                  - states:CreateStateMachine
+                  - states:DeleteStateMachine
+                  - states:DescribeStateMachine
+                  - states:ListTagsForResource
+                  - states:TagResource
+                  - states:UntagResource
+                  - states:UpdateStateMachine
+                Resource: "*"
+
+Outputs:
+  GitHubControlPlaneDeployRoleArn:
+    Description: Configure this ARN as the GitHub sandbox environment AWS_DEPLOY_ROLE_ARN variable.
+    Value: !GetAtt GitHubControlPlaneDeployRole.Arn
