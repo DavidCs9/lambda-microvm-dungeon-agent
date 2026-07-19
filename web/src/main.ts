@@ -69,7 +69,14 @@ function syncPlayer(): void {
 
 function setWsStatus(status: WsStatus, detail?: string): void {
   wsStatusEl.className = `status ${status === "connected" ? "connected" : status === "error" ? "error" : ""}`;
-  wsStatusEl.textContent = detail ? `${status}: ${detail}` : status;
+  const labels: Record<WsStatus, string> = {
+    disconnected: "desconectado",
+    connecting: "conectando",
+    connected: "conectado",
+    error: "error",
+  };
+  const label = labels[status];
+  wsStatusEl.textContent = detail ? `${label}: ${detail}` : label;
 }
 
 function handleEvent(event: ControlPlaneEvent): void {
@@ -136,14 +143,14 @@ async function onCreateCampaign(): Promise<void> {
     if (!realtime.connected) {
       realtime.connect();
     }
-    const envelope = await api.createCampaign("en");
+    const envelope = await api.createCampaign("es");
     campaign = envelope.campaign;
     session = null;
     expectedRevision = 0;
     renderCampaign();
     renderSession();
     realtime.subscribeCampaign(campaign.campaignId, campaign.lastEventSequence);
-    logNote(`campaign created: ${campaign.campaignId} (${campaign.status}/${campaign.phase})`);
+    logNote(`campaña creada: ${campaign.campaignId} (${campaign.status}/${campaign.phase})`);
   } catch (error) {
     logError(error);
   } finally {
@@ -167,18 +174,18 @@ async function onRefreshCampaign(): Promise<void> {
 
 async function onCreateSession(): Promise<void> {
   if (!campaign || campaign.status !== "ready") {
-    logNote("campaign must be ready before creating a session");
+    logNote("la campaña debe estar lista antes de crear una sesión");
     return;
   }
   syncPlayer();
   createSessionBtn.disabled = true;
   try {
-    const envelope = await api.createSession(campaign.campaignId, "en");
+    const envelope = await api.createSession(campaign.campaignId, "es");
     session = envelope.session;
     expectedRevision = session.revision;
     renderSession();
     realtime.subscribeSession(session.sessionId, session.lastEventSequence);
-    logNote(`session created: ${session.sessionId} (${session.status}/${session.phase})`);
+    logNote(`sesión creada: ${session.sessionId} (${session.status}/${session.phase})`);
   } catch (error) {
     logError(error);
   } finally {
@@ -207,14 +214,14 @@ async function onSubmitAction(): Promise<void> {
   }
   const action = actionText.value.trim();
   if (!action) {
-    logNote("enter an action first");
+    logNote("escribe una acción primero");
     return;
   }
   syncPlayer();
   submitActionBtn.disabled = true;
   try {
     const accepted = await api.submitAction(session.sessionId, action, expectedRevision);
-    logNote(`action ${accepted.status}: ${accepted.turnId}`);
+    logNote(`acción ${accepted.status}: ${accepted.turnId}`);
     actionText.value = "";
   } catch (error) {
     logError(error);
@@ -228,7 +235,7 @@ function renderCampaign(): void {
   refreshCampaignBtn.disabled = !campaign;
   createSessionBtn.disabled = !ready;
   if (!campaign) {
-    campaignMetaEl.textContent = "No campaign yet.";
+    campaignMetaEl.textContent = "Sin campaña todavía.";
     return;
   }
   campaignMetaEl.textContent = `${campaign.campaignId} — ${campaign.status} / ${campaign.phase} (rev ${campaign.revision})`;
@@ -242,8 +249,8 @@ function renderSession(): void {
   createSessionBtn.disabled = !(campaign?.status === "ready");
   if (!session) {
     sessionMetaEl.textContent = campaign?.status === "ready"
-      ? "Campaign ready. Create a session to play."
-      : "Waiting for a ready campaign.";
+      ? "Campaña lista. Crea una sesión para jugar."
+      : "Esperando una campaña lista.";
     return;
   }
   sessionMetaEl.textContent = `${session.sessionId} — ${session.status} / ${session.phase} (rev ${expectedRevision})`;
@@ -283,7 +290,7 @@ function truncate(value: string, max = 80): string {
 
 function logNote(message: string): void {
   const item = document.createElement("li");
-  item.textContent = `note — ${message}`;
+  item.textContent = `nota — ${message}`;
   eventList.appendChild(item);
   eventList.scrollTop = eventList.scrollHeight;
 }
@@ -307,7 +314,9 @@ function logError(error: unknown): void {
 
 function ensureConfigured(): void {
   if (!httpUrl || !wsUrl) {
-    throw new Error("Missing VITE_HTTP_URL / VITE_WS_URL. Copy web/.env.example to web/.env.local.");
+    throw new Error(
+      "Faltan VITE_HTTP_URL / VITE_WS_URL. Copia web/.env.example a web/.env.local.",
+    );
   }
 }
 

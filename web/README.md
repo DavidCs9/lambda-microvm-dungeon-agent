@@ -1,11 +1,12 @@
-# Lab v0 browser client
+# Cliente web v0 (laboratorio)
 
-Minimal Vite + TypeScript page that drives the sandbox control plane:
+Página mínima Vite + TypeScript contra el control plane sandbox. El idioma oficial
+de juego es **español** (`language: "es"` en create campaign/session).
 
-1. Connect WebSocket with `playerId`
-2. Create a campaign and watch phases
-3. Create a session against that campaign
-4. Submit an action and dump events
+1. Conectar WebSocket con `playerId`
+2. Crear una campaña y ver las fases
+3. Crear una sesión contra esa campaña
+4. Enviar una acción y ver eventos
 
 ## Setup
 
@@ -14,7 +15,7 @@ cd web
 cp .env.example .env.local
 ```
 
-Fill `.env.local` from the sandbox stack outputs (`ApiUrl`, `WebSocketUrl`):
+Rellena `.env.local` con los outputs del stack sandbox (`ApiUrl`, `WebSocketUrl`):
 
 ```bash
 aws cloudformation describe-stacks \
@@ -23,13 +24,14 @@ aws cloudformation describe-stacks \
   --query 'Stacks[0].Outputs'
 ```
 
-Install and run:
+Instala y arranca:
 
 ```bash
 npm install
 npm run dev
 ```
 
-Open the printed local URL. Set a `playerId` (min 3 chars; stored in `localStorage`), click **Connect WebSocket**, then **Create Campaign**.
+Abre la URL local. Pon un `playerId` (mín. 3 caracteres; se guarda en `localStorage`),
+pulsa **Conectar WebSocket** y luego **Crear campaña**.
 
-Auth is sandbox-only: every HTTP call sends `x-player-id`. No Cognito in v0.
+Auth sandbox: cada request HTTP manda `x-player-id`. Sin Cognito en v0.

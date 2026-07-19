@@ -39,7 +39,7 @@ export class ApiClient {
     this.playerId = playerId;
   }
 
-  createCampaign(language: LanguageCode = "en"): Promise<CampaignEnvelope> {
+  createCampaign(language: LanguageCode = "es"): Promise<CampaignEnvelope> {
     return this.request<CampaignEnvelope>("POST", "/campaigns", {
       body: { language },
       idempotencyKey: newIdempotencyKey(),
@@ -50,7 +50,7 @@ export class ApiClient {
     return this.request<CampaignEnvelope>("GET", `/campaigns/${campaignId}`);
   }
 
-  createSession(campaignId: string, language: LanguageCode = "en"): Promise<SessionEnvelope> {
+  createSession(campaignId: string, language: LanguageCode = "es"): Promise<SessionEnvelope> {
     return this.request<SessionEnvelope>("POST", "/sessions", {
       body: { language, campaignId },
       idempotencyKey: newIdempotencyKey(),
