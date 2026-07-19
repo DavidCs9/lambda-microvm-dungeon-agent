@@ -130,9 +130,7 @@ class DynamoDbCampaignRepository:
             return None
         return self._campaign_from_item(raw_item)
 
-    def find_by_idempotency_key(
-        self, owner_id: str, idempotency_key: str
-    ) -> CampaignRecord | None:
+    def find_by_idempotency_key(self, owner_id: str, idempotency_key: str) -> CampaignRecord | None:
         """Resolve an owner-scoped idempotency key to its original campaign."""
         response = self._client.get_item(
             TableName=self._table_name,

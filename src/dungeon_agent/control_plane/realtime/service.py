@@ -90,7 +90,11 @@ class RealtimeSessionService:
         if campaign is None or campaign.owner_id != owner_id:
             raise PermissionError("campaign does not belong to this player")
         subscribed = connection.model_copy(
-            update={"session_id": None, "campaign_id": campaign_id, "after_sequence": after_sequence}
+            update={
+                "session_id": None,
+                "campaign_id": campaign_id,
+                "after_sequence": after_sequence,
+            }
         )
         self._connections.subscribe(ConnectionRecord.model_validate(subscribed))
         return self._campaign_events.list_after(campaign_id, after_sequence)

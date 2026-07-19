@@ -34,9 +34,7 @@ class InMemoryConnectionRepository:
                 if connection.session_id == session_id
             )
 
-    def list_campaign_subscribers(
-        self, campaign_id: CampaignId
-    ) -> tuple[ConnectionRecord, ...]:
+    def list_campaign_subscribers(self, campaign_id: CampaignId) -> tuple[ConnectionRecord, ...]:
         with self._lock:
             return tuple(
                 connection

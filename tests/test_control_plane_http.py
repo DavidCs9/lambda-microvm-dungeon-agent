@@ -77,9 +77,7 @@ class FakeSessionRepository:
         )
 
     def count_by_campaign(self, campaign_id: CampaignId) -> int:
-        return sum(
-            1 for session in self.records.values() if session.campaign_id == campaign_id
-        )
+        return sum(1 for session in self.records.values() if session.campaign_id == campaign_id)
 
 
 class FakeEventRepository:
@@ -114,9 +112,7 @@ class FakeCampaignRepository:
     def get(self, campaign_id: CampaignId) -> CampaignRecord | None:
         return self.records.get(campaign_id)
 
-    def find_by_idempotency_key(
-        self, owner_id: str, idempotency_key: str
-    ) -> CampaignRecord | None:
+    def find_by_idempotency_key(self, owner_id: str, idempotency_key: str) -> CampaignRecord | None:
         campaign_id = self.idempotency.get((owner_id, idempotency_key))
         return self.records.get(campaign_id) if campaign_id is not None else None
 

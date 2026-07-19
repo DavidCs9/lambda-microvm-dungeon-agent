@@ -32,7 +32,6 @@ from dungeon_agent.control_plane.identifiers import new_event_id
 from dungeon_agent.control_plane.steps.adventure import AdventureStep
 from dungeon_agent.control_plane.steps.character import CharacterStep, CharacterStepInput
 from dungeon_agent.control_plane.workflow.sandbox import sandbox_opening
-from dungeon_agent.domain.game import LanguageCode
 
 Clock = Callable[[], datetime]
 

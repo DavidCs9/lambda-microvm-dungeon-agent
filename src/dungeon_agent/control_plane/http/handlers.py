@@ -523,9 +523,7 @@ class CampaignHttpHandlers:
         """Persist intent and start paid generation once per idempotency key."""
         now = self._clock()
         try:
-            existing = self._campaigns.find_by_idempotency_key(
-                identity.owner_id, idempotency_key
-            )
+            existing = self._campaigns.find_by_idempotency_key(identity.owner_id, idempotency_key)
             if existing is not None:
                 campaign = self._ensure_workflow(
                     existing,
