@@ -1,6 +1,7 @@
 """Framework-neutral agent roles backed by a structured model adapter."""
 
 import json
+import secrets
 from typing import Protocol, TypeVar
 
 from pydantic import BaseModel
@@ -8,6 +9,30 @@ from pydantic import BaseModel
 from dungeon_agent.domain.game import AdventurePlan, LanguageCode, PlayerCharacter, TurnProposal
 
 OutputModel = TypeVar("OutputModel", bound=BaseModel)
+
+# Injected into each adventure prompt so campaigns do not collapse to one premise.
+ADVENTURE_THEME_SEEDS: tuple[str, ...] = (
+    "a floating market that drifts overnight",
+    "a glass greenhouse trapped in perpetual dusk",
+    "a courier guild whose maps keep lying",
+    "a salt mine that sings when danger nears",
+    "a lighthouse that points inland instead of to sea",
+    "a traveling theater missing its lead mask",
+    "a bridge toll that demands memories, not coin",
+    "a bakery whose bread reveals stolen secrets",
+    "an orchard where the fruit ripens backward",
+    "a ferry stuck between two dawns",
+    "a clockmaker's attic full of unfinished hours",
+    "a desert caravan guarding a single wet stone",
+    "a flooded archive of banned lullabies",
+    "a mountain pass gated by a polite golem",
+    "a harbor where ships arrive before they leave",
+    "a school of mirrors that refuse reflections",
+    "a vineyard cursed to ferment fear",
+    "a hot-air balloon race sabotaged midair",
+    "a river that bargains for names",
+    "an abandoned observatory aimed at the wrong sky",
+)
 
 
 class StructuredAgentPort(Protocol):
@@ -34,18 +59,23 @@ class AdventureArchitect:
     def __init__(self, agent: StructuredAgentPort) -> None:
         self.agent = agent
 
-    def create(self, language: LanguageCode) -> AdventurePlan:
+    def create(self, language: LanguageCode, *, theme_seed: str | None = None) -> AdventurePlan:
         language_name = _language_name(language)
+        theme = theme_seed if theme_seed is not None else secrets.choice(ADVENTURE_THEME_SEEDS)
         return self.agent.invoke(
             system=(
                 "You design compact tabletop fantasy one-shots. Create coherent, playful "
                 "adventures that support improvisation and at least three meaningfully different "
                 "solutions. Keep the lore simple enough to understand immediately. IDs must be "
                 "lowercase ASCII snake_case. Every exit must reference a declared location. Do not "
-                "copy commercial settings, characters, or stories."
+                "copy commercial settings, characters, or stories. Vary premise, setting, and "
+                "conflict widely across requests; never default to a silenced village bell, quiet "
+                "tower, or missing clapper."
             ),
             prompt=(
                 f"Create a brand-new 10 to 15 minute adventure entirely in {language_name}. "
+                f"Anchor the premise around this seed (reinterpret freely, do not quote it "
+                f"literally): {theme}. "
                 "Give it one clear objective, 3 to 5 connected locations, 1 or 2 characters with "
                 "useful motivations, a few usable items, and secrets that permit clever solutions. "
                 "The opening must state the immediate situation and objective without solving it. "
