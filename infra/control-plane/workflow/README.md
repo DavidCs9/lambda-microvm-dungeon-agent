@@ -1,17 +1,20 @@
 # Sandbox control plane
 
 This SAM stack deploys the first real control-plane vertical slice: HTTP API, Lambda, DynamoDB,
-and a Step Functions Standard workflow. Session records, phases, and events are durable. The
-adventure, character, and MicroVM operations remain lightweight Wave 1 stubs and will be replaced
-without changing the visible workflow order.
+and Step Functions Standard workflows (create-campaign + create-session). Session and campaign
+records are durable.
 
 The sandbox API is intentionally simple and public. Send `x-player-id` on every request; it becomes
 the session owner. This is convenient for the lab and must be replaced with JWT authentication
 before treating the endpoint as a real product.
 
-## Package and deploy
+## Deploy
 
-Build the ARM64 Lambda bundle, package it into the existing private artifact bucket, and deploy:
+Prefer GitHub Actions: **Deploy control plane sandbox** (see [infra/README.md](../../README.md)).
+That workflow packages the Lambda bundle, uploads to the bootstrap artifact bucket, and updates
+`dungeon-agent-control-plane-sandbox` in `us-east-2`.
+
+Manual laptop deploys still work if you need them:
 
 ```bash
 uv pip install --target dist/control-plane-bundle \

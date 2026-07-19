@@ -1,0 +1,110 @@
+name: Deploy control plane sandbox
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - "infra/control-plane/**"
+      - "src/dungeon_agent/control_plane/**"
+      - ".github/workflows/deploy-control-plane.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-control-plane-sandbox
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Package and deploy
+    runs-on: ubuntu-latest
+    environment: sandbox
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      AWS_REGION: ${{ vars.AWS_REGION }}
+      CONTROL_PLANE_STACK: ${{ vars.AWS_CONTROL_PLANE_STACK }}
+      BOOTSTRAP_STACK: ${{ vars.AWS_BOOTSTRAP_STACK }}
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7.0.0
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v8.3.2
+        with:
+          version: "0.11.29"
+          python-version: "3.14.6"
+          enable-cache: true
+
+      - name: Install SAM CLI
+        uses: aws-actions/setup-sam@v2
+        with:
+          use-installer: true
+
+      - name: Configure short-lived AWS credentials
+        uses: aws-actions/configure-aws-credentials@v6.2.2
+        with:
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
+
+      - name: Resolve artifact bucket
+        id: bootstrap
+        run: |
+          bucket="$(aws cloudformation describe-stacks \
+            --stack-name "${BOOTSTRAP_STACK}" \
+            --query "Stacks[0].Outputs[?OutputKey=='ArtifactBucketName'].OutputValue" \
+            --output text)"
+          if [[ -z "${bucket}" || "${bucket}" == "None" ]]; then
+            echo "ArtifactBucketName output missing from ${BOOTSTRAP_STACK}" >&2
+            exit 1
+          fi
+          echo "bucket=${bucket}" >> "$GITHUB_OUTPUT"
+
+      - name: Build control-plane Lambda bundle
+        run: |
+          rm -rf dist/control-plane-bundle
+          mkdir -p dist/control-plane-bundle
+          uv pip install --target dist/control-plane-bundle \
+            --python-version 3.14 \
+            --python-platform aarch64-manylinux2014 \
+            --only-binary :all: \
+            'pydantic>=2.11,<3' 'boto3>=1.43.51'
+          cp -R src/dungeon_agent dist/control-plane-bundle/
+
+      - name: Package and deploy sandbox stack
+        run: |
+          set -o pipefail
+          sam package \
+            --template-file infra/control-plane/workflow/template.yaml \
+            --s3-bucket "${{ steps.bootstrap.outputs.bucket }}" \
+            --s3-prefix artifacts/control-plane \
+            --output-template-file dist/control-plane-packaged.yaml \
+            --region "${AWS_REGION}"
+
+          aws cloudformation deploy \
+            --template-file dist/control-plane-packaged.yaml \
+            --s3-bucket "${{ steps.bootstrap.outputs.bucket }}" \
+            --s3-prefix artifacts/control-plane/templates \
+            --stack-name "${CONTROL_PLANE_STACK}" \
+            --capabilities CAPABILITY_IAM CAPABILITY_AUTO_EXPAND \
+            --region "${AWS_REGION}" \
+            --no-fail-on-empty-changeset
+
+      - name: Publish stack outputs
+        run: |
+          {
+            echo "## Control plane sandbox"
+            echo
+            echo "- Stack: \`${CONTROL_PLANE_STACK}\`"
+            echo "- Region: \`${AWS_REGION}\`"
+            echo
+            echo '```json'
+            aws cloudformation describe-stacks \
+              --stack-name "${CONTROL_PLANE_STACK}" \
+              --query 'Stacks[0].Outputs' \
+              --output json
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
