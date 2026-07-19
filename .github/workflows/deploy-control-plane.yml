@@ -86,6 +86,8 @@ jobs:
 
           aws cloudformation deploy \
             --template-file dist/control-plane-packaged.yaml \
+            --s3-bucket "${{ steps.bootstrap.outputs.bucket }}" \
+            --s3-prefix artifacts/control-plane/templates \
             --stack-name "${CONTROL_PLANE_STACK}" \
             --capabilities CAPABILITY_IAM CAPABILITY_AUTO_EXPAND \
             --region "${AWS_REGION}" \
