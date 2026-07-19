@@ -1,0 +1,21 @@
+#!/usr/bin/env bash
+# Format staged Python before commit. Enable once with:
+#   git config core.hooksPath .githooks
+set -euo pipefail
+
+files="$(git diff --cached --name-only --diff-filter=ACMR | grep '\.py$' || true)"
+[[ -n "$files" ]] || exit 0
+
+if command -v uv >/dev/null 2>&1; then
+  # shellcheck disable=SC2086
+  uv run ruff format $files
+elif command -v ruff >/dev/null 2>&1; then
+  # shellcheck disable=SC2086
+  ruff format $files
+else
+  echo "pre-commit: uv/ruff not found; skip format" >&2
+  exit 0
+fi
+
+# shellcheck disable=SC2086
+git add $files

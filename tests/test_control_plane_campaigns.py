@@ -1,3 +1,4 @@
+import json
 from datetime import UTC, datetime, timedelta
 
 import pytest
@@ -16,6 +17,7 @@ from dungeon_agent.control_plane.domain.models import (
     CampaignId,
     CampaignRecord,
     CreateCampaignCommand,
+    OpeningDocument,
 )
 from dungeon_agent.control_plane.identifiers import new_campaign_id
 from dungeon_agent.control_plane.persistence.errors import (
@@ -24,6 +26,8 @@ from dungeon_agent.control_plane.persistence.errors import (
     CampaignRevisionConflictError,
 )
 from dungeon_agent.control_plane.persistence.memory import InMemoryCampaignRepository
+from dungeon_agent.control_plane.workflow.campaigns import DurableCampaignWorkflowStub
+from dungeon_agent.control_plane.workflow.sandbox import sandbox_opening
 
 NOW = datetime(2026, 7, 18, 21, 0, tzinfo=UTC)
 CAMPAIGN_ID: CampaignId = "cam_01J00000000000000000000000"
@@ -221,6 +225,116 @@ def test_in_memory_list_by_owner_is_owner_scoped() -> None:
 
     listed = repository.list_by_owner("user_demo")
     assert [campaign.campaign_id for campaign in listed] == [mine.campaign_id]
+
+
+def test_campaign_record_round_trips_opening_title() -> None:
+    campaign = make_campaign().model_copy(update={"opening_title": "The silent tower"})
+
+    serialized = campaign.model_dump_json(by_alias=True)
+    assert '"openingTitle":"The silent tower"' in serialized
+    restored = CampaignRecord.model_validate_json(serialized)
+    assert restored == campaign
+    assert restored.opening_title == "The silent tower"
+
+    repository = InMemoryCampaignRepository()
+    repository.create(campaign, "create-request-001")
+    assert repository.get(campaign.campaign_id).opening_title == "The silent tower"  # type: ignore[union-attr]
+
+
+def test_campaign_record_without_opening_title_key_defaults_to_none() -> None:
+    payload = {
+        "campaignId": CAMPAIGN_ID,
+        "ownerId": "user_demo",
+        "language": "en",
+        "status": "requested",
+        "phase": "requested",
+        "revision": 0,
+        "lastEventSequence": 0,
+        "createdAt": NOW.isoformat(),
+        "updatedAt": NOW.isoformat(),
+    }
+
+    campaign = CampaignRecord.model_validate_json(json.dumps(payload))
+
+    assert campaign.opening_title is None
+
+
+def test_mark_campaign_ready_persists_opening_title() -> None:
+    repository = InMemoryCampaignRepository()
+    campaign = make_campaign()
+    repository.create(campaign, "create-request-001")
+    stub = DurableCampaignWorkflowStub(repository, repository)
+    opening = sandbox_opening(campaign.language)
+
+    result = stub.handle(
+        {
+            "operation": "MarkCampaignReady",
+            "workflowExecutionArn": "arn:aws:states:us-east-1:123456789012:execution:campaign:t1",
+            "stateEnteredAt": "2026-07-18T21:00:00Z",
+            "state": {
+                "campaignId": CAMPAIGN_ID,
+                "correlationId": "corr-campaign-ready",
+                "adventureRef": ADVENTURE_REF,
+                "characterRef": CHARACTER_REF,
+            },
+        }
+    )
+
+    saved = repository.get(CAMPAIGN_ID)
+    assert saved is not None
+    assert saved.opening_title == opening.title
+    assert result["status"] == CampaignStatus.READY.value
+    stashed = result["opening"]
+    assert isinstance(stashed, dict)
+    assert stashed["title"] == opening.title
+
+
+def test_emit_campaign_ready_reuses_stashed_opening() -> None:
+    repository = InMemoryCampaignRepository()
+    campaign = CampaignRecord(
+        campaign_id=CAMPAIGN_ID,
+        owner_id="user_demo",
+        language="en",
+        status=CampaignStatus.READY,
+        phase=CampaignPhase.READY,
+        revision=1,
+        last_event_sequence=0,
+        created_at=NOW,
+        updated_at=NOW,
+        adventure_ref=ADVENTURE_REF,
+        character_ref=CHARACTER_REF,
+        opening_title="Stashed title",
+    )
+    repository.create(campaign, "create-request-001")
+
+    class CountingLoader:
+        calls = 0
+
+        def load_opening(self, character_ref: str) -> OpeningDocument:
+            self.calls += 1
+            return sandbox_opening("en")
+
+    loader = CountingLoader()
+    stub = DurableCampaignWorkflowStub(repository, repository, openings=loader)
+    opening = sandbox_opening("en").model_copy(update={"title": "Stashed title"})
+
+    stub.handle(
+        {
+            "operation": "EmitCampaignReady",
+            "workflowExecutionArn": "arn:aws:states:us-east-1:123456789012:execution:campaign:t1",
+            "stateEnteredAt": "2026-07-18T21:00:00Z",
+            "state": {
+                "campaignId": CAMPAIGN_ID,
+                "correlationId": "corr-campaign-ready",
+                "characterRef": CHARACTER_REF,
+                "opening": opening.model_dump(by_alias=True),
+            },
+        }
+    )
+
+    assert loader.calls == 0
+    events = repository.list_after(CAMPAIGN_ID, 0)
+    assert events[-1].payload.opening.title == "Stashed title"  # type: ignore[union-attr]
 
 
 def _campaign_event(sequence: int, *, suffix: str) -> CampaignEvent:

@@ -15,7 +15,7 @@ export function OpeningScrollScreen() {
   const title = opening?.title?.trim() || "El umbral";
 
   return (
-    <ScreenShell align="start" className="pb-24 pt-12">
+    <ScreenShell align="start" className="pb-32 pt-12">
       <motion.header
         initial={{ opacity: 0, y: 10 }}
         animate={{ opacity: 1, y: 0 }}
@@ -58,8 +58,8 @@ export function OpeningScrollScreen() {
         )}
       </div>
 
-      <div className="mt-16 flex flex-col items-center">
-        <EmberButton onClick={() => gameActions.continueFromOpening()}>
+      <div className="fixed inset-x-0 bottom-0 z-20 flex flex-col items-center border-t border-[var(--line)] bg-[var(--surface-2)] px-6 pt-4 pb-[calc(env(safe-area-inset-bottom)+1rem)] backdrop-blur-sm">
+        <EmberButton onClick={() => gameActions.continueFromOpening()} className="mt-0">
           Comenzar la aventura
         </EmberButton>
         <ErrorLine message={errorMessage} />

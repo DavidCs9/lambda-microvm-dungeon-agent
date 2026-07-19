@@ -9,8 +9,13 @@
   --fog: #1c1714;
   --line: rgba(243, 235, 224, 0.14);
   --panel: rgba(18, 14, 12, 0.72);
+  --success: #7fa87f;
+  --danger: #e8a07a;
+  --surface-1: rgba(24, 19, 16, 0.6);
+  --surface-2: rgba(32, 26, 22, 0.85);
   --font-display: "Cinzel", "Times New Roman", serif;
   --font-body: "Source Serif 4", Georgia, serif;
+  --font-ui: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
 }
 
 * {
