@@ -219,8 +219,11 @@ Resources:
                 Action:
                   - logs:CreateLogStream
                   - logs:PutLogEvents
-                Resource: !Sub >-
-                  arn:${AWS::Partition}:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/${AWS::StackName}-workflow-stub:*
+                Resource:
+                  - !Sub >-
+                    arn:${AWS::Partition}:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/${AWS::StackName}-workflow-stub:*
+                  - !Sub >-
+                    arn:${AWS::Partition}:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/${AWS::StackName}-turn-worker:*
               - Effect: Allow
                 Action:
                   - dynamodb:GetItem
@@ -294,6 +297,7 @@ Resources:
       Environment:
         Variables:
           TABLE_NAME: !Ref SessionTable
+          CAMPAIGN_TABLE_NAME: !Ref CampaignTable
           BEDROCK_MODEL_ID: !Ref BedrockModelId
           MICROVM_IMAGE_NAME: !Ref MicrovmImageName
           WS_MANAGEMENT_ENDPOINT: !Sub "https://${ControlPlaneWebSocketApi}.execute-api.${AWS::Region}.${AWS::URLSuffix}/prod"

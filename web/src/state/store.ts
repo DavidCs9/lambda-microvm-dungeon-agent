@@ -314,14 +314,17 @@ function applyEvent(event: ControlPlaneEvent): void {
         return;
       }
       const phase = typeof payload.phase === "string" ? payload.phase : session.phase;
+      const awaitingAction = phase === "ready";
       setState({
         session: {
           ...session,
           phase,
+          status: awaitingAction ? "ready" : session.status,
           lastEventSequence: Math.max(session.lastEventSequence, event.sequence),
         },
         phaseLabel: phase,
         phaseKind: "session",
+        ...(awaitingAction ? { turnPending: false } : {}),
       });
       return;
     }
@@ -677,12 +680,15 @@ export const gameActions = {
       return;
     }
     syncClients(state.playerId);
+    setState({ turnPending: true, narrationStream: "", errorMessage: null });
     try {
       ensureConfigured();
       await api.submitAction(session.sessionId, trimmed, state.expectedRevision);
-      setState({ errorMessage: null });
     } catch (error) {
-      setState({ errorMessage: errorMessageOf(error) });
+      setState({
+        turnPending: false,
+        errorMessage: errorMessageOf(error),
+      });
     }
   },
 
