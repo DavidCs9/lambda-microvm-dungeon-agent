@@ -220,3 +220,7 @@ Contributions are welcome. Read [CONTRIBUTING.md](CONTRIBUTING.md), [SECURITY.md
 ## License
 
 MIT
+
+## Quick Test
+
+This is a test change from Kimi Code via ACP delegation.
