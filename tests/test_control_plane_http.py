@@ -17,6 +17,7 @@ from dungeon_agent.control_plane.domain.models import (
     CreateCampaignWorkflowInput,
     CreateSessionCommand,
     CreateSessionWorkflowInput,
+    OpeningDocument,
     PhaseChangedPayload,
     SessionEvent,
     SessionId,
@@ -131,15 +132,14 @@ class FakeCampaignRepository:
         campaigns = [
             campaign
             for campaign in self.records.values()
-            if campaign.owner_id == owner_id
-            and (status is None or campaign.status.value == status)
+            if campaign.owner_id == owner_id and (status is None or campaign.status.value == status)
         ]
         campaigns.sort(key=lambda campaign: campaign.created_at, reverse=True)
         return tuple(campaigns[:50])
 
 
 class FakeOpeningLoader:
-    def load_opening(self, character_ref: str):
+    def load_opening(self, character_ref: str) -> OpeningDocument:
         from dungeon_agent.control_plane.workflow.sandbox import sandbox_opening
 
         assert character_ref
