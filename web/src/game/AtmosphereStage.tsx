@@ -283,6 +283,7 @@ export function AtmosphereStage({ screen, diceBeat }: Props) {
     if (!host) return;
 
     let cancelled = false;
+    let ready = false;
     const app = new Application();
     appRef.current = app;
 
@@ -294,15 +295,28 @@ export function AtmosphereStage({ screen, diceBeat }: Props) {
     window.addEventListener("pointerdown", onGesture, { once: true });
     window.addEventListener("keydown", onGesture, { once: true });
 
+    const syncSize = () => {
+      const w = Math.max(1, host.clientWidth);
+      const h = Math.max(1, host.clientHeight);
+      app.renderer.resize(w, h);
+    };
+
     void (async () => {
-      await app.init({
-        resizeTo: host,
-        background: DEEP,
-        antialias: true,
-        autoDensity: true,
-        resolution: Math.min(window.devicePixelRatio || 1, 2),
-        preference: "webgl",
-      });
+      try {
+        await app.init({
+          width: Math.max(1, host.clientWidth),
+          height: Math.max(1, host.clientHeight),
+          background: DEEP,
+          antialias: true,
+          autoDensity: true,
+          resolution: Math.min(window.devicePixelRatio || 1, 2),
+          preference: "webgl",
+        });
+      } catch (error) {
+        console.error("Pixi init failed", error);
+        return;
+      }
+      ready = true;
       if (cancelled) {
         app.destroy(true);
         return;
@@ -312,6 +326,8 @@ export function AtmosphereStage({ screen, diceBeat }: Props) {
       app.canvas.style.display = "block";
       app.canvas.style.width = "100%";
       app.canvas.style.height = "100%";
+      syncSize();
+      window.addEventListener("resize", syncSize);
 
       const fog = new Graphics();
       const glow = new Graphics();
@@ -419,9 +435,14 @@ export function AtmosphereStage({ screen, diceBeat }: Props) {
       cancelled = true;
       window.removeEventListener("pointerdown", onGesture);
       window.removeEventListener("keydown", onGesture);
+      window.removeEventListener("resize", syncSize);
       stateRef.current = null;
-      if (appRef.current) {
-        appRef.current.destroy(true);
+      if (ready && appRef.current) {
+        try {
+          appRef.current.destroy(true);
+        } catch (error) {
+          console.warn("Pixi destroy failed", error);
+        }
         appRef.current = null;
       }
       disposeAudio();
