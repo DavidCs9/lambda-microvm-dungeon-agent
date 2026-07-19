@@ -1,8 +1,10 @@
 # Architecture
 
 The current local architecture is documented below. The accepted direction for the web control
-plane and durable sessions is [RFC 0001](rfcs/0001-web-control-plane.md), with executable slices in
-the [web control plane implementation plan](plans/web-control-plane.md).
+plane and durable sessions is [RFC 0001](rfcs/0001-web-control-plane.md), with the campaign and
+play split in [RFC 0002](rfcs/0002-campaign-play-split.md) and the showcase browser client in
+[RFC 0003](rfcs/0003-videogame-web-client.md). Executable slices live in the
+[web control plane implementation plan](plans/web-control-plane.md).
 
 The lab separates orchestration from untrusted execution:
 
