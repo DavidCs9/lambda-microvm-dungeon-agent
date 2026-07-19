@@ -165,6 +165,7 @@ class CampaignRecord(ContractModel):
     updated_at: datetime
     adventure_ref: ArtifactRef | None = None
     character_ref: ArtifactRef | None = None
+    opening_title: str | None = None
     generation: CampaignGenerationMetrics | None = None
     workflow_execution_arn: str | None = Field(default=None, min_length=20, max_length=2_048)
 

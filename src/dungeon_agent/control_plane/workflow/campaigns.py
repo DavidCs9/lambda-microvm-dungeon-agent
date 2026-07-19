@@ -149,6 +149,12 @@ class DurableCampaignWorkflowStub:
                 state["characterRef"] = character_result.character_ref
                 state["characterLatencyMs"] = character_result.latency_ms
         elif operation == "MarkCampaignReady":
+            current = self._required_campaign(state)
+            opening = (
+                sandbox_opening(current.language)
+                if self._openings is None
+                else self._openings.load_opening(_required_string(state, "characterRef"))
+            )
             campaign = self._update_campaign(
                 state,
                 status=CampaignStatus.READY,
@@ -157,15 +163,22 @@ class DurableCampaignWorkflowStub:
                 adventure_ref=_required_string(state, "adventureRef"),
                 character_ref=_required_string(state, "characterRef"),
                 generation=self._generation_metrics(),
+                opening_title=opening.title,
             )
             state["status"] = campaign.status.value
             state["phase"] = campaign.phase.value
+            state["opening"] = opening.model_dump(by_alias=True)
         elif operation == "EmitCampaignReady":
             campaign = self._required_campaign(state)
+            opening_payload = state.get("opening")
             opening = (
-                sandbox_opening(campaign.language)
-                if self._openings is None
-                else self._openings.load_opening(_required_string(state, "characterRef"))
+                OpeningDocument.model_validate(opening_payload)
+                if opening_payload is not None
+                else (
+                    sandbox_opening(campaign.language)
+                    if self._openings is None
+                    else self._openings.load_opening(_required_string(state, "characterRef"))
+                )
             )
             self._append_event(
                 campaign,
@@ -229,6 +242,7 @@ class DurableCampaignWorkflowStub:
         adventure_ref: str | None = None,
         character_ref: str | None = None,
         generation: CampaignGenerationMetrics | None = None,
+        opening_title: str | None = None,
     ) -> CampaignRecord:
         current = self._required_campaign(state)
         updated = current.model_copy(
@@ -239,6 +253,9 @@ class DurableCampaignWorkflowStub:
                 "adventure_ref": adventure_ref or current.adventure_ref,
                 "character_ref": character_ref or current.character_ref,
                 "generation": generation or current.generation,
+                "opening_title": (
+                    opening_title if opening_title is not None else current.opening_title
+                ),
                 "revision": current.revision + 1,
                 "updated_at": self._clock(),
             }

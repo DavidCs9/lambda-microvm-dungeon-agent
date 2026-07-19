@@ -33,6 +33,8 @@ export interface CampaignRecord {
   phase: string;
   revision: number;
   lastEventSequence: number;
+  openingTitle?: string | null;
+  createdAt?: string;
 }
 
 export interface SessionRecord {
