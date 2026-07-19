@@ -790,6 +790,364 @@ Resources:
             Error: WorkflowFailureHandlerFailed
             Cause: The terminal failure handler could not record the workflow failure.
 
+  CreateCampaignStateMachineRole:
+    Type: AWS::IAM::Role
+    Properties:
+      Description: Invokes the create-campaign workflow task stub and publishes telemetry.
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: states.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: InvokeWorkflowTask
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action: lambda:InvokeFunction
+                Resource: !GetAtt WorkflowTaskFunction.Arn
+        - PolicyName: DeliverWorkflowLogs
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - logs:CreateLogDelivery
+                  - logs:GetLogDelivery
+                  - logs:UpdateLogDelivery
+                  - logs:DeleteLogDelivery
+                  - logs:ListLogDeliveries
+                  - logs:PutResourcePolicy
+                  - logs:DescribeResourcePolicies
+                  - logs:DescribeLogGroups
+                Resource: "*"
+        - PolicyName: PublishWorkflowTraces
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - xray:PutTraceSegments
+                  - xray:PutTelemetryRecords
+                  - xray:GetSamplingRules
+                  - xray:GetSamplingTargets
+                Resource: "*"
+
+  CreateCampaignWorkflowLogGroup:
+    Type: AWS::Logs::LogGroup
+    DeletionPolicy: Delete
+    UpdateReplacePolicy: Delete
+    Properties:
+      LogGroupName: !Sub "/aws/vendedlogs/states/${AWS::StackName}-create-campaign"
+      RetentionInDays: !Ref LogRetentionDays
+
+  CreateCampaignStateMachine:
+    Type: AWS::StepFunctions::StateMachine
+    DependsOn:
+      - CreateCampaignWorkflowLogGroup
+      - WorkflowTaskLogGroup
+    Properties:
+      StateMachineName: !Sub "${AWS::StackName}-create-campaign"
+      StateMachineType: STANDARD
+      RoleArn: !GetAtt CreateCampaignStateMachineRole.Arn
+      LoggingConfiguration:
+        Destinations:
+          - CloudWatchLogsLogGroup:
+              LogGroupArn: !GetAtt CreateCampaignWorkflowLogGroup.Arn
+        IncludeExecutionData: false
+        Level: ALL
+      TracingConfiguration:
+        Enabled: true
+      Definition:
+        Comment: Creates a reusable campaign through generation phases with no MicroVM involvement.
+        StartAt: ValidateCampaign
+        TimeoutSeconds: 900
+        States:
+          ValidateCampaign:
+            Type: Task
+            Resource: !Sub "arn:${AWS::Partition}:states:::lambda:invoke"
+            TimeoutSeconds: 30
+            Parameters:
+              FunctionName: !GetAtt WorkflowTaskFunction.Arn
+              Payload:
+                operation: ValidateCampaign
+                state.$: "$"
+                workflowExecutionArn.$: "$$.Execution.Id"
+                stateEnteredAt.$: "$$.State.EnteredTime"
+                retryCount.$: "$$.State.RetryCount"
+            OutputPath: "$.Payload"
+            Retry:
+              - ErrorEquals:
+                  - RetriableDependencyError
+                  - Lambda.ServiceException
+                  - Lambda.AWSLambdaException
+                  - Lambda.SdkClientException
+                  - Lambda.TooManyRequestsException
+                  - States.Timeout
+                IntervalSeconds: 2
+                MaxAttempts: 3
+                BackoffRate: 2.0
+                MaxDelaySeconds: 30
+                JitterStrategy: FULL
+            Catch:
+              - ErrorEquals:
+                  - ValidationError
+                  - AuthorizationError
+                ResultPath: "$.failure"
+                Next: MarkCampaignFailed
+              - ErrorEquals:
+                  - States.ALL
+                ResultPath: "$.failure"
+                Next: MarkCampaignFailed
+            Next: CreateCampaignRecord
+
+          CreateCampaignRecord:
+            Type: Task
+            Resource: !Sub "arn:${AWS::Partition}:states:::lambda:invoke"
+            TimeoutSeconds: 30
+            Parameters:
+              FunctionName: !GetAtt WorkflowTaskFunction.Arn
+              Payload:
+                operation: CreateCampaignRecord
+                state.$: "$"
+                workflowExecutionArn.$: "$$.Execution.Id"
+                stateEnteredAt.$: "$$.State.EnteredTime"
+                retryCount.$: "$$.State.RetryCount"
+            OutputPath: "$.Payload"
+            Retry:
+              - ErrorEquals:
+                  - RetriableDependencyError
+                  - Lambda.ServiceException
+                  - Lambda.AWSLambdaException
+                  - Lambda.SdkClientException
+                  - Lambda.TooManyRequestsException
+                  - States.Timeout
+                IntervalSeconds: 2
+                MaxAttempts: 3
+                BackoffRate: 2.0
+                MaxDelaySeconds: 30
+                JitterStrategy: FULL
+            Catch:
+              - ErrorEquals:
+                  - ValidationError
+                  - AuthorizationError
+                ResultPath: "$.failure"
+                Next: MarkCampaignFailed
+              - ErrorEquals:
+                  - States.ALL
+                ResultPath: "$.failure"
+                Next: MarkCampaignFailed
+            Next: GenerateAdventure
+
+          GenerateAdventure:
+            Type: Task
+            Resource: !Sub "arn:${AWS::Partition}:states:::lambda:invoke"
+            TimeoutSeconds: 300
+            Parameters:
+              FunctionName: !GetAtt WorkflowTaskFunction.Arn
+              Payload:
+                operation: GenerateAdventure
+                state.$: "$"
+                workflowExecutionArn.$: "$$.Execution.Id"
+                stateEnteredAt.$: "$$.State.EnteredTime"
+                retryCount.$: "$$.State.RetryCount"
+            OutputPath: "$.Payload"
+            Retry:
+              - ErrorEquals:
+                  - RetriableDependencyError
+                  - Lambda.ServiceException
+                  - Lambda.AWSLambdaException
+                  - Lambda.SdkClientException
+                  - Lambda.TooManyRequestsException
+                  - States.Timeout
+                IntervalSeconds: 2
+                MaxAttempts: 3
+                BackoffRate: 2.0
+                MaxDelaySeconds: 30
+                JitterStrategy: FULL
+            Catch:
+              - ErrorEquals:
+                  - States.ALL
+                ResultPath: "$.failure"
+                Next: MarkCampaignFailed
+            Next: GenerateCharacter
+
+          GenerateCharacter:
+            Type: Task
+            Resource: !Sub "arn:${AWS::Partition}:states:::lambda:invoke"
+            TimeoutSeconds: 300
+            Parameters:
+              FunctionName: !GetAtt WorkflowTaskFunction.Arn
+              Payload:
+                operation: GenerateCharacter
+                state.$: "$"
+                workflowExecutionArn.$: "$$.Execution.Id"
+                stateEnteredAt.$: "$$.State.EnteredTime"
+                retryCount.$: "$$.State.RetryCount"
+            OutputPath: "$.Payload"
+            Retry:
+              - ErrorEquals:
+                  - RetriableDependencyError
+                  - Lambda.ServiceException
+                  - Lambda.AWSLambdaException
+                  - Lambda.SdkClientException
+                  - Lambda.TooManyRequestsException
+                  - States.Timeout
+                IntervalSeconds: 2
+                MaxAttempts: 3
+                BackoffRate: 2.0
+                MaxDelaySeconds: 30
+                JitterStrategy: FULL
+            Catch:
+              - ErrorEquals:
+                  - States.ALL
+                ResultPath: "$.failure"
+                Next: MarkCampaignFailed
+            Next: MarkCampaignReady
+
+          MarkCampaignReady:
+            Type: Task
+            Resource: !Sub "arn:${AWS::Partition}:states:::lambda:invoke"
+            TimeoutSeconds: 30
+            Parameters:
+              FunctionName: !GetAtt WorkflowTaskFunction.Arn
+              Payload:
+                operation: MarkCampaignReady
+                state.$: "$"
+                workflowExecutionArn.$: "$$.Execution.Id"
+                stateEnteredAt.$: "$$.State.EnteredTime"
+                retryCount.$: "$$.State.RetryCount"
+            OutputPath: "$.Payload"
+            Retry:
+              - ErrorEquals:
+                  - RetriableDependencyError
+                  - Lambda.ServiceException
+                  - Lambda.AWSLambdaException
+                  - Lambda.SdkClientException
+                  - Lambda.TooManyRequestsException
+                  - States.Timeout
+                IntervalSeconds: 2
+                MaxAttempts: 3
+                BackoffRate: 2.0
+                MaxDelaySeconds: 30
+                JitterStrategy: FULL
+            Catch:
+              - ErrorEquals:
+                  - States.ALL
+                ResultPath: "$.failure"
+                Next: MarkCampaignFailed
+            Next: EmitCampaignReady
+
+          EmitCampaignReady:
+            Type: Task
+            Resource: !Sub "arn:${AWS::Partition}:states:::lambda:invoke"
+            TimeoutSeconds: 30
+            Parameters:
+              FunctionName: !GetAtt WorkflowTaskFunction.Arn
+              Payload:
+                operation: EmitCampaignReady
+                state.$: "$"
+                workflowExecutionArn.$: "$$.Execution.Id"
+                stateEnteredAt.$: "$$.State.EnteredTime"
+                retryCount.$: "$$.State.RetryCount"
+            OutputPath: "$.Payload"
+            Retry:
+              - ErrorEquals:
+                  - RetriableDependencyError
+                  - Lambda.ServiceException
+                  - Lambda.AWSLambdaException
+                  - Lambda.SdkClientException
+                  - Lambda.TooManyRequestsException
+                  - States.Timeout
+                IntervalSeconds: 2
+                MaxAttempts: 3
+                BackoffRate: 2.0
+                MaxDelaySeconds: 30
+                JitterStrategy: FULL
+            Catch:
+              - ErrorEquals:
+                  - States.ALL
+                ResultPath: "$.failure"
+                Next: CampaignCreationFailed
+            End: true
+
+          MarkCampaignFailed:
+            Type: Task
+            Resource: !Sub "arn:${AWS::Partition}:states:::lambda:invoke"
+            TimeoutSeconds: 30
+            Parameters:
+              FunctionName: !GetAtt WorkflowTaskFunction.Arn
+              Payload:
+                operation: MarkCampaignFailed
+                failure.$: "$"
+                workflowExecutionArn.$: "$$.Execution.Id"
+                stateEnteredAt.$: "$$.State.EnteredTime"
+                retryCount.$: "$$.State.RetryCount"
+            OutputPath: "$.Payload"
+            Retry:
+              - ErrorEquals:
+                  - RetriableDependencyError
+                  - Lambda.ServiceException
+                  - Lambda.AWSLambdaException
+                  - Lambda.SdkClientException
+                  - Lambda.TooManyRequestsException
+                  - States.Timeout
+                IntervalSeconds: 2
+                MaxAttempts: 3
+                BackoffRate: 2.0
+                MaxDelaySeconds: 30
+                JitterStrategy: FULL
+            Catch:
+              - ErrorEquals: [States.ALL]
+                ResultPath: "$.failureHandlerFailure"
+                Next: WorkflowFailureHandlerFailedCampaign
+            Next: EmitCampaignCreationFailed
+
+          EmitCampaignCreationFailed:
+            Type: Task
+            Resource: !Sub "arn:${AWS::Partition}:states:::lambda:invoke"
+            TimeoutSeconds: 30
+            Parameters:
+              FunctionName: !GetAtt WorkflowTaskFunction.Arn
+              Payload:
+                operation: EmitCampaignCreationFailed
+                state.$: "$"
+                workflowExecutionArn.$: "$$.Execution.Id"
+                stateEnteredAt.$: "$$.State.EnteredTime"
+                retryCount.$: "$$.State.RetryCount"
+            OutputPath: "$.Payload"
+            Retry:
+              - ErrorEquals:
+                  - RetriableDependencyError
+                  - Lambda.ServiceException
+                  - Lambda.AWSLambdaException
+                  - Lambda.SdkClientException
+                  - Lambda.TooManyRequestsException
+                  - States.Timeout
+                IntervalSeconds: 2
+                MaxAttempts: 3
+                BackoffRate: 2.0
+                MaxDelaySeconds: 30
+                JitterStrategy: FULL
+            Catch:
+              - ErrorEquals: [States.ALL]
+                ResultPath: "$.failureHandlerFailure"
+                Next: WorkflowFailureHandlerFailedCampaign
+            Next: CampaignCreationFailed
+
+          CampaignCreationFailed:
+            Type: Fail
+            Error: CampaignCreationFailed
+            Cause: The workflow marked the campaign failed and emitted a durable-event stub.
+
+          WorkflowFailureHandlerFailedCampaign:
+            Type: Fail
+            Error: WorkflowFailureHandlerFailed
+            Cause: The terminal failure handler could not record the campaign workflow failure.
+
   WorkflowMonitorRole:
     Type: AWS::IAM::Role
     Properties:
@@ -1021,6 +1379,15 @@ Outputs:
   WorkflowLogGroupName:
     Description: Log group containing sanitized Step Functions execution history.
     Value: !Ref CreateSessionWorkflowLogGroup
+  CampaignTableName:
+    Description: DynamoDB table containing campaigns and durable events.
+    Value: !Ref CampaignTable
+  CreateCampaignStateMachineArn:
+    Description: ARN used by the control plane to start Standard create-campaign executions.
+    Value: !GetAtt CreateCampaignStateMachine.Arn
+  CreateCampaignStateMachineName:
+    Description: Generated name of the Standard create-campaign state machine.
+    Value: !GetAtt CreateCampaignStateMachine.Name
   WorkflowMonitorDeadLetterQueueUrl:
     Description: Queue containing terminal workflow events that operational monitoring could not consume.
     Value: !Ref WorkflowMonitorDeadLetterQueue
