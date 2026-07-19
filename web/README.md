@@ -1,12 +1,8 @@
-# Cliente web v0 (laboratorio)
+# Dungeon Agent — showcase client (RFC 0003)
 
-Página mínima Vite + TypeScript contra el control plane sandbox. El idioma oficial
-de juego es **español** (`language: "es"` en create campaign/session).
-
-1. Conectar WebSocket con `playerId`
-2. Crear una campaña y ver las fases
-3. Crear una sesión contra esa campaña
-4. Enviar una acción y ver eventos
+Cliente browser de demostración: atmósfera Pixi, ritual de campaña en español,
+apertura en scroll, mesa de juego y beat de dados. Habla con el control plane
+sandbox vía HTTP + WebSocket (`x-player-id`).
 
 ## Setup
 
@@ -24,14 +20,24 @@ aws cloudformation describe-stacks \
   --query 'Stacks[0].Outputs'
 ```
 
-Instala y arranca:
-
 ```bash
 npm install
 npm run dev
 ```
 
-Abre la URL local. Pon un `playerId` (mín. 3 caracteres; se guarda en `localStorage`),
-pulsa **Conectar WebSocket** y luego **Crear campaña**.
+Abre la URL local. Pon un `playerId` (mín. 3 caracteres) y pulsa **Empezar**.
 
-Auth sandbox: cada request HTTP manda `x-player-id`. Sin Cognito en v0.
+## Layout
+
+```text
+src/
+  game/   Pixi atmosphere + dice + Web Audio
+  ui/     React screens (landing → ritual → phase → opening → play → outcome)
+  net/    HTTP + WebSocket adapters
+  state/  Event-driven store (useSyncExternalStore)
+  debug/  Lab v0 console (fallback)
+```
+
+Consola operador (JSON): abre `debug.html` en Vite (`/debug.html`).
+
+Auth sandbox: `x-player-id` / `playerId`. Sin Cognito. Idioma oficial de demo: `es`.
