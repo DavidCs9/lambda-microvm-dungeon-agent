@@ -1,3 +1,17 @@
+# 🔬 LAB MANIFESTO — READ FIRST
+
+**This is a personal laboratory, not an enterprise product.**
+
+- **One dev:** David. No code reviews, no approvals, no RFCs, no release process.
+- **Speed > ceremony:** Simple implementation directly. No slices, no phases, no plans.
+- **No new overhead:** The existing docs (RFCs, etc.) stay as reference. Do NOT add more ceremony on top.
+- **PRs yes, for mobile review:** Branch → commit → push → `gh pr create`. David merges from his phone.
+- **Infra mínimo viable:** Si algo no se necesita hoy, no se implementa. Sin alarmas extra, sin roles separados, sin patrones enterprise que el lab no requiere.
+
+**When in doubt: ask "is this enterprise over-engineering for a lab?" If yes, don't do it.**
+
+---
+
 # AWS Guidance
 
 - Prefer the AWS MCP Server for AWS interactions — it provides sandboxed
