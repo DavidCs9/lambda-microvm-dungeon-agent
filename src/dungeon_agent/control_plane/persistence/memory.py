@@ -117,6 +117,17 @@ class InMemoryControlPlaneRepository:
                 if session.owner_id == owner_id and session.status in _ACTIVE_STATUSES
             )
 
+    def list_active_by_owner(self, owner_id: str) -> tuple[SessionRecord, ...]:
+        """List one owner's live sessions, newest first, hard-capped for hygiene."""
+        with self._lock:
+            sessions = [
+                session
+                for session in self._sessions.values()
+                if session.owner_id == owner_id and session.status in _ACTIVE_STATUSES
+            ]
+        sessions.sort(key=lambda session: session.created_at, reverse=True)
+        return tuple(sessions[:10])
+
     def count_by_campaign(self, campaign_id: CampaignId) -> int:
         """Count every session forked from one campaign, including finished ones."""
         with self._lock:

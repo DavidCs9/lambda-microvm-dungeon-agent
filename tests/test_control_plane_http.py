@@ -1,6 +1,6 @@
 import json
-from datetime import UTC, datetime
-from typing import Any, cast
+from datetime import UTC, datetime, timedelta
+from typing import Any, Never, cast
 
 from dungeon_agent.control_plane.application import DefaultCampaignFactory
 from dungeon_agent.control_plane.domain.enums import (
@@ -19,6 +19,7 @@ from dungeon_agent.control_plane.domain.models import (
     CreateSessionWorkflowInput,
     OpeningDocument,
     PhaseChangedPayload,
+    SessionCompletedPayload,
     SessionEvent,
     SessionId,
     SessionRecord,
@@ -35,6 +36,22 @@ OTHER_SESSION_ID: SessionId = "ses_01J00000000000000000000001"
 CAMPAIGN_ID: CampaignId = "cam_01J00000000000000000000000"
 ADVENTURE_REF = f"dynamodb://CAMPAIGN#{CAMPAIGN_ID}/ARTIFACT#ADVENTURE"
 CHARACTER_REF = f"dynamodb://CAMPAIGN#{CAMPAIGN_ID}/ARTIFACT#CHARACTER"
+_ACTIVE_STATUSES = frozenset(
+    {
+        SessionStatus.REQUESTED,
+        SessionStatus.CREATING,
+        SessionStatus.READY,
+        SessionStatus.ACTIVE,
+    }
+)
+_ACTIVE_STATUSES = frozenset(
+    {
+        SessionStatus.REQUESTED,
+        SessionStatus.CREATING,
+        SessionStatus.READY,
+        SessionStatus.ACTIVE,
+    }
+)
 
 
 class FakeSessionRepository:
@@ -65,17 +82,20 @@ class FakeSessionRepository:
         return session
 
     def count_active_by_owner(self, owner_id: str) -> int:
-        active = {
-            SessionStatus.REQUESTED,
-            SessionStatus.CREATING,
-            SessionStatus.READY,
-            SessionStatus.ACTIVE,
-        }
         return sum(
             1
             for session in self.records.values()
-            if session.owner_id == owner_id and session.status in active
+            if session.owner_id == owner_id and session.status in _ACTIVE_STATUSES
         )
+
+    def list_active_by_owner(self, owner_id: str) -> tuple[SessionRecord, ...]:
+        sessions = [
+            session
+            for session in self.records.values()
+            if session.owner_id == owner_id and session.status in _ACTIVE_STATUSES
+        ]
+        sessions.sort(key=lambda session: session.created_at, reverse=True)
+        return tuple(sessions[:10])
 
     def count_by_campaign(self, campaign_id: CampaignId) -> int:
         return sum(1 for session in self.records.values() if session.campaign_id == campaign_id)
@@ -136,6 +156,38 @@ class FakeCampaignRepository:
         ]
         campaigns.sort(key=lambda campaign: campaign.created_at, reverse=True)
         return tuple(campaigns[:50])
+
+
+class FakeMicrovmManager:
+    def __init__(self) -> None:
+        self.terminated: list[str] = []
+        self.fail_terminate = False
+
+    def launch(self, session_id: SessionId) -> Never:
+        raise AssertionError("not used in http tests")
+
+    def initialize(
+        self,
+        microvm_id: str,
+        language: object,
+        adventure: object,
+        character: object,
+    ) -> Never:
+        raise AssertionError("not used in http tests")
+
+    def apply_turn(self, microvm_id: str, action: str, proposal: object) -> Never:
+        raise AssertionError("not used in http tests")
+
+    def is_running(self, microvm_id: str) -> bool:
+        raise AssertionError("not used in http tests")
+
+    def rehydrate(self, session_id: SessionId, state: object) -> Never:
+        raise AssertionError("not used in http tests")
+
+    def terminate(self, microvm_id: str) -> None:
+        if self.fail_terminate:
+            raise RuntimeError("microvm terminate unavailable")
+        self.terminated.append(microvm_id)
 
 
 class FakeOpeningLoader:
@@ -229,6 +281,7 @@ def _adapter() -> tuple[
     FakeWorkflowStarter,
     FakeSessionFactory,
     FakeCampaignRepository,
+    FakeMicrovmManager,
 ]:
     sessions = FakeSessionRepository()
     events = FakeEventRepository()
@@ -236,12 +289,14 @@ def _adapter() -> tuple[
     factory = FakeSessionFactory()
     campaigns = FakeCampaignRepository()
     campaigns.records[CAMPAIGN_ID] = ready_campaign()
+    microvms = FakeMicrovmManager()
     handlers = SessionHttpHandlers(
         sessions,
         events,
         workflows,
         factory,
         campaigns,
+        microvms=microvms,
         clock=lambda: NOW,
     )
     campaign_handlers = CampaignHttpHandlers(
@@ -259,6 +314,7 @@ def _adapter() -> tuple[
         workflows,
         factory,
         campaigns,
+        microvms,
     )
 
 
@@ -302,7 +358,7 @@ def _body(response: dict[str, Any]) -> dict[str, Any]:
 
 
 def test_create_returns_202_and_starts_workflow_without_waiting() -> None:
-    adapter, sessions, _, workflows, _, _ = _adapter()
+    adapter, sessions, _, workflows, _, _, _ = _adapter()
 
     response = adapter(
         _event(
@@ -334,7 +390,7 @@ def test_create_returns_202_and_starts_workflow_without_waiting() -> None:
 
 
 def test_repeated_create_returns_same_session_without_duplicate_workflow() -> None:
-    adapter, _, _, workflows, factory, _ = _adapter()
+    adapter, _, _, workflows, factory, _, _ = _adapter()
     event = _event(
         "POST /sessions",
         body={"language": "en", "campaignId": CAMPAIGN_ID},
@@ -351,7 +407,7 @@ def test_repeated_create_returns_same_session_without_duplicate_workflow() -> No
 
 
 def test_create_can_retry_after_workflow_dependency_failure() -> None:
-    adapter, _, _, workflows, factory, _ = _adapter()
+    adapter, _, _, workflows, factory, _, _ = _adapter()
     workflows.failures_remaining = 1
     event = _event(
         "POST /sessions",
@@ -370,7 +426,7 @@ def test_create_can_retry_after_workflow_dependency_failure() -> None:
 
 
 def test_create_session_rejects_an_unknown_campaign() -> None:
-    adapter, _, _, workflows, _, _ = _adapter()
+    adapter, _, _, workflows, _, _, _ = _adapter()
 
     response = adapter(
         _event(
@@ -386,7 +442,7 @@ def test_create_session_rejects_an_unknown_campaign() -> None:
 
 
 def test_create_session_rejects_another_users_campaign() -> None:
-    adapter, _, _, workflows, _, campaigns = _adapter()
+    adapter, _, _, workflows, _, campaigns, _ = _adapter()
     campaigns.records[CAMPAIGN_ID] = ready_campaign(owner_id="user_owner")
 
     response = adapter(
@@ -404,7 +460,7 @@ def test_create_session_rejects_another_users_campaign() -> None:
 
 
 def test_create_session_rejects_a_campaign_that_is_not_ready() -> None:
-    adapter, _, _, workflows, _, campaigns = _adapter()
+    adapter, _, _, workflows, _, campaigns, _ = _adapter()
     campaigns.records[CAMPAIGN_ID] = CampaignRecord(
         campaign_id=CAMPAIGN_ID,
         owner_id="user_demo",
@@ -431,7 +487,7 @@ def test_create_session_rejects_a_campaign_that_is_not_ready() -> None:
 
 
 def test_get_session_rejects_cross_user_access() -> None:
-    adapter, sessions, _, _, _, _ = _adapter()
+    adapter, sessions, _, _, _, _, _ = _adapter()
     sessions.records[SESSION_ID] = _record(SESSION_ID, "user_owner")
 
     response = adapter(
@@ -447,7 +503,7 @@ def test_get_session_rejects_cross_user_access() -> None:
 
 
 def test_get_events_replays_only_after_requested_sequence() -> None:
-    adapter, sessions, events, _, _, _ = _adapter()
+    adapter, sessions, events, _, _, _, _ = _adapter()
     sessions.records[SESSION_ID] = _record(SESSION_ID, "user_demo")
     events.events[SESSION_ID] = (_phase_event(1), _phase_event(2))
 
@@ -466,7 +522,7 @@ def test_get_events_replays_only_after_requested_sequence() -> None:
 
 
 def test_missing_authentication_returns_typed_401() -> None:
-    adapter, _, _, _, _, _ = _adapter()
+    adapter, _, _, _, _, _, _ = _adapter()
 
     response = adapter(
         _event(
@@ -490,7 +546,7 @@ def test_missing_authentication_returns_typed_401() -> None:
 
 
 def test_invalid_input_returns_typed_400_with_correlation_id() -> None:
-    adapter, _, _, _, _, _ = _adapter()
+    adapter, _, _, _, _, _, _ = _adapter()
 
     response = adapter(
         _event(
@@ -506,7 +562,7 @@ def test_invalid_input_returns_typed_400_with_correlation_id() -> None:
 
 
 def test_unknown_session_returns_typed_404() -> None:
-    adapter, _, _, _, _, _ = _adapter()
+    adapter, _, _, _, _, _, _ = _adapter()
 
     response = adapter(
         _event(
@@ -549,7 +605,7 @@ def _phase_event(sequence: int) -> SessionEvent:
 
 
 def test_list_campaigns_returns_only_owner_campaigns() -> None:
-    adapter, _, _, _, _, campaigns = _adapter()
+    adapter, _, _, _, _, campaigns, _ = _adapter()
     other_id: CampaignId = "cam_01J00000000000000000000009"
     campaigns.records[other_id] = ready_campaign("other_user").model_copy(
         update={"campaign_id": other_id}
@@ -566,7 +622,7 @@ def test_list_campaigns_returns_only_owner_campaigns() -> None:
 
 
 def test_get_campaign_opening_ready_and_not_ready() -> None:
-    adapter, _, _, _, _, campaigns = _adapter()
+    adapter, _, _, _, _, campaigns, _ = _adapter()
 
     ready = adapter(_event("GET /campaigns/{campaignId}/opening", campaign_id=CAMPAIGN_ID))
     assert ready["statusCode"] == 200
@@ -588,3 +644,186 @@ def test_get_campaign_opening_ready_and_not_ready() -> None:
     conflict = adapter(_event("GET /campaigns/{campaignId}/opening", campaign_id=CAMPAIGN_ID))
     assert conflict["statusCode"] == 409
     assert _body(conflict)["error"]["code"] == "campaign_conflict"
+
+
+_PHASE_BY_STATUS = {
+    SessionStatus.REQUESTED: SessionPhase.REQUESTED,
+    SessionStatus.CREATING: SessionPhase.STARTING_MICROVM,
+    SessionStatus.READY: SessionPhase.READY,
+    SessionStatus.ACTIVE: SessionPhase.PLAYING,
+    SessionStatus.COMPLETED: SessionPhase.COMPLETED,
+    SessionStatus.FAILED: SessionPhase.FAILED,
+}
+
+
+def _session_record(
+    session_id: SessionId,
+    owner_id: str,
+    *,
+    status: SessionStatus = SessionStatus.REQUESTED,
+    active_microvm_id: str | None = None,
+    created_at: datetime = NOW,
+    revision: int = 0,
+) -> SessionRecord:
+    return SessionRecord(
+        session_id=session_id,
+        owner_id=owner_id,
+        language="en",
+        status=status,
+        phase=_PHASE_BY_STATUS[status],
+        revision=revision,
+        last_event_sequence=0,
+        created_at=created_at,
+        updated_at=created_at,
+        active_microvm_id=active_microvm_id,
+    )
+
+
+def test_list_active_sessions_filters_orders_and_caps_at_ten() -> None:
+    adapter, sessions, _, _, _, _, _ = _adapter()
+    owner = "user_demo"
+    other_owner = "user_other"
+
+    # Finished sessions never count, regardless of owner.
+    finished_id: SessionId = "ses_01J00000000000000000000F01"
+    sessions.records[finished_id] = _session_record(
+        finished_id, owner, status=SessionStatus.COMPLETED
+    )
+    other_id: SessionId = "ses_01J00000000000000000000F02"
+    sessions.records[other_id] = _session_record(
+        other_id,
+        other_owner,
+        status=SessionStatus.READY,
+        active_microvm_id="mvm-other",
+    )
+
+    # 12 active sessions for the owner, newest first once sorted.
+    active_ids: list[SessionId] = [f"ses_01J0000000000000000000{index:04d}" for index in range(12)]
+    for offset, session_id in enumerate(active_ids):
+        sessions.records[session_id] = _session_record(
+            session_id,
+            owner,
+            status=SessionStatus.READY,
+            active_microvm_id=f"mvm-{offset}",
+            created_at=NOW - timedelta(minutes=offset),
+        )
+
+    response = adapter(_event("GET /sessions", owner=owner, query={"status": "active"}))
+
+    assert response["statusCode"] == 200
+    body = _body(response)
+    listed_ids = [session["sessionId"] for session in body["sessions"]]
+    assert len(listed_ids) == 10
+    # Newest createdAt (offset 0) first, most negative offset last among the cap.
+    assert listed_ids == active_ids[:10]
+    assert other_owner not in json.dumps(body)
+
+
+def test_list_active_sessions_requires_active_status_filter() -> None:
+    adapter, _, _, _, _, _, _ = _adapter()
+
+    response = adapter(_event("GET /sessions", query={"status": "completed"}))
+
+    assert response["statusCode"] == 400
+    assert _body(response)["error"]["code"] == "validation_failed"
+
+
+def test_abandon_ready_session_completes_and_terminates_microvm() -> None:
+    adapter, sessions, events, _, _, _, microvms = _adapter()
+    sessions.records[SESSION_ID] = _session_record(
+        SESSION_ID, "user_demo", status=SessionStatus.READY, active_microvm_id="mvm-ready"
+    )
+
+    response = adapter(_event("POST /sessions/{sessionId}/abandon", session_id=SESSION_ID))
+
+    assert response["statusCode"] == 200
+    body = _body(response)
+    assert body["session"]["status"] == "completed"
+    assert body["session"]["activeMicrovmId"] is None
+    assert microvms.terminated == ["mvm-ready"]
+    emitted = events.events[SESSION_ID]
+    assert [event.type for event in emitted] == [EventType.SESSION_COMPLETED]
+    assert isinstance(emitted[0].payload, SessionCompletedPayload)
+    assert emitted[0].payload.outcome == "abandoned"
+
+
+def test_abandon_active_session_completes_and_terminates_microvm() -> None:
+    adapter, sessions, _, _, _, _, microvms = _adapter()
+    sessions.records[SESSION_ID] = _session_record(
+        SESSION_ID, "user_demo", status=SessionStatus.ACTIVE, active_microvm_id="mvm-active"
+    )
+
+    response = adapter(_event("POST /sessions/{sessionId}/abandon", session_id=SESSION_ID))
+
+    assert response["statusCode"] == 200
+    assert _body(response)["session"]["status"] == "completed"
+    assert microvms.terminated == ["mvm-active"]
+
+
+def test_abandon_survives_microvm_terminate_failure() -> None:
+    adapter, sessions, _, _, _, _, microvms = _adapter()
+    microvms.fail_terminate = True
+    sessions.records[SESSION_ID] = _session_record(
+        SESSION_ID, "user_demo", status=SessionStatus.READY, active_microvm_id="mvm-flaky"
+    )
+
+    response = adapter(_event("POST /sessions/{sessionId}/abandon", session_id=SESSION_ID))
+
+    assert response["statusCode"] == 200
+    assert _body(response)["session"]["status"] == "completed"
+
+
+def test_abandon_is_idempotent_for_a_completed_session() -> None:
+    adapter, sessions, _, _, _, _, microvms = _adapter()
+    sessions.records[SESSION_ID] = _session_record(
+        SESSION_ID, "user_demo", status=SessionStatus.COMPLETED, revision=5
+    )
+
+    first = adapter(_event("POST /sessions/{sessionId}/abandon", session_id=SESSION_ID))
+    second = adapter(_event("POST /sessions/{sessionId}/abandon", session_id=SESSION_ID))
+
+    assert first["statusCode"] == second["statusCode"] == 200
+    assert _body(first)["session"]["revision"] == 5
+    assert _body(second)["session"]["revision"] == 5
+    assert microvms.terminated == []
+
+
+def test_abandon_returns_409_retryable_for_a_creating_session() -> None:
+    adapter, sessions, _, _, _, _, _ = _adapter()
+    sessions.records[SESSION_ID] = _session_record(
+        SESSION_ID, "user_demo", status=SessionStatus.CREATING
+    )
+
+    response = adapter(_event("POST /sessions/{sessionId}/abandon", session_id=SESSION_ID))
+
+    assert response["statusCode"] == 409
+    body = _body(response)
+    assert body["error"]["code"] == "session_conflict"
+    assert body["error"]["retryable"] is True
+
+
+def test_abandon_rejects_cross_user_access() -> None:
+    adapter, sessions, _, _, _, _, _ = _adapter()
+    sessions.records[SESSION_ID] = _session_record(
+        SESSION_ID, "user_owner", status=SessionStatus.READY, active_microvm_id="mvm-owner"
+    )
+
+    response = adapter(
+        _event(
+            "POST /sessions/{sessionId}/abandon",
+            owner="user_intruder",
+            session_id=SESSION_ID,
+        )
+    )
+
+    assert response["statusCode"] == 403
+    assert _body(response)["error"]["code"] == "not_authorized"
+
+
+def test_abandon_unknown_session_returns_404() -> None:
+    adapter, _, _, _, _, _, _ = _adapter()
+
+    response = adapter(_event("POST /sessions/{sessionId}/abandon", session_id=OTHER_SESSION_ID))
+
+    assert response["statusCode"] == 404
+    assert _body(response)["error"]["code"] == "session_not_found"

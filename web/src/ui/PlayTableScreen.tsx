@@ -11,6 +11,7 @@ import {
 export function PlayTableScreen() {
   const opening = useGameStore((s) => s.opening);
   const campaign = useGameStore((s) => s.campaign);
+  const session = useGameStore((s) => s.session);
   const narrationStream = useGameStore((s) => s.narrationStream);
   const turnLog = useGameStore((s) => s.turnLog);
   const turnPending = useGameStore((s) => s.turnPending);
@@ -48,7 +49,12 @@ export function PlayTableScreen() {
       setConfirmExit(true);
       return;
     }
-    gameActions.resetToLanding();
+    const sessionId = session?.sessionId;
+    // Never block Salir on the network: leave now, abandon in the background.
+    gameActions.resetToMenu();
+    if (sessionId) {
+      void gameActions.abandonSession(sessionId);
+    }
   }
 
   useEffect(() => {

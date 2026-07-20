@@ -67,6 +67,13 @@ class CampaignListEnvelope(ContractModel):
     campaigns: tuple[CampaignRecord, ...]
 
 
+class SessionListEnvelope(ContractModel):
+    """Owner-scoped active-session list for the Continuar picker."""
+
+    version: Literal[1] = 1
+    sessions: tuple[SessionRecord, ...]
+
+
 class OpeningEnvelope(ContractModel):
     """Opening document for a ready campaign, loaded without event replay."""
 
@@ -106,6 +113,7 @@ HttpBody = (
     SessionEnvelope
     | CampaignEnvelope
     | CampaignListEnvelope
+    | SessionListEnvelope
     | OpeningEnvelope
     | TurnAcceptedEnvelope
     | EventListEnvelope

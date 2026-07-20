@@ -47,6 +47,7 @@ export interface SessionRecord {
   lastEventSequence: number;
   campaignId?: string | null;
   campaignRevision?: number | null;
+  createdAt?: string;
 }
 
 export interface CampaignEnvelope {
@@ -68,6 +69,18 @@ export interface OpeningEnvelope {
 export interface SessionEnvelope {
   version: 1;
   session: SessionRecord;
+}
+
+export interface SessionListEnvelope {
+  version: 1;
+  sessions: SessionRecord[];
+}
+
+export interface SessionEventListEnvelope {
+  version: 1;
+  sessionId: string;
+  events: ControlPlaneEvent[];
+  nextSequence: number;
 }
 
 export interface TurnAcceptedEnvelope {
@@ -104,5 +117,7 @@ export type ApiOk =
   | CampaignListEnvelope
   | OpeningEnvelope
   | SessionEnvelope
+  | SessionListEnvelope
+  | SessionEventListEnvelope
   | TurnAcceptedEnvelope
   | ControlPlaneEvent[];

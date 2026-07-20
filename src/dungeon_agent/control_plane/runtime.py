@@ -161,6 +161,15 @@ class _ApiGatewaySender:
             self._connections.delete(connection_id)
 
 
+def _microvm_manager() -> LambdaMicrovmManager:
+    return LambdaMicrovmManager(
+        cast(LambdaMicrovmsClient, boto3.client("lambda-microvms", config=_CONFIG)),
+        os.environ["MICROVM_IMAGE_NAME"],
+        _REGION,
+        metrics=_MicrovmMetrics(),
+    )
+
+
 def _build_http_adapter() -> ApiGatewayHttpAdapter:
     client = cast(StepFunctionsClient, boto3.client("stepfunctions", config=_CONFIG))
     starter = StepFunctionsWorkflowStarter(
@@ -176,6 +185,7 @@ def _build_http_adapter() -> ApiGatewayHttpAdapter:
         _CAMPAIGN_REPOSITORY,
         turns=_build_turn_invoker(),
         delivery=_build_delivery(),
+        microvms=_microvm_manager() if "MICROVM_IMAGE_NAME" in os.environ else None,
     )
     artifact_client = cast(DynamoDbArtifactClient, boto3.client("dynamodb", config=_CONFIG))
     campaigns = CampaignHttpHandlers(
@@ -210,15 +220,6 @@ def _structured_agent(
         cast(Any, boto3.client("bedrock-runtime", config=_BEDROCK_CONFIG)),
         os.environ["BEDROCK_MODEL_ID"],
         metrics if metrics is not None else _AgentMetrics(operation),
-    )
-
-
-def _microvm_manager() -> LambdaMicrovmManager:
-    return LambdaMicrovmManager(
-        cast(LambdaMicrovmsClient, boto3.client("lambda-microvms", config=_CONFIG)),
-        os.environ["MICROVM_IMAGE_NAME"],
-        _REGION,
-        metrics=_MicrovmMetrics(),
     )
 
 

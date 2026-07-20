@@ -45,8 +45,8 @@ export function OutcomeScreen() {
           {line}
         </p>
 
-        <EmberButton onClick={() => gameActions.resetToLanding()}>
-          Volver al inicio
+        <EmberButton onClick={() => gameActions.resetToMenu()}>
+          Volver al menú
         </EmberButton>
       </motion.div>
     </ScreenShell>

@@ -121,6 +121,54 @@ def test_session_save_does_not_roll_back_an_independent_event_append() -> None:
     assert saved.last_event_sequence == 1
 
 
+def _ready_session(
+    session_id: SessionId, owner_id: str, *, created_at: datetime, microvm_id: str
+) -> SessionRecord:
+    return SessionRecord(
+        session_id=session_id,
+        owner_id=owner_id,
+        language="es",
+        status=SessionStatus.READY,
+        phase=SessionPhase.READY,
+        revision=0,
+        last_event_sequence=0,
+        created_at=created_at,
+        updated_at=created_at,
+        active_microvm_id=microvm_id,
+    )
+
+
+def test_in_memory_list_active_by_owner_filters_orders_and_caps() -> None:
+    repository = InMemoryControlPlaneRepository()
+    owner = "user_demo"
+    finished = make_session(session_id="ses_01J00000000000000000000F01").model_copy(
+        update={"status": SessionStatus.COMPLETED, "phase": SessionPhase.COMPLETED}
+    )
+    repository.create(finished, "create-request-finished")
+    other_owner_active = _ready_session(
+        "ses_01J00000000000000000000F02",
+        "user_other",
+        created_at=NOW,
+        microvm_id="mvm-other",
+    )
+    repository.create(other_owner_active, "create-request-other")
+
+    active_ids = [f"ses_01J0000000000000000000{index:04d}" for index in range(1, 13)]
+    for offset, session_id in enumerate(active_ids):
+        session = _ready_session(
+            session_id,
+            owner,
+            created_at=NOW - timedelta(minutes=offset),
+            microvm_id=f"mvm-{offset}",
+        )
+        repository.create(session, f"create-request-{offset}")
+
+    listed = repository.list_active_by_owner(owner)
+
+    assert [session.session_id for session in listed] == active_ids[:10]
+    assert all(session.owner_id == owner for session in listed)
+
+
 def test_concurrent_event_appends_cannot_claim_the_same_sequence() -> None:
     repository = InMemoryControlPlaneRepository()
     repository.create(make_session(), "create-request-001")
@@ -308,3 +356,29 @@ def test_dynamodb_conditional_event_conflict_is_domain_specific() -> None:
 
     with pytest.raises(EventSequenceConflictError):
         repository.append(make_event(1), expected_previous_sequence=0)
+
+
+def test_dynamodb_list_active_by_owner_queries_the_by_owner_index() -> None:
+    client = FakeDynamoDbClient()
+    repository = DynamoDbControlPlaneRepository(client, "control-plane")
+    older = make_session(session_id="ses_01J00000000000000000000001")
+    newer = make_session(session_id="ses_01J00000000000000000000002").model_copy(
+        update={"created_at": NOW + timedelta(minutes=5), "updated_at": NOW + timedelta(minutes=5)}
+    )
+    client.query_responses = [{"Items": [session_item(older), session_item(newer)]}]
+
+    listed = repository.list_active_by_owner("user_demo")
+
+    assert [session.session_id for session in listed] == [newer.session_id, older.session_id]
+    _, query = client.calls[-1]
+    assert query["IndexName"] == "ByOwner"
+    assert query["KeyConditionExpression"] == "ownerId = :owner"
+    assert "#status IN (" in cast(str, query["FilterExpression"])
+    values = cast(dict[str, dict[str, str]], query["ExpressionAttributeValues"])
+    assert values[":owner"]["S"] == "user_demo"
+    assert {value["S"] for key, value in values.items() if key != ":owner"} == {
+        "requested",
+        "creating",
+        "ready",
+        "active",
+    }

@@ -1,6 +1,6 @@
 # Dungeon Agent — showcase client (RFC 0003)
 
-Cliente browser de demostración: atmósfera Pixi, ritual de campaña en español,
+Cliente browser de demostración: atmósfera Pixi, menú principal en español,
 apertura en scroll, mesa de juego y beat de dados. Habla con el control plane
 sandbox vía HTTP + WebSocket (`x-player-id`).
 
@@ -25,14 +25,15 @@ npm install
 npm run dev
 ```
 
-Abre la URL local. Pon un `playerId` (mín. 3 caracteres) y pulsa **Empezar**.
+Abre la URL local. Pon un `playerId` (mín. 3 caracteres) y elige **Nueva partida**,
+**Continuar**, o **Crear campaña**.
 
 ## Layout
 
 ```text
 src/
   game/   Pixi atmosphere + dice + Web Audio
-  ui/     React screens (landing → ritual → phase → opening → play → outcome)
+  ui/     React screens (menu → campaigns → phase → opening → play → outcome)
   net/    HTTP + WebSocket adapters
   state/  Event-driven store (useSyncExternalStore)
   debug/  Lab v0 console (fallback)

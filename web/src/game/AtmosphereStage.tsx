@@ -3,8 +3,8 @@ import { Application, Container, Graphics, Text } from "pixi.js";
 import { disposeAudio, playDiceSfx, unlockAudio } from "./audio";
 
 export type Screen =
-  | "landing"
-  | "ritual"
+  | "menu"
+  | "campaigns"
   | "phase"
   | "opening"
   | "play"
@@ -35,8 +35,8 @@ type Mood = {
 };
 
 const MOOD: Record<Screen, Mood> = {
-  landing: { emberRate: 0.55, emberSpeed: 0.35, fogAlpha: 0.35, emberAlpha: 0.45 },
-  ritual: { emberRate: 0.75, emberSpeed: 0.45, fogAlpha: 0.4, emberAlpha: 0.55 },
+  menu: { emberRate: 0.55, emberSpeed: 0.35, fogAlpha: 0.35, emberAlpha: 0.45 },
+  campaigns: { emberRate: 0.75, emberSpeed: 0.45, fogAlpha: 0.4, emberAlpha: 0.55 },
   phase: { emberRate: 0.85, emberSpeed: 0.55, fogAlpha: 0.42, emberAlpha: 0.6 },
   opening: { emberRate: 0.35, emberSpeed: 0.22, fogAlpha: 0.28, emberAlpha: 0.3 },
   play: { emberRate: 1.1, emberSpeed: 0.7, fogAlpha: 0.48, emberAlpha: 0.75 },

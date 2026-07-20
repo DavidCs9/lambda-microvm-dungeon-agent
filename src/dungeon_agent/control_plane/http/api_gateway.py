@@ -69,6 +69,10 @@ class ApiGatewayHttpAdapter:
                 result = self._get_session(event, identity, correlation_id)
             elif route_key == "GET /sessions/{sessionId}/events":
                 result = self._list_events(event, identity, correlation_id)
+            elif route_key == "GET /sessions":
+                result = self._list_active_sessions(event, identity, correlation_id)
+            elif route_key == "POST /sessions/{sessionId}/abandon":
+                result = self._abandon_session(event, identity, correlation_id)
             elif route_key == "POST /campaigns":
                 result = self._create_campaign(event, headers, identity, correlation_id)
             elif route_key == "GET /campaigns":
@@ -215,6 +219,31 @@ class ApiGatewayHttpAdapter:
             correlation_id=correlation_id,
         )
 
+    def _list_active_sessions(
+        self,
+        event: Mapping[str, Any],
+        identity: AuthenticatedIdentity,
+        correlation_id: str,
+    ) -> HttpResult:
+        _require_active_status_filter(event)
+        return self._handlers.list_active_sessions(
+            identity,
+            correlation_id=correlation_id,
+        )
+
+    def _abandon_session(
+        self,
+        event: Mapping[str, Any],
+        identity: AuthenticatedIdentity,
+        correlation_id: str,
+    ) -> HttpResult:
+        session_id = _path_parameter(event, "sessionId", SESSION_ID_ADAPTER)
+        return self._handlers.abandon_session(
+            identity,
+            session_id,
+            correlation_id=correlation_id,
+        )
+
     def _list_campaign_events(
         self,
         event: Mapping[str, Any],
@@ -318,6 +347,14 @@ def _replay_after(event: Mapping[str, Any]) -> int:
     if after < 0:
         raise ValueError("after must be non-negative")
     return after
+
+
+def _require_active_status_filter(event: Mapping[str, Any]) -> None:
+    query = event.get("queryStringParameters") or {}
+    if not isinstance(query, Mapping):
+        raise ValueError("queryStringParameters must be an object")
+    if query.get("status") != "active":
+        raise ValueError("status must be 'active'")
 
 
 def _campaign_status_filter(event: Mapping[str, Any]) -> str | None:
