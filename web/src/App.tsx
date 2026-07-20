@@ -1,8 +1,8 @@
 import { AnimatePresence, motion } from "framer-motion";
 import { AtmosphereStage } from "./game/AtmosphereStage";
 import { useGameStore } from "./state/store";
-import { LandingScreen } from "./ui/LandingScreen";
-import { RitualScreen } from "./ui/RitualScreen";
+import { MenuScreen } from "./ui/MenuScreen";
+import { CampaignsScreen } from "./ui/CampaignsScreen";
 import { PhaseTheaterScreen } from "./ui/PhaseTheaterScreen";
 import { OpeningScrollScreen } from "./ui/OpeningScrollScreen";
 import { PlayTableScreen } from "./ui/PlayTableScreen";
@@ -29,8 +29,8 @@ export function App() {
             transition={{ duration: 0.35 }}
             className="min-h-screen"
           >
-            {screen === "landing" && <LandingScreen />}
-            {screen === "ritual" && <RitualScreen />}
+            {screen === "menu" && <MenuScreen />}
+            {screen === "campaigns" && <CampaignsScreen />}
             {screen === "phase" && <PhaseTheaterScreen />}
             {screen === "opening" && <OpeningScrollScreen />}
             {screen === "play" && <PlayTableScreen />}

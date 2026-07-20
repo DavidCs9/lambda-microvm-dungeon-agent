@@ -298,6 +298,40 @@ class DynamoDbControlPlaneRepository:
             names={"#status": "status"},
         )
 
+    def list_active_by_owner(self, owner_id: str) -> tuple[SessionRecord, ...]:
+        """List one owner's live sessions via ``ByOwner``, newest ``createdAt`` first.
+
+        The GSI has no sort key, so order is applied in process. Hard cap: 10.
+        """
+        values: dict[str, AttributeValue] = {
+            ":owner": self._string(owner_id),
+            **{
+                f":status{index}": self._string(status)
+                for index, status in enumerate(_ACTIVE_STATUS_VALUES)
+            },
+        }
+        status_placeholders = ", ".join(
+            f":status{index}" for index in range(len(_ACTIVE_STATUS_VALUES))
+        )
+        paginator = self._client.get_paginator("query")
+        sessions: list[SessionRecord] = []
+        for page in paginator.paginate(
+            TableName=self._table_name,
+            IndexName="ByOwner",
+            KeyConditionExpression="ownerId = :owner",
+            FilterExpression=f"#status IN ({status_placeholders})",
+            ExpressionAttributeNames={"#status": "status"},
+            ExpressionAttributeValues=values,
+        ):
+            raw_items = page.get("Items", [])
+            if not isinstance(raw_items, list):
+                raise RuntimeError("DynamoDB list query returned invalid session items")
+            sessions.extend(
+                self._session_from_item(item) for item in raw_items if isinstance(item, Mapping)
+            )
+        sessions.sort(key=lambda session: session.created_at, reverse=True)
+        return tuple(sessions[:10])
+
     def count_by_campaign(self, campaign_id: CampaignId) -> int:
         """Count every session forked from one campaign through the ``ByCampaign`` index."""
         return self._count_index_items(

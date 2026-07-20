@@ -109,7 +109,7 @@ Resources:
       CodeUri: ../../../dist/control-plane-bundle
       Handler: dungeon_agent.control_plane.runtime.http_handler
       MemorySize: 512
-      Timeout: 15
+      Timeout: 29
       Environment:
         Variables:
           TABLE_NAME: !Ref SessionTable
@@ -117,6 +117,7 @@ Resources:
           STATE_MACHINE_ARN: !GetAtt CreateSessionStateMachine.Arn
           CAMPAIGN_STATE_MACHINE_ARN: !GetAtt CreateCampaignStateMachine.Arn
           TURN_WORKER_FUNCTION_NAME: !Ref TurnWorkerFunction
+          MICROVM_IMAGE_NAME: !Ref MicrovmImageName
           WS_MANAGEMENT_ENDPOINT: !Sub "https://${ControlPlaneWebSocketApi}.execute-api.${AWS::Region}.${AWS::URLSuffix}/prod"
       Policies:
         - DynamoDBCrudPolicy:
@@ -134,6 +135,11 @@ Resources:
             - Effect: Allow
               Action: execute-api:ManageConnections
               Resource: !Sub "arn:${AWS::Partition}:execute-api:${AWS::Region}:${AWS::AccountId}:${ControlPlaneWebSocketApi}/prod/*"
+            - Effect: Allow
+              Action:
+                - lambda:GetMicrovm
+                - lambda:TerminateMicrovm
+              Resource: "*"
       Events:
         CreateSession:
           Type: HttpApi
@@ -162,6 +168,20 @@ Resources:
             ApiId: !Ref ControlPlaneHttpApi
             Path: /sessions/{sessionId}/events
             Method: GET
+            PayloadFormatVersion: "2.0"
+        ListActiveSessions:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref ControlPlaneHttpApi
+            Path: /sessions
+            Method: GET
+            PayloadFormatVersion: "2.0"
+        AbandonSession:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref ControlPlaneHttpApi
+            Path: /sessions/{sessionId}/abandon
+            Method: POST
             PayloadFormatVersion: "2.0"
         CreateCampaign:
           Type: HttpApi

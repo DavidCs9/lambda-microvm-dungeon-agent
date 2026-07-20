@@ -59,3 +59,36 @@ export function humanPhase(
   }
   return copy;
 }
+
+/** Copy for the main menu (RFC 0006). */
+export const MENU_COPY = {
+  brand: "Dungeon Agent",
+  tagline: "La mesa ya está puesta",
+  newGame: "Nueva partida",
+  continueGame: "Continuar",
+  continueSearching: "Buscando partidas…",
+  continueEmptyReason: "Sin partidas en curso",
+  createCampaign: "Crear campaña",
+  creatingCampaign: "Creando…",
+  pickerTitle: "Elige tu partida",
+  resuming: "Reanudando…",
+  abandon: "Abandonar",
+  abandoning: "Abandonando…",
+  backToMenu: "‹ Menú",
+} as const;
+
+const SESSION_STATUS_COPY: Record<string, string> = {
+  requested: "Preparando la mesa…",
+  creating: "Preparando la mesa…",
+  ready: "Lista para continuar",
+  active: "En curso",
+  completed: "Terminada",
+  failed: "Falló",
+};
+
+export function humanSessionStatus(status: string | null | undefined): string {
+  if (!status) {
+    return "En curso";
+  }
+  return SESSION_STATUS_COPY[status] ?? "En curso";
+}

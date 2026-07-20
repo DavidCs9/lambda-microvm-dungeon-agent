@@ -4,6 +4,8 @@ import type {
   LanguageCode,
   OpeningEnvelope,
   SessionEnvelope,
+  SessionEventListEnvelope,
+  SessionListEnvelope,
   TurnAcceptedEnvelope,
 } from "./types";
 
@@ -70,6 +72,23 @@ export class ApiClient {
 
   getSession(sessionId: string): Promise<SessionEnvelope> {
     return this.request<SessionEnvelope>("GET", `/sessions/${sessionId}`);
+  }
+
+  listActiveSessions(): Promise<SessionListEnvelope> {
+    return this.request<SessionListEnvelope>("GET", "/sessions?status=active");
+  }
+
+  abandonSession(sessionId: string, idempotencyKey?: string): Promise<SessionEnvelope> {
+    return this.request<SessionEnvelope>("POST", `/sessions/${sessionId}/abandon`, {
+      idempotencyKey: idempotencyKey ?? newIdempotencyKey(),
+    });
+  }
+
+  getSessionEvents(sessionId: string, after = 0): Promise<SessionEventListEnvelope> {
+    return this.request<SessionEventListEnvelope>(
+      "GET",
+      `/sessions/${sessionId}/events?after=${after}`,
+    );
   }
 
   submitAction(

@@ -14,7 +14,7 @@ import { humanError } from "../ui/copy";
 const PLAYER_KEY = "dungeon-agent.playerId";
 export const PLAYER_LANGUAGE = "es" as const;
 
-export type Screen = "landing" | "ritual" | "phase" | "opening" | "play" | "outcome";
+export type Screen = "menu" | "campaigns" | "phase" | "opening" | "play" | "outcome";
 
 export type DiceBeat = {
   roll: number;
@@ -30,6 +30,8 @@ export interface GameState {
   campaign: CampaignRecord | null;
   campaigns: CampaignRecord[];
   campaignsLoading: boolean;
+  activeSessions: SessionRecord[];
+  activeSessionsLoading: boolean;
   session: SessionRecord | null;
   opening: OpeningDocument | null;
   expectedRevision: number;
@@ -75,12 +77,14 @@ const wsUrl = (import.meta.env.VITE_WS_URL ?? "").replace(/\/$/, "");
 
 function createInitialState(playerId: string): GameState {
   return {
-    screen: "landing",
+    screen: "menu",
     playerId,
     wsStatus: "disconnected",
     campaign: null,
     campaigns: [],
     campaignsLoading: false,
+    activeSessions: [],
+    activeSessionsLoading: false,
     session: null,
     opening: null,
     expectedRevision: 0,
@@ -299,7 +303,7 @@ function applyEvent(event: ControlPlaneEvent): void {
           lastEventSequence: Math.max(campaign.lastEventSequence, event.sequence),
         },
         errorMessage: humanError(code),
-        screen: state.screen === "phase" ? "phase" : "ritual",
+        screen: state.screen === "phase" ? "phase" : "campaigns",
       });
       return;
     }
@@ -527,14 +531,14 @@ export const gameActions = {
     setState({ playerId });
   },
 
-  beginRitual(): void {
+  goToCampaigns(): void {
     syncClients(state.playerId);
     persistPlayerId(state.playerId);
     if (wsUrl) {
       realtime.connect();
     }
     setState({
-      screen: "ritual",
+      screen: "campaigns",
       errorMessage: null,
       outcome: null,
     });
@@ -573,7 +577,7 @@ export const gameActions = {
     } catch (error) {
       setState({
         errorMessage: errorMessageOf(error),
-        screen: "ritual",
+        screen: "campaigns",
         phaseLabel: null,
         phaseKind: null,
       });
@@ -589,13 +593,35 @@ export const gameActions = {
       setState({
         campaigns: envelope.campaigns,
         campaignsLoading: false,
-        screen: "ritual",
+        screen: "campaigns",
       });
     } catch (error) {
       setState({
         campaignsLoading: false,
         errorMessage: errorMessageOf(error),
-        screen: "ritual",
+        screen: "campaigns",
+      });
+    }
+  },
+
+  async loadActiveSessions(): Promise<void> {
+    syncClients(state.playerId);
+    setState({ activeSessionsLoading: true, errorMessage: null });
+    try {
+      ensureConfigured();
+      const [sessionsEnvelope, campaignsEnvelope] = await Promise.all([
+        api.listActiveSessions(),
+        api.listCampaigns(),
+      ]);
+      setState({
+        activeSessions: sessionsEnvelope.sessions,
+        campaigns: campaignsEnvelope.campaigns,
+        activeSessionsLoading: false,
+      });
+    } catch (error) {
+      setState({
+        activeSessionsLoading: false,
+        errorMessage: errorMessageOf(error),
       });
     }
   },
@@ -636,7 +662,7 @@ export const gameActions = {
     } catch (error) {
       setState({
         errorMessage: errorMessageOf(error),
-        screen: "ritual",
+        screen: "campaigns",
       });
     }
   },
@@ -713,7 +739,118 @@ export const gameActions = {
     void gameActions.startSession();
   },
 
-  resetToLanding(): void {
+  async resumeSession(sessionId: string): Promise<void> {
+    syncClients(state.playerId);
+    try {
+      ensureConfigured();
+      if (!realtime.connected) {
+        realtime.connect();
+      }
+      setState({ errorMessage: null });
+
+      const sessionEnvelope = await api.getSession(sessionId);
+      const session = sessionEnvelope.session;
+
+      if (session.status === "completed" || session.status === "failed") {
+        setState({ errorMessage: humanError("session_not_found") });
+        void gameActions.loadActiveSessions();
+        return;
+      }
+
+      let campaign: CampaignRecord | null = null;
+      let opening: OpeningDocument | null = null;
+      if (session.campaignId) {
+        try {
+          const campaignEnvelope = await api.getCampaign(session.campaignId);
+          campaign = campaignEnvelope.campaign;
+          if (campaign.status === "ready") {
+            const openingEnvelope = await api.getCampaignOpening(session.campaignId);
+            opening = parseOpening(openingEnvelope.opening);
+          }
+        } catch (error) {
+          console.warn("resumeSession: campaign/opening fetch failed", error);
+          campaign = null;
+          opening = null;
+        }
+      }
+
+      const turnLog: GameState["turnLog"] = [];
+      if (session.revision > 0) {
+        const eventsEnvelope = await api.getSessionEvents(sessionId, 0);
+        const diceByTurn = new Map<string, { roll: number; success: boolean }>();
+        for (const event of eventsEnvelope.events) {
+          if (event.type !== "dice.rolled") {
+            continue;
+          }
+          const payload = event.payload ?? {};
+          const turnId = payloadTurnId(payload);
+          if (!turnId) {
+            continue;
+          }
+          diceByTurn.set(turnId, {
+            roll: typeof payload.roll === "number" ? payload.roll : 0,
+            success: payload.success === true,
+          });
+        }
+        for (const event of eventsEnvelope.events) {
+          if (event.type !== "turn.completed") {
+            continue;
+          }
+          const payload = event.payload ?? {};
+          const turnId = payloadTurnId(payload);
+          const narration = typeof payload.narration === "string" ? payload.narration : "";
+          const dice = diceByTurn.get(turnId);
+          turnLog.push({
+            turnId,
+            narration,
+            ...(dice ? { success: dice.success, roll: dice.roll } : {}),
+          });
+        }
+      }
+
+      setState({
+        session,
+        campaign,
+        opening,
+        expectedRevision: session.revision,
+        turnLog,
+        narrationStream: "",
+        turnPending: false,
+        diceBeat: null,
+        outcome: null,
+        phaseLabel: null,
+        phaseKind: null,
+        screen: "play",
+        errorMessage: null,
+      });
+      realtime.subscribeSession(session.sessionId, session.lastEventSequence);
+    } catch (error) {
+      setState({ errorMessage: errorMessageOf(error) });
+      void gameActions.loadActiveSessions();
+    }
+  },
+
+  async abandonSession(sessionId: string): Promise<void> {
+    syncClients(state.playerId);
+    const idempotencyKey = crypto.randomUUID();
+    try {
+      ensureConfigured();
+      try {
+        await api.abandonSession(sessionId, idempotencyKey);
+      } catch (firstError) {
+        console.warn("abandonSession: first attempt failed, retrying once", firstError);
+        await api.abandonSession(sessionId, idempotencyKey);
+      }
+    } catch (error) {
+      console.warn("abandonSession: retry also failed, dropping locally", error);
+    }
+    setState((prev) => ({
+      ...prev,
+      activeSessions: prev.activeSessions.filter((s) => s.sessionId !== sessionId),
+    }));
+  },
+
+  resetToMenu(): void {
     setState({
       ...createInitialState(state.playerId),
       wsStatus: state.wsStatus,

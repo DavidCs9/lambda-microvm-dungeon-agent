@@ -1,6 +1,7 @@
 import { motion } from "framer-motion";
 import { useEffect, useState } from "react";
 import { gameActions, useGameStore } from "../state/store";
+import { MENU_COPY } from "./copy";
 import { Card, EmberButton, ErrorLine, QuietMeta, ScreenShell, wsStatusLabel } from "./shared";
 
 function formatDate(value: string | undefined): string {
@@ -10,7 +11,7 @@ function formatDate(value: string | undefined): string {
   return date.toLocaleDateString("es", { day: "2-digit", month: "short", year: "numeric" });
 }
 
-export function RitualScreen() {
+export function CampaignsScreen() {
   const playerId = useGameStore((s) => s.playerId);
   const wsStatus = useGameStore((s) => s.wsStatus);
   const errorMessage = useGameStore((s) => s.errorMessage);
@@ -23,7 +24,7 @@ export function RitualScreen() {
     void gameActions.loadCampaigns();
   }, []);
 
-  async function onForge() {
+  async function onCreate() {
     if (busy || resumingId) return;
     setBusy(true);
     try {
@@ -51,19 +52,26 @@ export function RitualScreen() {
         transition={{ duration: 0.55 }}
         className="flex w-full flex-col items-center"
       >
-        <p className="text-xs tracking-[0.28em] text-[var(--ember)] uppercase [font-family:var(--font-display)]">
-          Ritual
+        <button
+          type="button"
+          onClick={() => gameActions.resetToMenu()}
+          className="self-start text-xs tracking-[0.14em] text-[var(--muted)] uppercase transition hover:text-[var(--ink)]"
+        >
+          {MENU_COPY.backToMenu}
+        </button>
+
+        <p className="mt-6 text-xs tracking-[0.28em] text-[var(--ember)] uppercase [font-family:var(--font-display)]">
+          {MENU_COPY.newGame}
         </p>
         <h1 className="mt-4 max-w-lg text-3xl leading-tight sm:text-4xl [font-family:var(--font-display)]">
-          Forja el mundo
+          Elige tu campaña
         </h1>
         <p className="mt-4 max-w-md text-base leading-relaxed text-[var(--muted)]">
-          Antes de la primera escena, el fuego nombra un territorio y un destino.
-          Cuando estés listo, forjamos la campaña.
+          Selecciona un mundo ya forjado, o crea uno nuevo.
         </p>
 
-        <EmberButton disabled={busy || !!resumingId} onClick={() => void onForge()}>
-          {busy ? "Forjando…" : "Forjar campaña"}
+        <EmberButton disabled={busy || !!resumingId} onClick={() => void onCreate()}>
+          {busy ? MENU_COPY.creatingCampaign : MENU_COPY.createCampaign}
         </EmberButton>
 
         <ErrorLine message={errorMessage} />
@@ -79,7 +87,7 @@ export function RitualScreen() {
             </p>
           ) : campaigns.length === 0 ? (
             <p className="text-center text-sm text-[var(--muted)] [font-family:var(--font-ui)]">
-              Aún no hay campañas. Forja la primera.
+              Aún no hay campañas. Usa «{MENU_COPY.createCampaign}» para forjar la primera.
             </p>
           ) : (
             <ul className="flex flex-col gap-3">
@@ -90,7 +98,7 @@ export function RitualScreen() {
                 return (
                   <li key={campaign.campaignId}>
                     <Card
-                      title={resumingId === campaign.campaignId ? "Reanudando…" : title}
+                      title={resumingId === campaign.campaignId ? "Abriendo…" : title}
                       meta={meta}
                       disabled={busy || !!resumingId}
                       selected={resumingId === campaign.campaignId}

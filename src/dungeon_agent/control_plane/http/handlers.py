@@ -23,6 +23,7 @@ from dungeon_agent.control_plane.domain.models import (
     ErrorDetail,
     ErrorEnvelope,
     OpeningDocument,
+    SessionCompletedPayload,
     SessionId,
     SessionRecord,
     SubmitTurnCommand,
@@ -34,6 +35,7 @@ from dungeon_agent.control_plane.domain.ports import (
     CampaignRepository,
     EventDeliveryPort,
     EventRepository,
+    MicrovmManagerPort,
     SessionFactoryPort,
     SessionRepository,
     WorkflowStarterPort,
@@ -49,6 +51,7 @@ from dungeon_agent.control_plane.http.models import (
     HttpResult,
     OpeningEnvelope,
     SessionEnvelope,
+    SessionListEnvelope,
     SubmitActionRequest,
     TurnAcceptedEnvelope,
 )
@@ -75,6 +78,7 @@ class SessionHttpHandlers:
         *,
         turns: TurnWorkerInvoker | None = None,
         delivery: EventDeliveryPort | None = None,
+        microvms: MicrovmManagerPort | None = None,
         clock: Clock | None = None,
         max_active_sessions_per_owner: int = 3,
         max_sessions_per_campaign: int = 10,
@@ -86,6 +90,7 @@ class SessionHttpHandlers:
         self._campaigns = campaigns
         self._turns = turns
         self._delivery = delivery
+        self._microvms = microvms
         self._clock = clock or _utc_now
         self._max_active_sessions_per_owner = max_active_sessions_per_owner
         self._max_sessions_per_campaign = max_sessions_per_campaign
@@ -405,6 +410,99 @@ class SessionHttpHandlers:
                 events=events,
                 next_sequence=next_sequence,
             ),
+            correlation_id=correlation_id,
+        )
+
+    def list_active_sessions(
+        self,
+        identity: AuthenticatedIdentity,
+        *,
+        correlation_id: str,
+    ) -> HttpResult:
+        """List an owner's live sessions for the Continuar picker."""
+        try:
+            sessions = self._sessions.list_active_by_owner(identity.owner_id)
+        except Exception:
+            return self._dependency_error(correlation_id)
+        return HttpResult(
+            status_code=200,
+            body=SessionListEnvelope(sessions=sessions),
+            correlation_id=correlation_id,
+        )
+
+    def abandon_session(
+        self,
+        identity: AuthenticatedIdentity,
+        session_id: SessionId,
+        *,
+        correlation_id: str,
+    ) -> HttpResult:
+        """Free the owner's active slot and stop MicroVM cost for a live session."""
+        try:
+            session = self._sessions.get(session_id)
+        except Exception:
+            return self._dependency_error(correlation_id)
+        access_error = self._access_error(identity, session, correlation_id)
+        if access_error is not None:
+            return access_error
+        assert session is not None
+
+        if session.status in (SessionStatus.COMPLETED, SessionStatus.FAILED):
+            return HttpResult(
+                status_code=200,
+                body=SessionEnvelope(session=session),
+                correlation_id=correlation_id,
+            )
+        if session.status in (SessionStatus.REQUESTED, SessionStatus.CREATING):
+            return self.error(
+                status_code=409,
+                code=ErrorCode.SESSION_CONFLICT,
+                message="The session is still being created; retry once it settles.",
+                retryable=True,
+                correlation_id=correlation_id,
+            )
+
+        microvm_id = session.active_microvm_id
+        updated = SessionRecord.model_validate(
+            {
+                **session.model_dump(by_alias=False),
+                "status": SessionStatus.COMPLETED,
+                "phase": SessionPhase.COMPLETED,
+                "active_microvm_id": None,
+                "revision": session.revision + 1,
+                "updated_at": self._clock(),
+            }
+        )
+        try:
+            saved = self._sessions.save(updated, expected_revision=session.revision)
+        except SessionRevisionConflictError:
+            return self._conflict("The session changed while abandoning it.", correlation_id)
+        except Exception:
+            return self._dependency_error(correlation_id)
+
+        if microvm_id is not None and self._microvms is not None:
+            try:
+                self._microvms.terminate(microvm_id)
+            except Exception as error:
+                print(f"microvm terminate failed on abandon: {type(error).__name__}")
+
+        try:
+            append_session_event(
+                self._sessions,
+                self._events,
+                self._delivery,
+                session_id,
+                EventType.SESSION_COMPLETED,
+                SessionCompletedPayload(outcome="abandoned", revision=saved.revision),
+                correlation_id,
+                self._clock(),
+            )
+        except Exception as error:
+            print(f"session.completed emission failed on abandon: {type(error).__name__}")
+
+        return HttpResult(
+            status_code=200,
+            body=SessionEnvelope(session=saved),
             correlation_id=correlation_id,
         )
 
