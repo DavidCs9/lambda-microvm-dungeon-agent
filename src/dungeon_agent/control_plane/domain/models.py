@@ -231,6 +231,7 @@ class CreationStartedPayload(ContractModel):
 class PhaseChangedPayload(ContractModel):
     phase: SessionPhase
     elapsed_ms: int = Field(ge=0)
+    revision: int | None = Field(default=None, ge=0)
 
 
 class CreationFailedPayload(ContractModel):

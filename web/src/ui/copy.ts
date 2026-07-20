@@ -10,6 +10,7 @@ const ERROR_COPY: Record<string, string> = {
   dependency_unavailable: "El territorio no responde ahora. Inténtalo en un momento.",
   internal_error: "Algo se rompió tras el velo. Inténtalo de nuevo.",
   revision_conflict: "La mesa avanzó mientras escribías. Recarga e inténtalo de nuevo.",
+  session_conflict: "La mesa no acepta esa acción ahora. Espera un momento e inténtalo de nuevo.",
   rate_limited: "Demasiadas invocaciones seguidas. Espera un momento.",
 };
 

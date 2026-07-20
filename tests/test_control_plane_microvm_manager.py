@@ -267,7 +267,7 @@ def test_launch_resolves_latest_active_version_and_waits_until_running() -> None
     assert client.list_calls == [{"nameFilter": "dungeon-agent-fastapi", "maxResults": 50}]
     assert client.image_calls == [IMAGE_ARN]
     assert client.run_calls[0]["imageVersion"] == "9.0"
-    assert client.run_calls[0]["clientToken"] == SESSION_ID
+    assert str(client.run_calls[0]["clientToken"]).startswith(f"{SESSION_ID}-")
     assert metrics.operations == ["image_resolution", "launch", "readiness"]
 
 
