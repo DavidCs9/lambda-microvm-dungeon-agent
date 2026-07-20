@@ -440,13 +440,18 @@ function applyEvent(event: ControlPlaneEvent): void {
       const revision =
         typeof payload.revision === "number" ? payload.revision : state.expectedRevision;
       const dice = state.diceBeat;
+      const actionFromPayload =
+        typeof payload.action === "string" && payload.action.trim()
+          ? payload.action.trim()
+          : "";
+      const action = pendingActionText || actionFromPayload;
       const entry = {
         turnId,
         narration,
         ...(dice && dice.turnId === turnId
           ? { success: dice.success, roll: dice.roll }
           : {}),
-        ...(pendingActionText ? { action: pendingActionText } : {}),
+        ...(action ? { action } : {}),
       };
       pendingActionText = "";
       setState({
@@ -780,19 +785,26 @@ export const gameActions = {
       if (session.revision > 0) {
         const eventsEnvelope = await api.getSessionEvents(sessionId, 0);
         const diceByTurn = new Map<string, { roll: number; success: boolean }>();
+        const actionByTurn = new Map<string, string>();
         for (const event of eventsEnvelope.events) {
-          if (event.type !== "dice.rolled") {
-            continue;
-          }
           const payload = event.payload ?? {};
           const turnId = payloadTurnId(payload);
           if (!turnId) {
             continue;
           }
-          diceByTurn.set(turnId, {
-            roll: typeof payload.roll === "number" ? payload.roll : 0,
-            success: payload.success === true,
-          });
+          if (event.type === "dice.rolled") {
+            diceByTurn.set(turnId, {
+              roll: typeof payload.roll === "number" ? payload.roll : 0,
+              success: payload.success === true,
+            });
+          }
+          if (
+            (event.type === "turn.started" || event.type === "turn.completed") &&
+            typeof payload.action === "string" &&
+            payload.action.trim()
+          ) {
+            actionByTurn.set(turnId, payload.action.trim());
+          }
         }
         for (const event of eventsEnvelope.events) {
           if (event.type !== "turn.completed") {
@@ -802,10 +814,12 @@ export const gameActions = {
           const turnId = payloadTurnId(payload);
           const narration = typeof payload.narration === "string" ? payload.narration : "";
           const dice = diceByTurn.get(turnId);
+          const action = actionByTurn.get(turnId);
           turnLog.push({
             turnId,
             narration,
             ...(dice ? { success: dice.success, roll: dice.roll } : {}),
+            ...(action ? { action } : {}),
           });
         }
       }

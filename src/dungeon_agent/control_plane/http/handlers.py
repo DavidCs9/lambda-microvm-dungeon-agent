@@ -293,6 +293,7 @@ class SessionHttpHandlers:
                 TurnStartedPayload(
                     turn_id=turn_id,
                     expected_revision=request.expected_revision,
+                    action=request.action,
                 ),
                 correlation_id,
                 self._clock(),
