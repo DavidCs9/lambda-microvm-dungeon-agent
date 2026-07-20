@@ -1,8 +1,8 @@
 import { motion } from "framer-motion";
 import { useEffect, useState } from "react";
-import { useGameStore } from "../state/store";
+import { gameActions, useGameStore } from "../state/store";
 import { humanPhase } from "./copy";
-import { ErrorLine, ScreenShell } from "./shared";
+import { BackNav, ErrorLine, ScreenShell } from "./shared";
 
 const STEPS = ["Forjar", "Despertar", "Umbral", "Mesa"];
 
@@ -41,6 +41,7 @@ export function PhaseTheaterScreen() {
 
   return (
     <ScreenShell className="text-center">
+      <BackNav onBack={() => gameActions.resetToMenu()} className="mb-6" />
       <motion.div
         key={`${phaseKind ?? "none"}:${display}`}
         initial={{ opacity: 0, scale: 0.98 }}
