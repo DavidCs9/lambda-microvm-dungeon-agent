@@ -166,6 +166,15 @@ Resources:
               Resource: "*"
             - Effect: Allow
               Action:
+                - s3:ListBucket
+              Resource: !GetAtt SpeechCacheBucket.Arn
+              Condition:
+                StringLike:
+                  s3:prefix:
+                    - speech/*
+                    - speech/
+            - Effect: Allow
+              Action:
                 - s3:PutObject
                 - s3:GetObject
                 - s3:HeadObject

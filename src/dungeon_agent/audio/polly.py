@@ -163,7 +163,8 @@ def _s3_object_exists(client: Any, bucket: str, key: str) -> bool:
         client.head_object(Bucket=bucket, Key=key)
     except Exception as error:
         code = getattr(error, "response", {}).get("Error", {}).get("Code")
-        if code in {"404", "NoSuchKey", "NotFound"}:
+        # Without s3:ListBucket, missing keys surface as 403 AccessDenied rather than 404.
+        if code in {"404", "NoSuchKey", "NotFound", "403", "AccessDenied"}:
             return False
         raise
     return True
