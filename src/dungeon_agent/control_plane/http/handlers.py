@@ -1,5 +1,6 @@
 """Session and campaign HTTP use cases expressed only in terms of domain ports."""
 
+import logging
 import time
 from collections.abc import Callable
 from datetime import UTC, datetime
@@ -63,6 +64,7 @@ from dungeon_agent.control_plane.persistence.errors import SessionRevisionConfli
 from dungeon_agent.domain.game import LanguageCode
 
 Clock = Callable[[], datetime]
+LOGGER = logging.getLogger(__name__)
 
 
 class SpeechSynthesizerPort(Protocol):
@@ -642,6 +644,10 @@ class SpeechHttpHandlers:
         try:
             url, cache_hit = self._synthesizer.synthesize(request.text, request.language)
         except Exception:
+            LOGGER.exception(
+                "speech_synthesis_failed",
+                extra={"correlation_id": correlation_id, "owner_id": identity.owner_id},
+            )
             return self._dependency_error(correlation_id)
         return HttpResult(
             status_code=200,
