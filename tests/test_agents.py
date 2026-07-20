@@ -113,13 +113,16 @@ def test_character_architect_grounds_protagonist_in_adventure() -> None:
         StructuredBedrockAgent(client, "test-model", SessionMetrics.start("test-model"))
     )
 
-    character = architect.create("es", sample_plan())
+    character = architect.create("es", sample_plan(), pronoun_seed="él / lo")
 
     assert character.name == "Iria Vale"
     request = client.converse.call_args.kwargs
     prompt = request["messages"][0]["content"][0]["text"]
+    system = request["system"][0]["text"]
     assert '"adventure"' in prompt
     assert "Spanish" in prompt
+    assert "él / lo" in prompt
+    assert "never default to feminine" in system
 
 
 def test_adventure_architect_injects_theme_seed_into_prompt() -> None:
