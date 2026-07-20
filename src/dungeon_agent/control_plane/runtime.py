@@ -178,7 +178,14 @@ def _build_speech_handlers() -> SpeechHttpHandlers | None:
         return None
     polly_region = os.environ.get("POLLY_REGION", "us-east-1")
     polly = boto3.client("polly", region_name=polly_region, config=_CONFIG)
-    s3 = boto3.client("s3", region_name=_REGION, config=_CONFIG)
+    # Regional endpoint so presigned URLs hit s3.<region>.amazonaws.com directly.
+    # Global s3.amazonaws.com returns TemporaryRedirect (307), which breaks <audio> playback.
+    s3 = boto3.client(
+        "s3",
+        region_name=_REGION,
+        endpoint_url=f"https://s3.{_REGION}.amazonaws.com",
+        config=_CONFIG,
+    )
     synthesizer = S3PollySpeechSynthesizer(
         polly,
         s3,
