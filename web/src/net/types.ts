@@ -64,6 +64,7 @@ export interface OpeningEnvelope {
   version: 1;
   campaignId: string;
   opening: OpeningDocument;
+  portraitUrl?: string | null;
 }
 
 export interface SessionEnvelope {

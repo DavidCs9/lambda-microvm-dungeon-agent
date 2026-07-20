@@ -8,6 +8,7 @@ import { BackNav, EmberButton, ErrorLine, ScreenShell, VoiceToggle } from "./sha
 
 export function OpeningScrollScreen() {
   const opening = useGameStore((s) => s.opening);
+  const portraitUrl = useGameStore((s) => s.portraitUrl);
   const errorMessage = useGameStore((s) => s.errorMessage);
   const [voiceOn, setVoiceOn] = useState(isVoiceEnabled);
 
@@ -37,6 +38,15 @@ export function OpeningScrollScreen() {
         <h1 className="mt-4 text-3xl leading-tight sm:text-4xl [font-family:var(--font-display)]">
           {title}
         </h1>
+        {portraitUrl && (
+          <div className="mx-auto mt-6 aspect-square w-full max-w-[180px] overflow-hidden rounded-lg border border-[var(--line)] shadow-[0_0_32px_rgba(0,0,0,0.4)]">
+            <img
+              src={portraitUrl}
+              alt="Retrato del personaje"
+              className="h-full w-full object-cover"
+            />
+          </div>
+        )}
         <p className="mt-3 text-base text-[var(--muted)]">
           Lee con calma. El mundo se revela por fragmentos.
         </p>

@@ -197,6 +197,10 @@ class FakeOpeningLoader:
         assert character_ref
         return sandbox_opening("es")
 
+    def load_portrait_key(self, character_ref: str) -> str | None:
+        assert character_ref
+        return None
+
 
 class FakeCampaignEventRepository:
     def __init__(self) -> None:

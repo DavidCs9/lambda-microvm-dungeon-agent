@@ -13,7 +13,7 @@ class Location(BaseModel):
 
     id: str = Field(pattern=r"^[a-z][a-z0-9_]{1,31}$")
     name: str = Field(min_length=2, max_length=60)
-    description: str = Field(min_length=10, max_length=300)
+    description: str = Field(min_length=10, max_length=160)
     exits: list[str] = Field(max_length=4)
 
 
@@ -22,7 +22,7 @@ class Character(BaseModel):
 
     id: str = Field(pattern=r"^[a-z][a-z0-9_]{1,31}$")
     name: str = Field(min_length=2, max_length=50)
-    description: str = Field(min_length=5, max_length=300)
+    description: str = Field(min_length=5, max_length=160)
     motivation: str = Field(min_length=5, max_length=300)
 
 
@@ -31,7 +31,7 @@ class Item(BaseModel):
 
     id: str = Field(pattern=r"^[a-z][a-z0-9_]{1,31}$")
     name: str = Field(min_length=2, max_length=50)
-    description: str = Field(min_length=5, max_length=300)
+    description: str = Field(min_length=5, max_length=160)
 
 
 class PlayerCharacter(BaseModel):
@@ -41,18 +41,18 @@ class PlayerCharacter(BaseModel):
 
     name: str = Field(min_length=2, max_length=50)
     pronouns: str = Field(min_length=2, max_length=30)
-    archetype: str = Field(min_length=3, max_length=160)
-    appearance: str = Field(min_length=10, max_length=400)
-    background: str = Field(min_length=30, max_length=800)
-    desire: str = Field(min_length=10, max_length=400)
-    need: str = Field(min_length=10, max_length=400)
-    connection_to_adventure: str = Field(min_length=20, max_length=600)
-    strength: str = Field(min_length=5, max_length=300)
-    flaw: str = Field(min_length=5, max_length=300)
-    contradiction: str = Field(min_length=10, max_length=400)
-    npc_connection: str = Field(min_length=10, max_length=400)
-    meaningful_item: str = Field(min_length=5, max_length=320)
-    open_question: str = Field(min_length=10, max_length=400)
+    archetype: str = Field(min_length=3, max_length=80)
+    appearance: str = Field(min_length=10, max_length=120)
+    background: str = Field(min_length=30, max_length=200)
+    desire: str = Field(min_length=10, max_length=120)
+    need: str = Field(min_length=10, max_length=120)
+    connection_to_adventure: str = Field(min_length=20, max_length=160)
+    strength: str = Field(min_length=5, max_length=100)
+    flaw: str = Field(min_length=5, max_length=100)
+    contradiction: str = Field(min_length=10, max_length=160)
+    npc_connection: str = Field(min_length=10, max_length=160)
+    meaningful_item: str = Field(min_length=5, max_length=100)
+    open_question: str = Field(min_length=10, max_length=160)
     known_facts: list[str] = Field(min_length=2, max_length=3)
     opening_choices: list[str] = Field(min_length=3, max_length=3)
 
@@ -61,9 +61,9 @@ class AdventurePlan(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     title: str = Field(min_length=3, max_length=70)
-    premise: str = Field(min_length=20, max_length=400)
-    objective: str = Field(min_length=10, max_length=180)
-    opening: str = Field(min_length=20, max_length=500)
+    premise: str = Field(min_length=20, max_length=200)
+    objective: str = Field(min_length=10, max_length=120)
+    opening: str = Field(min_length=20, max_length=180)
     starting_location_id: str
     locations: list[Location] = Field(min_length=3, max_length=5)
     characters: list[Character] = Field(min_length=1, max_length=2)

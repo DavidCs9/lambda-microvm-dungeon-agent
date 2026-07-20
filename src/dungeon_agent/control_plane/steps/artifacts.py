@@ -154,17 +154,21 @@ class DynamoDbCampaignCharacterBundles:
         campaign_id: CampaignId,
         character: PlayerCharacter,
         opening: OpeningDocument,
+        portrait_key: str | None = None,
     ) -> str:
         kind = "CHARACTER"
+        item: dict[str, AttributeValue] = {
+            "PK": _string(f"CAMPAIGN#{campaign_id}"),
+            "SK": _string(f"ARTIFACT#{kind}"),
+            "entityType": _string(kind),
+            "document": _string(character.model_dump_json()),
+            "opening": _string(opening.model_dump_json(by_alias=True)),
+        }
+        if portrait_key is not None:
+            item["portraitKey"] = _string(portrait_key)
         self._client.put_item(
             TableName=self._table_name,
-            Item={
-                "PK": _string(f"CAMPAIGN#{campaign_id}"),
-                "SK": _string(f"ARTIFACT#{kind}"),
-                "entityType": _string(kind),
-                "document": _string(character.model_dump_json()),
-                "opening": _string(opening.model_dump_json(by_alias=True)),
-            },
+            Item=item,
         )
         return _reference("CAMPAIGN", campaign_id, kind)
 
@@ -173,6 +177,12 @@ class DynamoDbCampaignCharacterBundles:
 
     def load_opening(self, character_ref: str) -> OpeningDocument:
         return OpeningDocument.model_validate_json(self._get(character_ref, "opening"))
+
+    def load_portrait_key(self, character_ref: str) -> str | None:
+        try:
+            return self._get(character_ref, "portraitKey")
+        except LookupError, RuntimeError:
+            return None
 
     def _get(self, reference: str, field: str) -> str:
         partition_key, kind = _parse_reference(reference)

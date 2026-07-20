@@ -41,6 +41,7 @@ export interface GameState {
   activeSessionsLoading: boolean;
   session: SessionRecord | null;
   opening: OpeningDocument | null;
+  portraitUrl: string | null;
   expectedRevision: number;
   phaseLabel: string | null;
   phaseKind: "campaign" | "session" | null;
@@ -94,6 +95,7 @@ function createInitialState(playerId: string): GameState {
     activeSessionsLoading: false,
     session: null,
     opening: null,
+    portraitUrl: null,
     expectedRevision: 0,
     phaseLabel: null,
     phaseKind: null,
@@ -229,6 +231,10 @@ function parseOpening(value: unknown): OpeningDocument | null {
   return { schemaVersion: 1, language, title: rec.title, blocks };
 }
 
+function parsePortraitUrl(value: unknown): string | null {
+  return typeof value === "string" && value.trim() ? value : null;
+}
+
 function applyEvent(event: ControlPlaneEvent): void {
   const campaign = state.campaign;
   const session = state.session;
@@ -280,6 +286,7 @@ function applyEvent(event: ControlPlaneEvent): void {
       const revision =
         typeof payload.revision === "number" ? payload.revision : campaign.revision;
       const opening = parseOpening(payload.opening) ?? state.opening;
+      const portraitUrl = parsePortraitUrl(payload.portraitUrl) ?? state.portraitUrl;
       setState({
         campaign: {
           ...campaign,
@@ -289,6 +296,7 @@ function applyEvent(event: ControlPlaneEvent): void {
           lastEventSequence: Math.max(campaign.lastEventSequence, event.sequence),
         },
         opening,
+        portraitUrl,
         phaseLabel: null,
         phaseKind: null,
         screen: "opening",
@@ -354,6 +362,7 @@ function applyEvent(event: ControlPlaneEvent): void {
       const revision =
         typeof payload.revision === "number" ? payload.revision : session.revision;
       const opening = parseOpening(payload.opening) ?? state.opening;
+      const portraitUrl = parsePortraitUrl(payload.portraitUrl) ?? state.portraitUrl;
       setState({
         session: {
           ...session,
@@ -363,6 +372,7 @@ function applyEvent(event: ControlPlaneEvent): void {
           lastEventSequence: Math.max(session.lastEventSequence, event.sequence),
         },
         opening,
+        portraitUrl,
         expectedRevision: revision,
         phaseLabel: null,
         phaseKind: null,
@@ -576,6 +586,7 @@ export const gameActions = {
         campaigns: [],
         session: null,
         opening: null,
+        portraitUrl: null,
         turnLog: [],
         narrationStream: "",
         turnPending: false,
@@ -661,9 +672,11 @@ export const gameActions = {
       if (!opening) {
         throw new Error("La apertura de la campaña no es válida.");
       }
+      const portraitUrl = parsePortraitUrl(openingEnvelope.portraitUrl);
       setState({
         campaign,
         opening,
+        portraitUrl,
         screen: "opening",
         phaseLabel: null,
         phaseKind: null,
@@ -780,6 +793,7 @@ export const gameActions = {
 
       let campaign: CampaignRecord | null = null;
       let opening: OpeningDocument | null = null;
+      let portraitUrl: string | null = null;
       if (session.campaignId) {
         try {
           const campaignEnvelope = await api.getCampaign(session.campaignId);
@@ -787,11 +801,13 @@ export const gameActions = {
           if (campaign.status === "ready") {
             const openingEnvelope = await api.getCampaignOpening(session.campaignId);
             opening = parseOpening(openingEnvelope.opening);
+            portraitUrl = parsePortraitUrl(openingEnvelope.portraitUrl);
           }
         } catch (error) {
           console.warn("resumeSession: campaign/opening fetch failed", error);
           campaign = null;
           opening = null;
+          portraitUrl = null;
         }
       }
 
@@ -842,6 +858,7 @@ export const gameActions = {
         session,
         campaign,
         opening,
+        portraitUrl,
         expectedRevision: session.revision,
         turnLog,
         narrationStream: "",

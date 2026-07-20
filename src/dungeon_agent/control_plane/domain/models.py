@@ -213,6 +213,8 @@ class OpeningDocument(ContractModel):
         kinds = [block.kind for block in self.blocks]
         if kinds.count(OpeningBlockKind.IDENTITY) != 1:
             raise ValueError("opening requires exactly one identity block")
+        if kinds.count(OpeningBlockKind.MOTIVATION) != 1:
+            raise ValueError("opening requires exactly one motivation block")
         if kinds.count(OpeningBlockKind.SITUATION) != 1:
             raise ValueError("opening requires exactly one situation block")
         if kinds.count(OpeningBlockKind.KNOWLEDGE) < 2:

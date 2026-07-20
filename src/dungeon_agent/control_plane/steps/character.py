@@ -1,5 +1,6 @@
 """Generate a protagonist and a presentation-neutral opening document."""
 
+import logging
 import time
 from collections.abc import Callable, Mapping
 from typing import Literal, Protocol
@@ -18,6 +19,8 @@ from dungeon_agent.control_plane.domain.models import (
 from dungeon_agent.control_plane.domain.ports import CharacterArchitectPort
 from dungeon_agent.domain.game import AdventurePlan, LanguageCode, PlayerCharacter
 
+LOGGER = logging.getLogger(__name__)
+
 
 class AdventurePlanLoader(Protocol):
     """Load the validated adventure produced by the previous workflow step."""
@@ -33,7 +36,20 @@ class CharacterBundleStore(Protocol):
         campaign_id: CampaignId,
         character: PlayerCharacter,
         opening: OpeningDocument,
+        portrait_key: str | None = None,
     ) -> str: ...
+
+
+class PortraitGenerator(Protocol):
+    """Render one AI portrait for a generated protagonist."""
+
+    def generate(self, character: PlayerCharacter) -> bytes: ...
+
+
+class PortraitStore(Protocol):
+    """Persist the one portrait image generated per campaign."""
+
+    def save(self, campaign_id: CampaignId, image: bytes) -> str: ...
 
 
 class CharacterStepInput(ContractModel):
@@ -68,11 +84,15 @@ class CharacterStep:
         adventures: AdventurePlanLoader,
         characters: CharacterBundleStore,
         *,
+        portrait_generator: PortraitGenerator | None = None,
+        portrait_store: PortraitStore | None = None,
         monotonic: Callable[[], float] = time.perf_counter,
     ) -> None:
         self._architect = architect
         self._adventures = adventures
         self._characters = characters
+        self._portrait_generator = portrait_generator
+        self._portrait_store = portrait_store
         self._monotonic = monotonic
 
     def execute(self, step_input: CharacterStepInput) -> CharacterStepResult:
@@ -82,7 +102,10 @@ class CharacterStep:
         generated = self._architect.create(step_input.language, adventure)
         character = PlayerCharacter.model_validate(generated.model_dump(mode="python"))
         opening = _build_opening(step_input.language, adventure, character)
-        character_ref = self._characters.save(step_input.campaign_id, character, opening)
+        portrait_key = self._try_generate_portrait(step_input.campaign_id, character)
+        character_ref = self._characters.save(
+            step_input.campaign_id, character, opening, portrait_key=portrait_key
+        )
         latency_ms = max(0, round((self._monotonic() - started) * 1_000))
         return CharacterStepResult(
             campaign_id=step_input.campaign_id,
@@ -99,6 +122,20 @@ class CharacterStep:
         step_input = CharacterStepInput.model_validate(raw_input)
         return self.execute(step_input).model_dump(mode="json", by_alias=True)
 
+    def _try_generate_portrait(
+        self, campaign_id: CampaignId, character: PlayerCharacter
+    ) -> str | None:
+        """Best-effort portrait generation; never block campaign creation on failure."""
+
+        if self._portrait_generator is None or self._portrait_store is None:
+            return None
+        try:
+            image = self._portrait_generator.generate(character)
+            return self._portrait_store.save(campaign_id, image)
+        except Exception:
+            LOGGER.exception("portrait_generation_failed", extra={"campaign_id": campaign_id})
+            return None
+
 
 def _build_opening(
     language: LanguageCode,
@@ -112,19 +149,7 @@ def _build_opening(
             f"{character.name}. {character.pronouns}. {character.archetype}.",
             True,
         ),
-        ("appearance", OpeningBlockKind.BACKGROUND, character.appearance, True),
-        ("background", OpeningBlockKind.BACKGROUND, character.background, True),
         ("desire", OpeningBlockKind.MOTIVATION, character.desire, True),
-        ("need", OpeningBlockKind.MOTIVATION, character.need, True),
-        (
-            "adventure_connection",
-            OpeningBlockKind.BACKGROUND,
-            character.connection_to_adventure,
-            True,
-        ),
-        ("strength", OpeningBlockKind.BACKGROUND, character.strength, True),
-        ("flaw", OpeningBlockKind.BACKGROUND, character.flaw, True),
-        ("meaningful_item", OpeningBlockKind.BACKGROUND, character.meaningful_item, True),
     ]
     content.extend(
         (f"knowledge_{index}", OpeningBlockKind.KNOWLEDGE, fact, True)
