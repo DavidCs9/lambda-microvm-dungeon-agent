@@ -199,7 +199,8 @@ The service exposes health and state at `/health` and `/v1/world`; interactive O
 
 ## Images, CI, and releases
 
-Normal pushes and pull requests do not authenticate to AWS. CI path-filters by deploy lane:
+Pull requests do not authenticate to AWS. CI runs on PRs only (not again on merge to `main`) and
+path-filters by deploy lane:
 
 - `web/**` — Frontend `npm run build` only
 - Python / control-plane paths — ruff, mypy, pytest, gameplay evals
