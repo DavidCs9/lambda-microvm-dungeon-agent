@@ -184,7 +184,7 @@ def test_speech_happy_path_caches_by_content_hash() -> None:
 
 def test_speech_without_handler_returns_dependency_error() -> None:
     adapter, _, _ = _speech_adapter()
-    adapter._speech = None  # type: ignore[attr-defined]
+    adapter._speech = None
 
     response = adapter(_event("POST /speech", body={"text": "Hello.", "language": "en"}))
 
