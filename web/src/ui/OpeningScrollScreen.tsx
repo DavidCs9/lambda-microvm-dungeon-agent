@@ -1,6 +1,7 @@
 import { motion } from "framer-motion";
 import { useMemo } from "react";
 import { gameActions, useGameStore } from "../state/store";
+import { openingKindLabel } from "./copy";
 import { EmberButton, ErrorLine, ScreenShell } from "./shared";
 
 export function OpeningScrollScreen() {
@@ -43,7 +44,7 @@ export function OpeningScrollScreen() {
             transition={{ duration: 0.55, delay: Math.min(index * 0.04, 0.24) }}
           >
             <p className="mb-3 text-[0.7rem] tracking-[0.24em] text-[var(--ember)]/80 uppercase [font-family:var(--font-display)]">
-              {kindLabel(block.kind)}
+              {openingKindLabel(block.kind)}
             </p>
             <p className="text-lg leading-[1.75] text-[var(--ink)] whitespace-pre-wrap">
               {block.text}
@@ -66,16 +67,4 @@ export function OpeningScrollScreen() {
       </div>
     </ScreenShell>
   );
-}
-
-function kindLabel(kind: string): string {
-  const map: Record<string, string> = {
-    identity: "Identidad",
-    background: "Trasfondo",
-    motivation: "Motivación",
-    knowledge: "Saber",
-    situation: "Situación",
-    possible_action: "Posible acción",
-  };
-  return map[kind] ?? kind.replace(/_/g, " ");
 }

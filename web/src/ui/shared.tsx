@@ -109,18 +109,27 @@ export function AppShell({
   className = "",
   header,
   footer,
+  leftRail,
+  rightRail,
 }: {
   children: ReactNode;
   className?: string;
   header?: ReactNode;
   footer?: ReactNode;
+  leftRail?: ReactNode;
+  rightRail?: ReactNode;
 }) {
+  const hasRails = Boolean(leftRail || rightRail);
   return (
     <div
-      className={`mx-auto flex h-[100dvh] w-full max-w-3xl flex-col overflow-hidden pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)] ${className}`}
+      className={`mx-auto flex h-[100dvh] w-full flex-col overflow-hidden pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)] ${hasRails ? "max-w-6xl" : "max-w-3xl"} ${className}`}
     >
       {header}
-      <div className="relative flex min-h-0 flex-1 flex-col">{children}</div>
+      <div className="relative flex min-h-0 flex-1">
+        {leftRail}
+        <div className="relative flex min-h-0 min-w-0 flex-1 flex-col">{children}</div>
+        {rightRail}
+      </div>
       {footer}
     </div>
   );

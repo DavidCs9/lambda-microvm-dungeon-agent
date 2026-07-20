@@ -92,3 +92,16 @@ export function humanSessionStatus(status: string | null | undefined): string {
   }
   return SESSION_STATUS_COPY[status] ?? "En curso";
 }
+
+const OPENING_KIND_COPY: Record<string, string> = {
+  identity: "Identidad",
+  background: "Trasfondo",
+  motivation: "Motivación",
+  knowledge: "Saber",
+  situation: "Situación",
+  possible_action: "Posible acción",
+};
+
+export function openingKindLabel(kind: string): string {
+  return OPENING_KIND_COPY[kind] ?? kind.replace(/_/g, " ");
+}
