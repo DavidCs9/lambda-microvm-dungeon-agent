@@ -75,6 +75,8 @@ export const MENU_COPY = {
   abandon: "Abandonar",
   abandoning: "Abandonando…",
   backToMenu: "‹ Menú",
+  backToCampaigns: "‹ Campañas",
+  closePicker: "‹ Cerrar",
 } as const;
 
 const SESSION_STATUS_COPY: Record<string, string> = {

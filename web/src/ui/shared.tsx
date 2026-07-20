@@ -1,6 +1,6 @@
 import type { KeyboardEvent, ReactNode } from "react";
 import { useEffect, useRef, useState } from "react";
-import { voiceLabel } from "./copy";
+import { MENU_COPY, voiceLabel } from "./copy";
 
 export type WsStatus = "disconnected" | "connecting" | "connected" | "error";
 
@@ -13,6 +13,26 @@ const WS_LABELS: Record<WsStatus, string> = {
 
 export function wsStatusLabel(status: WsStatus): string {
   return WS_LABELS[status] ?? status;
+}
+
+export function BackNav({
+  onBack,
+  label = MENU_COPY.backToMenu,
+  className = "",
+}: {
+  onBack: () => void;
+  label?: string;
+  className?: string;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onBack}
+      className={`self-start text-xs tracking-[0.14em] text-[var(--muted)] uppercase transition hover:text-[var(--ink)] ${className}`}
+    >
+      {label}
+    </button>
+  );
 }
 
 export function ScreenShell({

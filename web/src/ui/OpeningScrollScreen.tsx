@@ -3,7 +3,8 @@ import { useMemo, useState } from "react";
 import { isVoiceEnabled } from "../game/audio";
 import { toggleVoice } from "../game/narrationVoice";
 import { gameActions, useGameStore } from "../state/store";
-import { EmberButton, ErrorLine, ScreenShell, VoiceToggle } from "./shared";
+import { MENU_COPY } from "./copy";
+import { BackNav, EmberButton, ErrorLine, ScreenShell, VoiceToggle } from "./shared";
 
 export function OpeningScrollScreen() {
   const opening = useGameStore((s) => s.opening);
@@ -19,6 +20,11 @@ export function OpeningScrollScreen() {
 
   return (
     <ScreenShell align="start" className="pb-32 pt-12">
+      <BackNav
+        label={MENU_COPY.backToCampaigns}
+        onBack={() => gameActions.goToCampaigns()}
+        className="mb-8"
+      />
       <motion.header
         initial={{ opacity: 0, y: 10 }}
         animate={{ opacity: 1, y: 0 }}
