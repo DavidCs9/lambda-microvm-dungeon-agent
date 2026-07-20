@@ -246,6 +246,8 @@ class SessionReadyPayload(ContractModel):
 class TurnStartedPayload(ContractModel):
     turn_id: TurnId
     expected_revision: int = Field(ge=0)
+    # Optional for events emitted before action was persisted on the wire.
+    action: str | None = Field(default=None, min_length=1, max_length=500)
 
 
 class DiceRolledPayload(ContractModel):
@@ -265,6 +267,8 @@ class TurnCompletedPayload(ContractModel):
     turn_id: TurnId
     revision: int = Field(ge=1)
     narration: str = Field(min_length=1, max_length=4_000)
+    # Optional for events emitted before action was persisted on the wire.
+    action: str | None = Field(default=None, min_length=1, max_length=500)
 
 
 class SessionCompletedPayload(ContractModel):

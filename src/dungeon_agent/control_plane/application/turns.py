@@ -167,6 +167,7 @@ class TurnWorker:
                 turn_id=command.turn_id,
                 revision=session.revision,
                 narration=result.narration,
+                action=command.action,
             ),
             now,
         )
