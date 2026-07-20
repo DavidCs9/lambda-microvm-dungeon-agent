@@ -180,8 +180,8 @@ def _build_speech_handlers() -> SpeechHttpHandlers | None:
     polly = boto3.client("polly", region_name=polly_region, config=_CONFIG)
     s3 = boto3.client("s3", region_name=_REGION, config=_CONFIG)
     synthesizer = S3PollySpeechSynthesizer(
-        cast(Any, polly),
-        cast(Any, s3),
+        polly,
+        s3,
         bucket,
         DEFAULT_VOICES,
     )

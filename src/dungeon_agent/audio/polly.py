@@ -1,14 +1,11 @@
 import hashlib
 from contextlib import closing
 from pathlib import Path
-from typing import Protocol
-
-from mypy_boto3_polly import PollyClient
-from mypy_boto3_polly.literals import EngineType, VoiceIdType
+from typing import Any, Protocol
 
 from dungeon_agent.api.models import LanguageCode
 
-DEFAULT_VOICES: dict[LanguageCode, VoiceIdType] = {"en": "Matthew", "es": "Andres"}
+DEFAULT_VOICES: dict[LanguageCode, str] = {"en": "Matthew", "es": "Andres"}
 
 
 def speech_content_digest(
@@ -50,10 +47,10 @@ class PollySpeechSynthesizer:
 
     def __init__(
         self,
-        client: PollyClient,
+        client: Any,
         cache_dir: Path,
-        voices: dict[LanguageCode, VoiceIdType],
-        engine: EngineType = "generative",
+        voices: dict[LanguageCode, str],
+        engine: str = "generative",
     ) -> None:
         self.client = client
         self.cache_dir = cache_dir
@@ -87,12 +84,12 @@ class S3PollySpeechSynthesizer:
 
     def __init__(
         self,
-        polly_client: PollyClient,
-        s3_client: S3ClientProtocol,
+        polly_client: Any,
+        s3_client: Any,
         bucket: str,
-        voices: dict[LanguageCode, VoiceIdType],
+        voices: dict[LanguageCode, str],
         *,
-        engine: EngineType = "generative",
+        engine: str = "generative",
         expires_in_seconds: int = 300,
     ) -> None:
         self.polly_client = polly_client
@@ -130,20 +127,21 @@ class S3PollySpeechSynthesizer:
         return self._presigned_url(key), False
 
     def _presigned_url(self, key: str) -> str:
-        return self.s3_client.generate_presigned_url(
+        url = self.s3_client.generate_presigned_url(
             "get_object",
             Params={"Bucket": self.bucket, "Key": key},
             ExpiresIn=self.expires_in_seconds,
         )
+        return str(url)
 
 
 def _synthesize_mp3(
-    client: PollyClient,
+    client: Any,
     *,
     text: str,
     language: LanguageCode,
-    voice: VoiceIdType,
-    engine: EngineType,
+    voice: str,
+    engine: str,
 ) -> bytes:
     response = client.synthesize_speech(
         Engine=engine,
@@ -157,10 +155,10 @@ def _synthesize_mp3(
     if stream is None:
         raise RuntimeError("Amazon Polly returned no audio stream")
     with closing(stream):
-        return stream.read()
+        return bytes(stream.read())
 
 
-def _s3_object_exists(client: S3ClientProtocol, bucket: str, key: str) -> bool:
+def _s3_object_exists(client: Any, bucket: str, key: str) -> bool:
     try:
         client.head_object(Bucket=bucket, Key=key)
     except Exception as error:

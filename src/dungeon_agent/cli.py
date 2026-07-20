@@ -9,7 +9,6 @@ from botocore.config import Config
 from botocore.exceptions import BotoCoreError, ClientError
 from mypy_boto3_bedrock_runtime import BedrockRuntimeClient
 from mypy_boto3_lambda_microvms import LambdaMicroVMsClient
-from mypy_boto3_polly.literals import VoiceIdType
 
 from dungeon_agent.api.models import LanguageCode
 from dungeon_agent.audio.local import LocalAudioExperience
@@ -91,7 +90,7 @@ def create_audio(args: argparse.Namespace) -> LocalAudioExperience:
         retries={"mode": "adaptive", "total_max_attempts": 4},
         user_agent_extra="lambda-microvm-dungeon-agent-audio/0.1.0",
     )
-    voices: dict[LanguageCode, VoiceIdType] = {"en": "Matthew", "es": "Andres"}
+    voices: dict[LanguageCode, str] = {"en": "Matthew", "es": "Andres"}
     synthesizer = PollySpeechSynthesizer(
         session.client("polly", config=config),
         args.audio_cache / "speech",

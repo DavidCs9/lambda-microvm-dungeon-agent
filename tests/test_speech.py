@@ -1,7 +1,5 @@
 import io
-from typing import ClassVar, cast
-
-from mypy_boto3_polly import PollyClient
+from typing import ClassVar
 
 from dungeon_agent.audio.polly import (
     DEFAULT_VOICES,
@@ -86,7 +84,7 @@ def _speech_adapter() -> tuple[ApiGatewayHttpAdapter, FakePollyClient, FakeS3Cli
     polly = FakePollyClient()
     s3 = FakeS3Client()
     synthesizer = S3PollySpeechSynthesizer(
-        cast(PollyClient, polly),
+        polly,
         s3,
         "speech-cache-bucket",
         DEFAULT_VOICES,
