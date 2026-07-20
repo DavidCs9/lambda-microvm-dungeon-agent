@@ -1,4 +1,6 @@
 import { useEffect, useRef, useState } from "react";
+import { isVoiceEnabled } from "../game/audio";
+import { toggleVoice } from "../game/narrationVoice";
 import { gameActions, useGameStore } from "../state/store";
 import {
   AppShell,
@@ -21,6 +23,7 @@ export function PlayTableScreen() {
   const [submitting, setSubmitting] = useState(false);
   const [confirmExit, setConfirmExit] = useState(false);
   const [followBottom, setFollowBottom] = useState(true);
+  const [voiceOn, setVoiceOn] = useState(isVoiceEnabled);
 
   const scrollRef = useRef<HTMLDivElement>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
@@ -88,6 +91,8 @@ export function PlayTableScreen() {
           turnCount={turnLog.length}
           wsStatus={wsStatus}
           onExit={onExit}
+          voiceEnabled={voiceOn}
+          onVoiceToggle={() => setVoiceOn(toggleVoice())}
         />
       }
       footer={

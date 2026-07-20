@@ -1,6 +1,6 @@
 # RFC 0007: Live Polly Narrator — Spoken Dungeon Master in the Web Client
 
-- Status: Proposed
+- Status: Accepted
 - Date: 2026-07-19
 - Owner: DavidCs9
 - Scope: Bring the TUI's Amazon Polly spoken narration to the web client via a

@@ -646,6 +646,62 @@ def test_get_campaign_opening_ready_and_not_ready() -> None:
     assert _body(conflict)["error"]["code"] == "campaign_conflict"
 
 
+def test_list_campaigns_filters_by_ready_status() -> None:
+    adapter, _, _, _, _, campaigns, _ = _adapter()
+    creating_id: CampaignId = "cam_01J00000000000000000000088"
+    campaigns.records[creating_id] = CampaignRecord(
+        campaign_id=creating_id,
+        owner_id="user_demo",
+        language="en",
+        status=CampaignStatus.CREATING,
+        phase=CampaignPhase.CREATING_ADVENTURE,
+        revision=1,
+        last_event_sequence=0,
+        created_at=NOW + timedelta(seconds=5),
+        updated_at=NOW + timedelta(seconds=5),
+    )
+
+    response = adapter(_event("GET /campaigns", query={"status": "ready"}))
+
+    assert response["statusCode"] == 200
+    ids = [campaign["campaignId"] for campaign in _body(response)["campaigns"]]
+    assert ids == [CAMPAIGN_ID]
+
+
+def test_list_campaigns_rejects_invalid_status() -> None:
+    adapter, _, _, _, _, _, _ = _adapter()
+
+    response = adapter(_event("GET /campaigns", query={"status": "bogus"}))
+
+    assert response["statusCode"] == 400
+    assert _body(response)["error"]["code"] == "validation_failed"
+
+
+def test_get_campaign_opening_rejects_cross_user_access() -> None:
+    adapter, _, _, _, _, _, _ = _adapter()
+
+    response = adapter(
+        _event(
+            "GET /campaigns/{campaignId}/opening",
+            owner="user_intruder",
+            campaign_id=CAMPAIGN_ID,
+        )
+    )
+
+    assert response["statusCode"] == 403
+    assert _body(response)["error"]["code"] == "not_authorized"
+
+
+def test_get_campaign_opening_unknown_campaign_returns_404() -> None:
+    adapter, _, _, _, _, _, _ = _adapter()
+    missing: CampaignId = "cam_01J00000000000000000000077"
+
+    response = adapter(_event("GET /campaigns/{campaignId}/opening", campaign_id=missing))
+
+    assert response["statusCode"] == 404
+    assert _body(response)["error"]["code"] == "campaign_not_found"
+
+
 _PHASE_BY_STATUS = {
     SessionStatus.REQUESTED: SessionPhase.REQUESTED,
     SessionStatus.CREATING: SessionPhase.STARTING_MICROVM,

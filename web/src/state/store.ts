@@ -10,6 +10,13 @@ import type {
 } from "../net/types";
 import { RealtimeClient, type WsStatus } from "../net/ws";
 import { humanError } from "../ui/copy";
+import {
+  initNarrationVoice,
+  onNarrationDelta,
+  onTurnCompleted,
+  onTurnStarted,
+  setSpeechLive,
+} from "../game/narrationVoice";
 
 const PLAYER_KEY = "dungeon-agent.playerId";
 export const PLAYER_LANGUAGE = "es" as const;
@@ -387,6 +394,7 @@ function applyEvent(event: ControlPlaneEvent): void {
       if (!session) {
         return;
       }
+      onTurnStarted();
       setState({
         session: {
           ...session,
@@ -421,6 +429,7 @@ function applyEvent(event: ControlPlaneEvent): void {
         return;
       }
       const text = typeof payload.text === "string" ? payload.text : "";
+      onNarrationDelta(text);
       setState({
         session: {
           ...session,
@@ -454,6 +463,7 @@ function applyEvent(event: ControlPlaneEvent): void {
         ...(action ? { action } : {}),
       };
       pendingActionText = "";
+      onTurnCompleted(narration);
       setState({
         session: {
           ...session,
@@ -635,6 +645,7 @@ export const gameActions = {
 
   async resumeCampaign(campaignId: string): Promise<void> {
     syncClients(state.playerId);
+    setSpeechLive(false);
     try {
       ensureConfigured();
       if (!realtime.connected) {
@@ -686,6 +697,7 @@ export const gameActions = {
       if (!realtime.connected) {
         realtime.connect();
       }
+      setSpeechLive(true);
       setState({
         screen: "phase",
         phaseKind: "session",
@@ -724,6 +736,7 @@ export const gameActions = {
     }
     syncClients(state.playerId);
     pendingActionText = trimmed;
+    setSpeechLive(true);
     setState({ turnPending: true, narrationStream: "", errorMessage: null });
     try {
       ensureConfigured();
@@ -748,6 +761,7 @@ export const gameActions = {
 
   async resumeSession(sessionId: string): Promise<void> {
     syncClients(state.playerId);
+    setSpeechLive(false);
     try {
       ensureConfigured();
       if (!realtime.connected) {
@@ -867,9 +881,12 @@ export const gameActions = {
   },
 
   resetToMenu(): void {
+    setSpeechLive(false);
     setState({
       ...createInitialState(state.playerId),
       wsStatus: state.wsStatus,
     });
   },
 };
+
+initNarrationVoice(api, subscribe);

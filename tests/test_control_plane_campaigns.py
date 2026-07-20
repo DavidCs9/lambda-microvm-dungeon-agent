@@ -227,6 +227,31 @@ def test_in_memory_list_by_owner_is_owner_scoped() -> None:
     assert [campaign.campaign_id for campaign in listed] == [mine.campaign_id]
 
 
+def test_in_memory_list_by_owner_filters_status_and_orders_newest_first() -> None:
+    repository = InMemoryCampaignRepository()
+    older = make_campaign(campaign_id="cam_01J00000000000000000000001")
+    newer = make_campaign(campaign_id="cam_01J00000000000000000000002").model_copy(
+        update={
+            "created_at": NOW + timedelta(seconds=30),
+            "updated_at": NOW + timedelta(seconds=30),
+            "status": CampaignStatus.READY,
+            "phase": CampaignPhase.READY,
+            "adventure_ref": ADVENTURE_REF,
+            "character_ref": CHARACTER_REF,
+        }
+    )
+    repository.create(older, "create-request-001")
+    repository.create(newer, "create-request-002")
+
+    listed = repository.list_by_owner("user_demo")
+    assert [campaign.campaign_id for campaign in listed] == [
+        newer.campaign_id,
+        older.campaign_id,
+    ]
+    ready_only = repository.list_by_owner("user_demo", status="ready")
+    assert [campaign.campaign_id for campaign in ready_only] == [newer.campaign_id]
+
+
 def test_campaign_record_round_trips_opening_title() -> None:
     campaign = make_campaign().model_copy(update={"opening_title": "The silent tower"})
 

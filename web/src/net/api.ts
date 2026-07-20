@@ -102,6 +102,15 @@ export class ApiClient {
     });
   }
 
+  postSpeech(
+    text: string,
+    language: LanguageCode,
+  ): Promise<{ url: string; expiresInSeconds: number; cacheHit: boolean }> {
+    return this.request("POST", "/speech", {
+      body: { text, language },
+    });
+  }
+
   private async request<T>(
     method: string,
     path: string,

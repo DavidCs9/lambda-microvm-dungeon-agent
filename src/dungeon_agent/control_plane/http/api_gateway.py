@@ -14,12 +14,14 @@ from dungeon_agent.control_plane.domain.models import CampaignId, SessionId
 from dungeon_agent.control_plane.http.handlers import (
     CampaignHttpHandlers,
     SessionHttpHandlers,
+    SpeechHttpHandlers,
 )
 from dungeon_agent.control_plane.http.models import (
     AuthenticatedIdentity,
     CreateCampaignRequest,
     CreateSessionRequest,
     HttpResult,
+    SpeechRequest,
     SubmitActionRequest,
 )
 
@@ -36,10 +38,12 @@ class ApiGatewayHttpAdapter:
         handlers: SessionHttpHandlers,
         campaigns: CampaignHttpHandlers,
         *,
+        speech: SpeechHttpHandlers | None = None,
         allow_sandbox_identity: bool = False,
     ) -> None:
         self._handlers = handlers
         self._campaigns = campaigns
+        self._speech = speech
         self._allow_sandbox_identity = allow_sandbox_identity
 
     def __call__(self, event: Mapping[str, Any], _context: object = None) -> dict[str, Any]:
@@ -83,6 +87,8 @@ class ApiGatewayHttpAdapter:
                 result = self._list_campaign_events(event, identity, correlation_id)
             elif route_key == "GET /campaigns/{campaignId}/opening":
                 result = self._get_campaign_opening(event, identity, correlation_id)
+            elif route_key == "POST /speech":
+                result = self._synthesize_speech(event, identity, correlation_id)
             else:
                 result = self._handlers.error(
                     status_code=404,
@@ -256,6 +262,27 @@ class ApiGatewayHttpAdapter:
             identity,
             campaign_id,
             after=after,
+            correlation_id=correlation_id,
+        )
+
+    def _synthesize_speech(
+        self,
+        event: Mapping[str, Any],
+        identity: AuthenticatedIdentity,
+        correlation_id: str,
+    ) -> HttpResult:
+        if self._speech is None:
+            return self._handlers.error(
+                status_code=503,
+                code=ErrorCode.DEPENDENCY_UNAVAILABLE,
+                message="Speech synthesis is temporarily unavailable.",
+                retryable=True,
+                correlation_id=correlation_id,
+            )
+        request = SpeechRequest.model_validate(_json_body(event))
+        return self._speech.synthesize_speech(
+            identity,
+            request,
             correlation_id=correlation_id,
         )
 
