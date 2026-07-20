@@ -75,6 +75,8 @@ export const MENU_COPY = {
   abandon: "Abandonar",
   abandoning: "Abandonando…",
   backToMenu: "‹ Menú",
+  backToCampaigns: "‹ Campañas",
+  closePicker: "‹ Cerrar",
 } as const;
 
 const SESSION_STATUS_COPY: Record<string, string> = {
@@ -91,6 +93,10 @@ export function humanSessionStatus(status: string | null | undefined): string {
     return "En curso";
   }
   return SESSION_STATUS_COPY[status] ?? "En curso";
+}
+
+export function voiceLabel(enabled: boolean): string {
+  return enabled ? "Voz activa" : "Voz apagada";
 }
 
 const OPENING_KIND_COPY: Record<string, string> = {

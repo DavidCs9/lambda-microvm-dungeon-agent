@@ -1,4 +1,6 @@
 import { useEffect, useRef, useState } from "react";
+import { isVoiceEnabled } from "../game/audio";
+import { toggleVoice } from "../game/narrationVoice";
 import { gameActions, useGameStore } from "../state/store";
 import {
   CampaignContextPanel,
@@ -24,6 +26,7 @@ export function PlayTableScreen() {
   const [submitting, setSubmitting] = useState(false);
   const [confirmExit, setConfirmExit] = useState(false);
   const [followBottom, setFollowBottom] = useState(true);
+  const [voiceOn, setVoiceOn] = useState(isVoiceEnabled);
 
   const scrollRef = useRef<HTMLDivElement>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
@@ -87,6 +90,8 @@ export function PlayTableScreen() {
           turnCount={turnLog.length}
           wsStatus={wsStatus}
           onExit={onExit}
+          voiceEnabled={voiceOn}
+          onVoiceToggle={() => setVoiceOn(toggleVoice())}
         />
       }
       leftRail={<CampaignContextPanel opening={opening} />}
@@ -104,7 +109,7 @@ export function PlayTableScreen() {
     >
       {confirmExit && (
         <div className="shrink-0 border-b border-[var(--line)] bg-[var(--surface-2)] px-4 py-2 text-center text-xs text-[var(--muted)] [font-family:var(--font-ui)]">
-          ¿Salir de la mesa? Toca «Salir» otra vez para confirmar.
+          ¿Volver al menú? La partida queda en pausa; usa Continuar para retomar.
         </div>
       )}
 

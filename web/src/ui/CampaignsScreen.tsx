@@ -2,7 +2,7 @@ import { motion } from "framer-motion";
 import { useEffect, useState } from "react";
 import { gameActions, useGameStore } from "../state/store";
 import { MENU_COPY } from "./copy";
-import { Card, EmberButton, ErrorLine, QuietMeta, ScreenShell, wsStatusLabel } from "./shared";
+import { BackNav, Card, EmberButton, ErrorLine, QuietMeta, ScreenShell, wsStatusLabel } from "./shared";
 
 function formatDate(value: string | undefined): string {
   if (!value) return "";
@@ -52,13 +52,7 @@ export function CampaignsScreen() {
         transition={{ duration: 0.55 }}
         className="flex w-full flex-col items-center"
       >
-        <button
-          type="button"
-          onClick={() => gameActions.resetToMenu()}
-          className="self-start text-xs tracking-[0.14em] text-[var(--muted)] uppercase transition hover:text-[var(--ink)]"
-        >
-          {MENU_COPY.backToMenu}
-        </button>
+        <BackNav onBack={() => gameActions.resetToMenu()} />
 
         <p className="mt-6 text-xs tracking-[0.28em] text-[var(--ember)] uppercase [font-family:var(--font-display)]">
           {MENU_COPY.newGame}

@@ -32,7 +32,7 @@ Abre la URL local. Pon un `playerId` (mín. 3 caracteres) y elige **Nueva partid
 
 ```text
 src/
-  game/   Pixi atmosphere + dice + Web Audio
+  game/   Pixi atmosphere + dice SFX + CC0 tavern soundtrack
   ui/     React screens (menu → campaigns → phase → opening → play → outcome)
   net/    HTTP + WebSocket adapters
   state/  Event-driven store (useSyncExternalStore)

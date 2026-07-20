@@ -34,6 +34,16 @@ ADVENTURE_THEME_SEEDS: tuple[str, ...] = (
     "an abandoned observatory aimed at the wrong sky",
 )
 
+# Injected into each character prompt so protagonists do not collapse to one gender.
+# (es, en) pairs; weights keep masculine and feminine common, with occasional neutral.
+CHARACTER_PRONOUN_SEEDS: tuple[tuple[str, str], ...] = (
+    ("él / lo", "he/him"),
+    ("él / lo", "he/him"),
+    ("ella / la", "she/her"),
+    ("ella / la", "she/her"),
+    ("elle / le", "they/them"),
+)
+
 
 class StructuredAgentPort(Protocol):
     def invoke(
@@ -96,8 +106,15 @@ class CharacterArchitect:
     def __init__(self, agent: StructuredAgentPort) -> None:
         self.agent = agent
 
-    def create(self, language: LanguageCode, adventure: AdventurePlan) -> PlayerCharacter:
+    def create(
+        self,
+        language: LanguageCode,
+        adventure: AdventurePlan,
+        *,
+        pronoun_seed: str | None = None,
+    ) -> PlayerCharacter:
         language_name = _language_name(language)
+        pronouns = pronoun_seed if pronoun_seed is not None else _pronoun_seed(language)
         return self.agent.invoke(
             system=(
                 "You design memorable player characters for short tabletop role-playing games. "
@@ -109,6 +126,7 @@ class CharacterArchitect:
                 "interaction, and a risky direct approach; they are examples, never restrictions. "
                 "Respect the field length limits in the schema and prefer short, vivid "
                 "phrases over long prose. "
+                "Vary gender and presentation across requests; never default to feminine. "
                 "Do not copy characters or settings from commercial fiction."
             ),
             prompt=json.dumps(
@@ -117,7 +135,9 @@ class CharacterArchitect:
                         f"Create one protagonist entirely in {language_name}. The player must "
                         "immediately understand who they are, what they want, why this objective "
                         "matters personally, what they already know, and three different ways to "
-                        "begin. Keep the complete character briefing concise and playable."
+                        "begin. Keep the complete character briefing concise and playable. "
+                        f"Put exactly these pronouns in the pronouns field: {pronouns}. "
+                        "Align name, appearance, and grammar with that identity."
                     ),
                     "adventure": adventure.model_dump(mode="json"),
                 },
@@ -130,6 +150,11 @@ class CharacterArchitect:
             max_tokens=2_000,
             temperature=0.85,
         )
+
+
+def _pronoun_seed(language: LanguageCode) -> str:
+    spanish, english = secrets.choice(CHARACTER_PRONOUN_SEEDS)
+    return spanish if language == "es" else english
 
 
 class DungeonMaster:

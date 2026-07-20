@@ -7,6 +7,7 @@ from typing import Any, Protocol, cast
 import boto3
 from botocore.config import Config
 
+from dungeon_agent.audio.polly import DEFAULT_VOICES, S3PollySpeechSynthesizer
 from dungeon_agent.control_plane.agents import (
     AdventureArchitect,
     CharacterArchitect,
@@ -23,6 +24,7 @@ from dungeon_agent.control_plane.http import (
     ApiGatewayHttpAdapter,
     CampaignHttpHandlers,
     SessionHttpHandlers,
+    SpeechHttpHandlers,
 )
 from dungeon_agent.control_plane.microvms.manager import (
     LambdaMicrovmManager,
@@ -170,6 +172,22 @@ def _microvm_manager() -> LambdaMicrovmManager:
     )
 
 
+def _build_speech_handlers() -> SpeechHttpHandlers | None:
+    bucket = os.environ.get("SPEECH_CACHE_BUCKET")
+    if bucket is None:
+        return None
+    polly_region = os.environ.get("POLLY_REGION", "us-east-1")
+    polly = boto3.client("polly", region_name=polly_region, config=_CONFIG)
+    s3 = boto3.client("s3", region_name=_REGION, config=_CONFIG)
+    synthesizer = S3PollySpeechSynthesizer(
+        polly,
+        s3,
+        bucket,
+        DEFAULT_VOICES,
+    )
+    return SpeechHttpHandlers(synthesizer)
+
+
 def _build_http_adapter() -> ApiGatewayHttpAdapter:
     client = cast(StepFunctionsClient, boto3.client("stepfunctions", config=_CONFIG))
     starter = StepFunctionsWorkflowStarter(
@@ -195,7 +213,12 @@ def _build_http_adapter() -> ApiGatewayHttpAdapter:
         DefaultCampaignFactory(),
         openings=DynamoDbCampaignCharacterBundles(artifact_client, _CAMPAIGN_TABLE_NAME),
     )
-    return ApiGatewayHttpAdapter(sessions, campaigns, allow_sandbox_identity=True)
+    return ApiGatewayHttpAdapter(
+        sessions,
+        campaigns,
+        speech=_build_speech_handlers(),
+        allow_sandbox_identity=True,
+    )
 
 
 def _build_turn_invoker() -> LambdaTurnWorkerInvoker | None:

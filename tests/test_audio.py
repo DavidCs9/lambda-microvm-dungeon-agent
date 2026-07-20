@@ -1,9 +1,6 @@
 import io
 import wave
 from pathlib import Path
-from typing import cast
-
-from mypy_boto3_polly import PollyClient
 
 from dungeon_agent.api.models import LanguageCode
 from dungeon_agent.audio.local import LocalAudioExperience
@@ -27,7 +24,7 @@ class FakeSynthesizer:
 def test_polly_speech_is_cached_by_content(tmp_path: Path) -> None:
     client = FakePollyClient()
     synthesizer = PollySpeechSynthesizer(
-        cast(PollyClient, client),
+        client,
         tmp_path,
         {"en": "Matthew", "es": "Andres"},
     )

@@ -1,12 +1,15 @@
 import { motion } from "framer-motion";
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
+import { isVoiceEnabled } from "../game/audio";
+import { toggleVoice } from "../game/narrationVoice";
 import { gameActions, useGameStore } from "../state/store";
-import { openingKindLabel } from "./copy";
-import { EmberButton, ErrorLine, ScreenShell } from "./shared";
+import { MENU_COPY, openingKindLabel } from "./copy";
+import { BackNav, EmberButton, ErrorLine, ScreenShell, VoiceToggle } from "./shared";
 
 export function OpeningScrollScreen() {
   const opening = useGameStore((s) => s.opening);
   const errorMessage = useGameStore((s) => s.errorMessage);
+  const [voiceOn, setVoiceOn] = useState(isVoiceEnabled);
 
   const blocks = useMemo(() => {
     const list = opening?.blocks ?? [];
@@ -17,6 +20,11 @@ export function OpeningScrollScreen() {
 
   return (
     <ScreenShell align="start" className="pb-32 pt-12">
+      <BackNav
+        label={MENU_COPY.backToCampaigns}
+        onBack={() => gameActions.goToCampaigns()}
+        className="mb-8"
+      />
       <motion.header
         initial={{ opacity: 0, y: 10 }}
         animate={{ opacity: 1, y: 0 }}
@@ -60,6 +68,11 @@ export function OpeningScrollScreen() {
       </div>
 
       <div className="fixed inset-x-0 bottom-0 z-20 flex flex-col items-center border-t border-[var(--line)] bg-[var(--surface-2)] px-6 pt-4 pb-[calc(env(safe-area-inset-bottom)+1rem)] backdrop-blur-sm">
+        <VoiceToggle
+          enabled={voiceOn}
+          onToggle={() => setVoiceOn(toggleVoice())}
+          className="mb-3"
+        />
         <EmberButton onClick={() => gameActions.continueFromOpening()} className="mt-0">
           Comenzar la aventura
         </EmberButton>

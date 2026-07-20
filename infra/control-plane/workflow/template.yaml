@@ -88,6 +88,25 @@ Resources:
         AttributeName: expiresAt
         Enabled: true
 
+  SpeechCacheBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+      LifecycleConfiguration:
+        Rules:
+          - Id: ExpireSpeechCache
+            Status: Enabled
+            Prefix: speech/
+            ExpirationInDays: 7
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+
   ControlPlaneHttpApi:
     Type: AWS::Serverless::HttpApi
     Properties:
@@ -119,6 +138,8 @@ Resources:
           TURN_WORKER_FUNCTION_NAME: !Ref TurnWorkerFunction
           MICROVM_IMAGE_NAME: !Ref MicrovmImageName
           WS_MANAGEMENT_ENDPOINT: !Sub "https://${ControlPlaneWebSocketApi}.execute-api.${AWS::Region}.${AWS::URLSuffix}/prod"
+          SPEECH_CACHE_BUCKET: !Ref SpeechCacheBucket
+          POLLY_REGION: us-east-1
       Policies:
         - DynamoDBCrudPolicy:
             TableName: !Ref SessionTable
@@ -140,6 +161,24 @@ Resources:
                 - lambda:GetMicrovm
                 - lambda:TerminateMicrovm
               Resource: "*"
+            - Effect: Allow
+              Action: polly:SynthesizeSpeech
+              Resource: "*"
+            - Effect: Allow
+              Action:
+                - s3:ListBucket
+              Resource: !GetAtt SpeechCacheBucket.Arn
+              Condition:
+                StringLike:
+                  s3:prefix:
+                    - speech/*
+                    - speech/
+            - Effect: Allow
+              Action:
+                - s3:PutObject
+                - s3:GetObject
+                - s3:HeadObject
+              Resource: !Sub "${SpeechCacheBucket.Arn}/speech/*"
       Events:
         CreateSession:
           Type: HttpApi
@@ -217,6 +256,13 @@ Resources:
             ApiId: !Ref ControlPlaneHttpApi
             Path: /campaigns/{campaignId}/opening
             Method: GET
+            PayloadFormatVersion: "2.0"
+        Speech:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref ControlPlaneHttpApi
+            Path: /speech
+            Method: POST
             PayloadFormatVersion: "2.0"
 
   WorkflowTaskRole:
