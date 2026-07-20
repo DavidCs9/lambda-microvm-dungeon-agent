@@ -458,7 +458,9 @@ function applyEvent(event: ControlPlaneEvent): void {
         },
         expectedRevision: revision,
         turnPending: false,
-        narrationStream: narration,
+        // Clear the live stream so PlayTableScreen does not render the same
+        // text twice (turnLog entry + leftover Narración block).
+        narrationStream: "",
         turnLog: [...state.turnLog, entry],
       });
       return;
