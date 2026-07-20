@@ -199,8 +199,15 @@ The service exposes health and state at `/health` and `/v1/world`; interactive O
 
 ## Images, CI, and releases
 
-Normal pushes and pull requests do not authenticate to AWS. CI runs formatting, linting, strict
-typing, tests, gameplay evals, deterministic source packaging, and an ARM64 container build.
+Normal pushes and pull requests do not authenticate to AWS. CI path-filters by deploy lane:
+
+- `web/**` — Frontend `npm run build` only
+- Python / control-plane paths — ruff, mypy, pytest, gameplay evals
+- MicroVM image paths (Dockerfile, non-CP `src/dungeon_agent/**`, image builder) — also ARM64
+  container build and deterministic source packaging
+
+Docs-only changes skip the heavy jobs. The aggregating **CI** job always reports so merges are not
+blocked by skipped lanes.
 
 Tags matching `v*` trigger the release workflow. It repeats the quality gates, assumes a short-lived
 AWS role through GitHub OIDC, publishes a new version of `dungeon-agent-fastapi`, and creates a
