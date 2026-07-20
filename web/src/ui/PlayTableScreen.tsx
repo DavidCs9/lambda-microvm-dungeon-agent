@@ -13,7 +13,6 @@ import {
 export function PlayTableScreen() {
   const opening = useGameStore((s) => s.opening);
   const campaign = useGameStore((s) => s.campaign);
-  const session = useGameStore((s) => s.session);
   const narrationStream = useGameStore((s) => s.narrationStream);
   const turnLog = useGameStore((s) => s.turnLog);
   const turnPending = useGameStore((s) => s.turnPending);
@@ -52,12 +51,8 @@ export function PlayTableScreen() {
       setConfirmExit(true);
       return;
     }
-    const sessionId = session?.sessionId;
-    // Never block Salir on the network: leave now, abandon in the background.
+    // Leave the table without abandoning: session stays active for Continuar.
     gameActions.resetToMenu();
-    if (sessionId) {
-      void gameActions.abandonSession(sessionId);
-    }
   }
 
   useEffect(() => {
@@ -108,7 +103,7 @@ export function PlayTableScreen() {
     >
       {confirmExit && (
         <div className="shrink-0 border-b border-[var(--line)] bg-[var(--surface-2)] px-4 py-2 text-center text-xs text-[var(--muted)] [font-family:var(--font-ui)]">
-          ¿Salir de la mesa? Toca «Salir» otra vez para confirmar.
+          ¿Volver al menú? La partida queda en pausa; usa Continuar para retomar.
         </div>
       )}
 
