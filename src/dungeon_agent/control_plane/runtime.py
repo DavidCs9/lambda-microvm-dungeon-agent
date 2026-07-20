@@ -9,7 +9,9 @@ from botocore.config import Config
 
 from dungeon_agent.audio.polly import DEFAULT_VOICES, S3PollySpeechSynthesizer
 from dungeon_agent.control_plane.agents import (
+    DEFAULT_IMAGE_MODEL_ID,
     AdventureArchitect,
+    BedrockPortraitGenerator,
     CharacterArchitect,
     StructuredBedrockAgent,
 )
@@ -51,6 +53,7 @@ from dungeon_agent.control_plane.steps import (
     DynamoDbWorldSnapshots,
 )
 from dungeon_agent.control_plane.steps.artifacts import DynamoDbArtifactClient
+from dungeon_agent.control_plane.steps.portraits import S3PortraitStore
 from dungeon_agent.control_plane.telemetry import EmfTelemetry
 from dungeon_agent.control_plane.workflow import (
     DurableCampaignWorkflowStub,
@@ -195,6 +198,32 @@ def _build_speech_handlers() -> SpeechHttpHandlers | None:
     return SpeechHttpHandlers(synthesizer)
 
 
+def _build_portrait_store() -> S3PortraitStore | None:
+    """Best-effort portrait persistence and presigning; absent bucket disables it."""
+    bucket = os.environ.get("SPEECH_CACHE_BUCKET")
+    if bucket is None:
+        return None
+    s3 = boto3.client("s3", region_name=_REGION, config=_CONFIG)
+    return S3PortraitStore(s3, bucket)
+
+
+def _build_portrait_generator() -> BedrockPortraitGenerator | None:
+    """Best-effort Bedrock text-to-image; absent bucket disables generation too."""
+    if "SPEECH_CACHE_BUCKET" not in os.environ:
+        return None
+    model_id = os.environ.get("BEDROCK_IMAGE_MODEL_ID", DEFAULT_IMAGE_MODEL_ID)
+    image_region = os.environ.get("BEDROCK_IMAGE_REGION", "us-east-1")
+    image_config = Config(
+        retries={"total_max_attempts": 2, "mode": "adaptive"},
+        connect_timeout=10,
+        read_timeout=300,
+    )
+    bedrock_image = cast(
+        Any, boto3.client("bedrock-runtime", region_name=image_region, config=image_config)
+    )
+    return BedrockPortraitGenerator(bedrock_image, model_id)
+
+
 def _build_http_adapter() -> ApiGatewayHttpAdapter:
     client = cast(StepFunctionsClient, boto3.client("stepfunctions", config=_CONFIG))
     starter = StepFunctionsWorkflowStarter(
@@ -219,6 +248,7 @@ def _build_http_adapter() -> ApiGatewayHttpAdapter:
         starter,
         DefaultCampaignFactory(),
         openings=DynamoDbCampaignCharacterBundles(artifact_client, _CAMPAIGN_TABLE_NAME),
+        portrait_presigner=_build_portrait_store(),
     )
     return ApiGatewayHttpAdapter(
         sessions,
@@ -301,6 +331,8 @@ def _build_campaign_workflow() -> DurableCampaignWorkflowStub:
             CharacterArchitect(_structured_agent("CharacterArchitect", character_metrics)),
             adventures,
             characters,
+            portrait_generator=_build_portrait_generator(),
+            portrait_store=_build_portrait_store(),
         ),
         openings=characters,
         adventure_metrics=adventure_metrics,

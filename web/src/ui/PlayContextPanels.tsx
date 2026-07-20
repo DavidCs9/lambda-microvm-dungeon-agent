@@ -1,86 +1,49 @@
+import type { ReactNode } from "react";
 import { useMemo } from "react";
-import type { OpeningBlock, OpeningBlockKind, OpeningDocument } from "../net/types";
-import { openingKindLabel } from "./copy";
+import type { OpeningBlock, OpeningDocument } from "../net/types";
 
-const CAMPAIGN_KINDS: OpeningBlockKind[] = [
-  "situation",
-  "knowledge",
-  "possible_action",
-];
+const MAX_CHARS = 140;
+const MAX_KNOWLEDGE = 2;
+const MAX_ACTIONS = 3;
 
-const CHARACTER_KINDS: OpeningBlockKind[] = [
-  "identity",
-  "background",
-  "motivation",
-];
+function truncate(text: string, max = MAX_CHARS): string {
+  const trimmed = text.trim();
+  if (trimmed.length <= max) return trimmed;
+  return `${trimmed.slice(0, max - 1).trimEnd()}…`;
+}
 
-function blocksForKinds(
+function blocksOfKind(
   opening: OpeningDocument | null | undefined,
-  kinds: OpeningBlockKind[],
+  kind: OpeningBlock["kind"],
 ): OpeningBlock[] {
-  const wanted = new Set(kinds);
   return [...(opening?.blocks ?? [])]
-    .filter((block) => wanted.has(block.kind))
+    .filter((block) => block.kind === kind)
     .sort((a, b) => a.position - b.position);
 }
 
-function groupByKind(blocks: OpeningBlock[]): { kind: OpeningBlockKind; texts: string[] }[] {
-  const order: OpeningBlockKind[] = [];
-  const texts = new Map<OpeningBlockKind, string[]>();
-  for (const block of blocks) {
-    const list = texts.get(block.kind);
-    if (!list) {
-      order.push(block.kind);
-      texts.set(block.kind, [block.text]);
-    } else {
-      list.push(block.text);
-    }
-  }
-  return order.map((kind) => ({ kind, texts: texts.get(kind) ?? [] }));
-}
-
-function ContextPanel({
-  title,
-  blocks,
+function RailShell({
   align,
+  children,
 }: {
-  title: string;
-  blocks: OpeningBlock[];
   align: "left" | "right";
+  children: ReactNode;
 }) {
-  const groups = useMemo(() => groupByKind(blocks), [blocks]);
   const border =
     align === "left" ? "border-r border-[var(--line)]" : "border-l border-[var(--line)]";
-
-  if (groups.length === 0) return null;
-
   return (
     <aside
       className={`hidden min-h-0 w-52 shrink-0 overflow-y-auto bg-[var(--panel)] px-4 py-5 xl:w-60 lg:block ${border}`}
     >
-      <p className="mb-5 text-[0.65rem] tracking-[0.28em] text-[var(--ember)] uppercase [font-family:var(--font-display)]">
-        {title}
-      </p>
-      <div className="space-y-5">
-        {groups.map((group) => (
-          <section key={group.kind}>
-            <p className="mb-2 text-[0.65rem] tracking-[0.2em] text-[var(--muted)] uppercase [font-family:var(--font-ui)]">
-              {openingKindLabel(group.kind)}
-            </p>
-            <ul className="space-y-2.5">
-              {group.texts.map((text, index) => (
-                <li
-                  key={`${group.kind}-${index}`}
-                  className="text-sm leading-relaxed text-[var(--ink)]/85 whitespace-pre-wrap"
-                >
-                  {group.kind === "possible_action" ? `· ${text}` : text}
-                </li>
-              ))}
-            </ul>
-          </section>
-        ))}
-      </div>
+      {children}
     </aside>
+  );
+}
+
+function RailTitle({ children }: { children: ReactNode }) {
+  return (
+    <p className="mb-4 text-[0.65rem] tracking-[0.28em] text-[var(--ember)] uppercase [font-family:var(--font-display)]">
+      {children}
+    </p>
   );
 }
 
@@ -89,21 +52,117 @@ export function CampaignContextPanel({
 }: {
   opening: OpeningDocument | null | undefined;
 }) {
-  const blocks = useMemo(
-    () => blocksForKinds(opening, CAMPAIGN_KINDS),
+  const situation = useMemo(() => {
+    const [block] = blocksOfKind(opening, "situation");
+    return block ? truncate(block.text) : null;
+  }, [opening]);
+
+  const knowledge = useMemo(
+    () => blocksOfKind(opening, "knowledge").slice(0, MAX_KNOWLEDGE),
     [opening],
   );
-  return <ContextPanel title="Campaña" blocks={blocks} align="left" />;
+
+  const actions = useMemo(
+    () => blocksOfKind(opening, "possible_action").slice(0, MAX_ACTIONS),
+    [opening],
+  );
+
+  if (!situation && knowledge.length === 0 && actions.length === 0) return null;
+
+  return (
+    <RailShell align="left">
+      <RailTitle>Campaña</RailTitle>
+      <div className="space-y-5">
+        {situation && (
+          <p className="text-sm leading-relaxed text-[var(--ink)]/85">{situation}</p>
+        )}
+
+        {knowledge.length > 0 && (
+          <section>
+            <p className="mb-2 text-[0.65rem] tracking-[0.2em] text-[var(--muted)] uppercase [font-family:var(--font-ui)]">
+              Saber
+            </p>
+            <ul className="space-y-2">
+              {knowledge.map((block) => (
+                <li
+                  key={block.id}
+                  className="text-sm leading-relaxed text-[var(--ink)]/85"
+                >
+                  {truncate(block.text)}
+                </li>
+              ))}
+            </ul>
+          </section>
+        )}
+
+        {actions.length > 0 && (
+          <section>
+            <p className="mb-2 text-[0.65rem] tracking-[0.2em] text-[var(--muted)] uppercase [font-family:var(--font-ui)]">
+              Posibles acciones
+            </p>
+            <ul className="space-y-1.5">
+              {actions.map((block) => (
+                <li
+                  key={block.id}
+                  className="rounded border border-[var(--line)] bg-[var(--surface-2)]/60 px-2 py-1 text-xs leading-snug text-[var(--ink)]/85"
+                >
+                  {truncate(block.text, 100)}
+                </li>
+              ))}
+            </ul>
+          </section>
+        )}
+      </div>
+    </RailShell>
+  );
 }
 
 export function CharacterContextPanel({
   opening,
+  portraitUrl,
 }: {
   opening: OpeningDocument | null | undefined;
+  portraitUrl?: string | null;
 }) {
-  const blocks = useMemo(
-    () => blocksForKinds(opening, CHARACTER_KINDS),
-    [opening],
+  const identity = useMemo(() => {
+    const [block] = blocksOfKind(opening, "identity");
+    return block ? block.text.trim() : null;
+  }, [opening]);
+
+  const motivation = useMemo(() => {
+    const [block] = blocksOfKind(opening, "motivation");
+    return block ? truncate(block.text, 160) : null;
+  }, [opening]);
+
+  if (!portraitUrl && !identity && !motivation) return null;
+
+  return (
+    <RailShell align="right">
+      <RailTitle>Personaje</RailTitle>
+      {portraitUrl && (
+        <div className="mb-5 aspect-square w-full max-w-[180px] overflow-hidden rounded-lg border border-[var(--line)] shadow-[0_0_24px_rgba(0,0,0,0.35)]">
+          <img
+            src={portraitUrl}
+            alt="Retrato del personaje"
+            className="h-full w-full object-cover"
+          />
+        </div>
+      )}
+      <div className="space-y-4">
+        {identity && (
+          <p className="text-sm leading-relaxed text-[var(--ink)]/85 whitespace-pre-wrap">
+            {identity}
+          </p>
+        )}
+        {motivation && (
+          <section>
+            <p className="mb-1.5 text-[0.65rem] tracking-[0.2em] text-[var(--muted)] uppercase [font-family:var(--font-ui)]">
+              Motivación
+            </p>
+            <p className="text-sm leading-relaxed text-[var(--ink)]/85">{motivation}</p>
+          </section>
+        )}
+      </div>
+    </RailShell>
   );
-  return <ContextPanel title="Personaje" blocks={blocks} align="right" />;
 }

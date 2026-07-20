@@ -74,6 +74,12 @@ class SpeechSynthesizerPort(Protocol):
 class CampaignOpeningLoader(Protocol):
     def load_opening(self, character_ref: str) -> OpeningDocument: ...
 
+    def load_portrait_key(self, character_ref: str) -> str | None: ...
+
+
+class PortraitUrlPresigner(Protocol):
+    def presigned_url(self, key: str) -> str: ...
+
 
 class SessionHttpHandlers:
     """Short control operations; MicroVM work remains in the async workflow."""
@@ -708,6 +714,7 @@ class CampaignHttpHandlers:
         campaign_factory: CampaignFactoryPort,
         *,
         openings: CampaignOpeningLoader | None = None,
+        portrait_presigner: PortraitUrlPresigner | None = None,
         clock: Clock | None = None,
         max_campaigns_per_owner: int = 10,
     ) -> None:
@@ -716,6 +723,7 @@ class CampaignHttpHandlers:
         self._workflows = workflows
         self._campaign_factory = campaign_factory
         self._openings = openings
+        self._portrait_presigner = portrait_presigner
         self._clock = clock or _utc_now
         self._max_campaigns_per_owner = max_campaigns_per_owner
 
@@ -843,9 +851,26 @@ class CampaignHttpHandlers:
             return self._dependency_error(correlation_id)
         return HttpResult(
             status_code=200,
-            body=OpeningEnvelope(campaign_id=campaign_id, opening=opening),
+            body=OpeningEnvelope(
+                campaign_id=campaign_id,
+                opening=opening,
+                portrait_url=self._resolve_portrait_url(campaign.character_ref, correlation_id),
+            ),
             correlation_id=correlation_id,
         )
+
+    def _resolve_portrait_url(self, character_ref: str, correlation_id: str) -> str | None:
+        """Best-effort presign; a missing or broken portrait never fails the opening."""
+        if self._openings is None or self._portrait_presigner is None:
+            return None
+        try:
+            portrait_key = self._openings.load_portrait_key(character_ref)
+            if portrait_key is None:
+                return None
+            return self._portrait_presigner.presigned_url(portrait_key)
+        except Exception:
+            LOGGER.exception("portrait_presign_failed", extra={"correlation_id": correlation_id})
+            return None
 
     def list_events(
         self,

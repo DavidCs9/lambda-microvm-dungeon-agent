@@ -87,6 +87,7 @@ class OpeningEnvelope(ContractModel):
     version: Literal[1] = 1
     campaign_id: CampaignId
     opening: OpeningDocument
+    portrait_url: str | None = None
 
 
 class TurnAcceptedEnvelope(ContractModel):

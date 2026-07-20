@@ -1,6 +1,11 @@
 """Typed agent adapters shared by local and hosted orchestration."""
 
 from dungeon_agent.control_plane.agents.bedrock import StructuredBedrockAgent
+from dungeon_agent.control_plane.agents.portrait import (
+    DEFAULT_IMAGE_MODEL_ID,
+    BedrockPortraitGenerator,
+    generate_character_portrait,
+)
 from dungeon_agent.control_plane.agents.roles import (
     AdventureArchitect,
     CharacterArchitect,
@@ -8,8 +13,11 @@ from dungeon_agent.control_plane.agents.roles import (
 )
 
 __all__ = [
+    "DEFAULT_IMAGE_MODEL_ID",
     "AdventureArchitect",
+    "BedrockPortraitGenerator",
     "CharacterArchitect",
     "DungeonMaster",
     "StructuredBedrockAgent",
+    "generate_character_portrait",
 ]
