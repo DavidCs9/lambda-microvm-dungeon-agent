@@ -1,7 +1,8 @@
 import { motion } from "framer-motion";
 import { useMemo } from "react";
 import { gameActions, useGameStore } from "../state/store";
-import { EmberButton, ErrorLine, ScreenShell } from "./shared";
+import { MENU_COPY } from "./copy";
+import { BackNav, EmberButton, ErrorLine, ScreenShell } from "./shared";
 
 export function OpeningScrollScreen() {
   const opening = useGameStore((s) => s.opening);
@@ -16,6 +17,11 @@ export function OpeningScrollScreen() {
 
   return (
     <ScreenShell align="start" className="pb-32 pt-12">
+      <BackNav
+        label={MENU_COPY.backToCampaigns}
+        onBack={() => gameActions.goToCampaigns()}
+        className="mb-8"
+      />
       <motion.header
         initial={{ opacity: 0, y: 10 }}
         animate={{ opacity: 1, y: 0 }}

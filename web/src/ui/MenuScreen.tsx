@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import { gameActions, useGameStore } from "../state/store";
 import { MENU_COPY, humanSessionStatus } from "./copy";
 import {
+  BackNav,
   Card,
   EmberButton,
   ErrorLine,
@@ -167,6 +168,7 @@ export function MenuScreen() {
 
         {showPicker ? (
           <div className="mt-10 w-full max-w-sm text-left">
+            <BackNav label={MENU_COPY.closePicker} onBack={() => setPickerOpen(false)} className="mb-4" />
             <p className="mb-4 text-center text-xs tracking-[0.22em] text-[var(--muted)] uppercase [font-family:var(--font-ui)]">
               {MENU_COPY.pickerTitle}
             </p>
