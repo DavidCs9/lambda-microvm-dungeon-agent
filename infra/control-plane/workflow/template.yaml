@@ -12,6 +12,10 @@ Parameters:
     Type: String
     Default: us.anthropic.claude-sonnet-4-6
     Description: Bedrock inference profile used by both session architects.
+  BedrockImageModelId:
+    Type: String
+    Default: amazon.nova-canvas-v1:0
+    Description: Bedrock text-to-image model used for one AI character portrait per campaign.
   MicrovmImageName:
     Type: String
     Default: dungeon-agent-fastapi
@@ -101,6 +105,10 @@ Resources:
             Status: Enabled
             Prefix: speech/
             ExpirationInDays: 7
+          - Id: ExpirePortraitCache
+            Status: Enabled
+            Prefix: portraits/
+            ExpirationInDays: 365
       PublicAccessBlockConfiguration:
         BlockPublicAcls: true
         BlockPublicPolicy: true
@@ -173,12 +181,16 @@ Resources:
                   s3:prefix:
                     - speech/*
                     - speech/
+                    - portraits/*
+                    - portraits/
             - Effect: Allow
               Action:
                 - s3:PutObject
                 - s3:GetObject
                 - s3:HeadObject
-              Resource: !Sub "${SpeechCacheBucket.Arn}/speech/*"
+              Resource:
+                - !Sub "${SpeechCacheBucket.Arn}/speech/*"
+                - !Sub "${SpeechCacheBucket.Arn}/portraits/*"
       Events:
         CreateSession:
           Type: HttpApi
@@ -306,6 +318,21 @@ Resources:
                 Resource: "*"
               - Effect: Allow
                 Action:
+                  - s3:ListBucket
+                Resource: !GetAtt SpeechCacheBucket.Arn
+                Condition:
+                  StringLike:
+                    s3:prefix:
+                      - portraits/*
+                      - portraits/
+              - Effect: Allow
+                Action:
+                  - s3:PutObject
+                  - s3:GetObject
+                  - s3:HeadObject
+                Resource: !Sub "${SpeechCacheBucket.Arn}/portraits/*"
+              - Effect: Allow
+                Action:
                   - lambda:ListMicrovmImages
                   - lambda:GetMicrovmImage
                   - lambda:RunMicrovm
@@ -339,6 +366,8 @@ Resources:
           BEDROCK_MODEL_ID: !Ref BedrockModelId
           MICROVM_IMAGE_NAME: !Ref MicrovmImageName
           WS_MANAGEMENT_ENDPOINT: !Sub "https://${ControlPlaneWebSocketApi}.execute-api.${AWS::Region}.${AWS::URLSuffix}/prod"
+          SPEECH_CACHE_BUCKET: !Ref SpeechCacheBucket
+          BEDROCK_IMAGE_MODEL_ID: !Ref BedrockImageModelId
 
   WorkflowTaskLogGroup:
     Type: AWS::Logs::LogGroup

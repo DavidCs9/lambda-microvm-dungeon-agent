@@ -80,7 +80,9 @@ class AdventureArchitect:
                 "lowercase ASCII snake_case. Every exit must reference a declared location. Do not "
                 "copy commercial settings, characters, or stories. Vary premise, setting, and "
                 "conflict widely across requests; never default to a silenced village bell, quiet "
-                "tower, or missing clapper."
+                "tower, or missing clapper. Players read this on a small screen: every location, "
+                "character, and item description must be one short sentence, 120 characters or "
+                "fewer. The opening must be at most two sentences and 180 characters."
             ),
             prompt=(
                 f"Create a brand-new 10 to 15 minute adventure entirely in {language_name}. "
@@ -88,9 +90,10 @@ class AdventureArchitect:
                 f"literally): {theme}. "
                 "Give it one clear objective, 3 to 5 connected locations, 1 or 2 characters with "
                 "useful motivations, a few usable items, and secrets that permit clever solutions. "
-                "The opening must state the immediate situation and objective without solving it. "
-                "Populate every field in the tool, including secrets and max_turns. Keep every "
-                "description and motivation under 250 characters."
+                "The opening must state the immediate situation and objective without solving it, "
+                "in at most two sentences and 180 characters. Populate every field in the tool, "
+                "including secrets and max_turns. Keep every location, character, and item "
+                "description to one short sentence of 120 characters or fewer."
             ),
             tool_name="create_adventure",
             tool_description="Return the complete validated adventure plan.",
@@ -124,8 +127,12 @@ class CharacterArchitect:
                 "without revealing its secrets. Give the player room to choose their personality "
                 "and actions. The three opening choices must represent investigation, social "
                 "interaction, and a risky direct approach; they are examples, never restrictions. "
-                "Respect the field length limits in the schema and prefer short, vivid "
-                "phrases over long prose. "
+                "Players read this on a small screen: every prose field is exactly one short "
+                "sentence, never a list of clauses. appearance is 120 characters or fewer; "
+                "background is 200 characters or fewer; every other prose field is 160 characters "
+                "or fewer. Each known_facts entry is a single fact of 80 characters or fewer. Each "
+                "opening_choices entry is a short verb phrase of 40 characters or fewer, such as "
+                "'Question Mara' or 'Inspect the tower'. "
                 "Vary gender and presentation across requests; never default to feminine. "
                 "Do not copy characters or settings from commercial fiction."
             ),
