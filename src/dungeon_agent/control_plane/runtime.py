@@ -53,6 +53,7 @@ from dungeon_agent.control_plane.steps import (
     DynamoDbWorldSnapshots,
 )
 from dungeon_agent.control_plane.steps.artifacts import DynamoDbArtifactClient
+from dungeon_agent.control_plane.steps.portraits import S3PortraitStore
 from dungeon_agent.control_plane.telemetry import EmfTelemetry
 from dungeon_agent.control_plane.workflow import (
     DurableCampaignWorkflowStub,
@@ -60,7 +61,6 @@ from dungeon_agent.control_plane.workflow import (
     StepFunctionsWorkflowStarter,
 )
 from dungeon_agent.control_plane.workflow.step_functions import StepFunctionsClient
-from dungeon_agent.images.portraits import S3PortraitStore
 
 _CONFIG = Config(
     retries={"total_max_attempts": 3, "mode": "adaptive"},
@@ -212,7 +212,15 @@ def _build_portrait_generator() -> BedrockPortraitGenerator | None:
     if "SPEECH_CACHE_BUCKET" not in os.environ:
         return None
     model_id = os.environ.get("BEDROCK_IMAGE_MODEL_ID", DEFAULT_IMAGE_MODEL_ID)
-    bedrock_image = cast(Any, boto3.client("bedrock-runtime", config=_BEDROCK_CONFIG))
+    image_region = os.environ.get("BEDROCK_IMAGE_REGION", "us-east-1")
+    image_config = Config(
+        retries={"total_max_attempts": 2, "mode": "adaptive"},
+        connect_timeout=10,
+        read_timeout=300,
+    )
+    bedrock_image = cast(
+        Any, boto3.client("bedrock-runtime", region_name=image_region, config=image_config)
+    )
     return BedrockPortraitGenerator(bedrock_image, model_id)
 
 

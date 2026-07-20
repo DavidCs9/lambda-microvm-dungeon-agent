@@ -25,7 +25,9 @@ class FakeBedrockImageClient:
         self.payload = payload
         self.calls: list[dict[str, str]] = []
 
-    def invoke_model(self, *, modelId: str, body: str, accept: str, contentType: str) -> dict:
+    def invoke_model(
+        self, *, modelId: str, body: str, accept: str, contentType: str
+    ) -> dict[str, object]:
         self.calls.append(
             {"modelId": modelId, "body": body, "accept": accept, "contentType": contentType}
         )
