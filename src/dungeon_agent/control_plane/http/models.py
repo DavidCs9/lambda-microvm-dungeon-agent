@@ -46,6 +46,13 @@ class SubmitActionRequest(ContractModel):
     expected_revision: int = Field(ge=0)
 
 
+class SpeechRequest(ContractModel):
+    """Player-controlled fields accepted by ``POST /speech``."""
+
+    text: str = Field(min_length=1, max_length=4000)
+    language: LanguageCode
+
+
 class SessionEnvelope(ContractModel):
     """Stable wrapper used by create and read responses."""
 
@@ -109,6 +116,15 @@ class CampaignEventListEnvelope(ContractModel):
     next_sequence: int = Field(ge=0)
 
 
+class SpeechEnvelope(ContractModel):
+    """Presigned playback URL for one narrated sentence or opening block."""
+
+    version: Literal[1] = 1
+    url: str = Field(min_length=1)
+    expires_in_seconds: int = Field(ge=1, le=3600)
+    cache_hit: bool
+
+
 HttpBody = (
     SessionEnvelope
     | CampaignEnvelope
@@ -118,6 +134,7 @@ HttpBody = (
     | TurnAcceptedEnvelope
     | EventListEnvelope
     | CampaignEventListEnvelope
+    | SpeechEnvelope
     | ErrorEnvelope
 )
 

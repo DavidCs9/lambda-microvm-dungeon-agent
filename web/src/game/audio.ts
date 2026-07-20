@@ -1,5 +1,5 @@
 /**
- * Dice SFX (Web Audio) + tavern soundtrack (CC0 MP3 loop).
+ * Dice SFX (Web Audio) + tavern soundtrack (CC0 MP3 loop) + Polly speech queue.
  *
  * Track: "Medieval: The Old Tower Inn" by RandomMind — CC0
  * https://opengameart.org/content/medieval-the-old-tower-inn
@@ -8,10 +8,38 @@
 const SOUNDTRACK_URL = "/audio/the-old-tower-inn.mp3";
 /** Keep music under the dialogue; dice stay punchier on their own bus. */
 const SOUNDTRACK_VOLUME = 0.32;
+const VOICE_KEY = "dungeon-agent-voice";
 
 let ctx: AudioContext | null = null;
 let soundtrackEl: HTMLAudioElement | null = null;
 let unlocked = false;
+const unlockListeners = new Set<() => void>();
+
+let voiceEnabled = loadVoiceEnabled();
+let speechQueue: string[] = [];
+let speechPlaying = false;
+let currentSpeechEl: HTMLAudioElement | null = null;
+let soundtrackPausedForSpeech = false;
+
+function loadVoiceEnabled(): boolean {
+  try {
+    const stored = localStorage.getItem(VOICE_KEY);
+    if (stored === "0" || stored === "false") {
+      return false;
+    }
+  } catch {
+    // ignore
+  }
+  return true;
+}
+
+function persistVoiceEnabled(enabled: boolean): void {
+  try {
+    localStorage.setItem(VOICE_KEY, enabled ? "1" : "0");
+  } catch {
+    // ignore
+  }
+}
 
 function getCtx(): AudioContext {
   if (!ctx) {
@@ -31,12 +59,30 @@ function getSoundtrack(): HTMLAudioElement {
   return soundtrackEl;
 }
 
+function notifyUnlockListeners(): void {
+  for (const listener of unlockListeners) {
+    listener();
+  }
+}
+
+/** Subscribe to the first successful audio unlock (gesture). */
+export function onAudioUnlock(listener: () => void): () => void {
+  unlockListeners.add(listener);
+  if (unlocked) {
+    listener();
+  }
+  return () => {
+    unlockListeners.delete(listener);
+  };
+}
+
 /** Resume context + start the tavern loop after a user gesture (autoplay policy). */
 export async function unlockAudio(): Promise<void> {
   const c = getCtx();
   if (c.state === "suspended") {
     await c.resume();
   }
+  const wasUnlocked = unlocked;
   unlocked = true;
   const track = getSoundtrack();
   try {
@@ -45,6 +91,9 @@ export async function unlockAudio(): Promise<void> {
     }
   } catch (error) {
     console.warn("soundtrack play blocked", error);
+  }
+  if (!wasUnlocked) {
+    notifyUnlockListeners();
   }
 }
 
@@ -91,6 +140,113 @@ export async function playDiceSfx(success: boolean): Promise<void> {
   }
 }
 
+export function isVoiceEnabled(): boolean {
+  return voiceEnabled;
+}
+
+export function setVoiceEnabled(enabled: boolean): void {
+  voiceEnabled = enabled;
+  persistVoiceEnabled(enabled);
+  if (!enabled) {
+    muteVoice();
+  }
+}
+
+/** Stop current clip and clear the pending speech queue. */
+export function muteVoice(): void {
+  speechQueue = [];
+  if (currentSpeechEl) {
+    currentSpeechEl.pause();
+    currentSpeechEl.src = "";
+    currentSpeechEl = null;
+  }
+  speechPlaying = false;
+  restoreSoundtrackAfterSpeech();
+}
+
+function duckSoundtrackForSpeech(): void {
+  const track = soundtrackEl;
+  if (!track || track.paused) {
+    return;
+  }
+  soundtrackPausedForSpeech = true;
+  track.pause();
+}
+
+function restoreSoundtrackAfterSpeech(): void {
+  if (!soundtrackPausedForSpeech) {
+    return;
+  }
+  soundtrackPausedForSpeech = false;
+  if (!unlocked || !soundtrackEl) {
+    return;
+  }
+  soundtrackEl.volume = SOUNDTRACK_VOLUME;
+  void soundtrackEl.play().catch(() => {
+    // autoplay blocked — ignore
+  });
+}
+
+/** Play one Polly clip; ducks the tavern loop for the duration. */
+export async function playSpeechFromUrl(url: string): Promise<void> {
+  if (!isAudioUnlocked() || !voiceEnabled) {
+    return;
+  }
+
+  return new Promise((resolve) => {
+    const el = new Audio(url);
+    currentSpeechEl = el;
+
+    const finish = () => {
+      if (currentSpeechEl === el) {
+        currentSpeechEl = null;
+      }
+      resolve();
+    };
+
+    el.addEventListener("ended", finish, { once: true });
+    el.addEventListener("error", finish, { once: true });
+    void el.play().catch(finish);
+  });
+}
+
+async function drainSpeechQueue(): Promise<void> {
+  if (speechPlaying || !voiceEnabled || !isAudioUnlocked()) {
+    return;
+  }
+
+  speechPlaying = true;
+  duckSoundtrackForSpeech();
+
+  while (speechQueue.length > 0 && voiceEnabled && isAudioUnlocked()) {
+    const url = speechQueue.shift();
+    if (!url) {
+      continue;
+    }
+    try {
+      await playSpeechFromUrl(url);
+    } catch {
+      // silent — keep queue moving
+    }
+  }
+
+  speechPlaying = false;
+  restoreSoundtrackAfterSpeech();
+
+  if (speechQueue.length > 0 && voiceEnabled && isAudioUnlocked()) {
+    void drainSpeechQueue();
+  }
+}
+
+/** Enqueue a presigned MP3 URL for sequential playback. */
+export function queueSpeechFromUrl(url: string): void {
+  if (!isAudioUnlocked() || !voiceEnabled) {
+    return;
+  }
+  speechQueue.push(url);
+  void drainSpeechQueue();
+}
+
 export function stopAmbience(): void {
   if (!soundtrackEl) {
     return;
@@ -100,6 +256,7 @@ export function stopAmbience(): void {
 }
 
 export function disposeAudio(): void {
+  muteVoice();
   stopAmbience();
   if (soundtrackEl) {
     soundtrackEl.src = "";
@@ -110,6 +267,7 @@ export function disposeAudio(): void {
     ctx = null;
   }
   unlocked = false;
+  unlockListeners.clear();
 }
 
 export function isAudioUnlocked(): boolean {

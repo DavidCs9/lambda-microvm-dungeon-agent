@@ -1,6 +1,6 @@
 import type { KeyboardEvent, ReactNode } from "react";
 import { useEffect, useRef, useState } from "react";
-import { MENU_COPY } from "./copy";
+import { MENU_COPY, voiceLabel } from "./copy";
 
 export type WsStatus = "disconnected" | "connecting" | "connected" | "error";
 
@@ -154,16 +154,41 @@ const WS_DOT: Record<WsStatus, string> = {
   error: "bg-[var(--danger)]",
 };
 
+export function VoiceToggle({
+  enabled,
+  onToggle,
+  className = "",
+}: {
+  enabled: boolean;
+  onToggle: () => void;
+  className?: string;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onToggle}
+      aria-pressed={enabled}
+      className={`shrink-0 text-xs tracking-[0.12em] uppercase transition ${enabled ? "text-[var(--ember)]" : "text-[var(--muted)]"} hover:text-[var(--ink)] ${className}`}
+    >
+      {voiceLabel(enabled)}
+    </button>
+  );
+}
+
 export function ContextBar({
   title,
   turnCount,
   wsStatus,
   onExit,
+  voiceEnabled,
+  onVoiceToggle,
 }: {
   title: string;
   turnCount?: number;
   wsStatus: WsStatus;
   onExit: () => void;
+  voiceEnabled?: boolean;
+  onVoiceToggle?: () => void;
 }) {
   return (
     <header className="flex shrink-0 items-center gap-3 border-b border-[var(--line)] px-4 py-3 [font-family:var(--font-ui)] sm:px-6">
@@ -178,6 +203,9 @@ export function ContextBar({
         {title}
       </h1>
       <div className="flex shrink-0 items-center gap-2 text-xs text-[var(--muted)]">
+        {typeof voiceEnabled === "boolean" && onVoiceToggle && (
+          <VoiceToggle enabled={voiceEnabled} onToggle={onVoiceToggle} />
+        )}
         {typeof turnCount === "number" && <span>Turno {turnCount}</span>}
         <span
           aria-hidden="true"

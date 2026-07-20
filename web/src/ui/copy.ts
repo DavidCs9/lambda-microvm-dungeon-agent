@@ -94,3 +94,7 @@ export function humanSessionStatus(status: string | null | undefined): string {
   }
   return SESSION_STATUS_COPY[status] ?? "En curso";
 }
+
+export function voiceLabel(enabled: boolean): string {
+  return enabled ? "Voz activa" : "Voz apagada";
+}
