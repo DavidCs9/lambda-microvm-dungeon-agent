@@ -3,6 +3,10 @@ import { isVoiceEnabled } from "../game/audio";
 import { toggleVoice } from "../game/narrationVoice";
 import { gameActions, useGameStore } from "../state/store";
 import {
+  CampaignContextPanel,
+  CharacterContextPanel,
+} from "./PlayContextPanels";
+import {
   AppShell,
   Composer,
   ContextBar,
@@ -90,6 +94,8 @@ export function PlayTableScreen() {
           onVoiceToggle={() => setVoiceOn(toggleVoice())}
         />
       }
+      leftRail={<CampaignContextPanel opening={opening} />}
+      rightRail={<CharacterContextPanel opening={opening} />}
       footer={
         <Composer
           value={action}

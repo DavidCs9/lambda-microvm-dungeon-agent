@@ -98,3 +98,16 @@ export function humanSessionStatus(status: string | null | undefined): string {
 export function voiceLabel(enabled: boolean): string {
   return enabled ? "Voz activa" : "Voz apagada";
 }
+
+const OPENING_KIND_COPY: Record<string, string> = {
+  identity: "Identidad",
+  background: "Trasfondo",
+  motivation: "Motivación",
+  knowledge: "Saber",
+  situation: "Situación",
+  possible_action: "Posible acción",
+};
+
+export function openingKindLabel(kind: string): string {
+  return OPENING_KIND_COPY[kind] ?? kind.replace(/_/g, " ");
+}
