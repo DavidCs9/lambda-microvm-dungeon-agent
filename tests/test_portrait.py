@@ -44,9 +44,27 @@ class _Body:
 
 def test_generate_character_portrait_decodes_base64_image() -> None:
     png = b"\x89PNG\r\n\x1a\n"
-    client = FakeBedrockImageClient({"images": [base64.b64encode(png).decode()]})
+    client = FakeBedrockImageClient(
+        {"images": [base64.b64encode(png).decode()], "finish_reasons": [None]}
+    )
 
     result = generate_character_portrait(client, sample_player())
 
     assert result == png
-    assert client.calls[0]["modelId"] == "amazon.nova-canvas-v1:0"
+    assert client.calls[0]["modelId"] == "stability.stable-image-core-v1:1"
+    body = json.loads(client.calls[0]["body"])
+    assert body["mode"] == "text-to-image"
+    assert body["aspect_ratio"] == "1:1"
+    assert body["output_format"] == "png"
+    assert "Iria Vale" in body["prompt"]
+    assert "watermark" in body["negative_prompt"]
+
+
+def test_generate_character_portrait_rejects_filtered_finish_reason() -> None:
+    client = FakeBedrockImageClient({"images": [], "finish_reasons": ["Filter reason: prompt"]})
+    try:
+        generate_character_portrait(client, sample_player())
+    except RuntimeError as exc:
+        assert "filtered" in str(exc).lower()
+    else:
+        raise AssertionError("expected RuntimeError for filtered finish reason")

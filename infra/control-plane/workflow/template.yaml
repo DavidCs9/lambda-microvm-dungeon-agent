@@ -12,10 +12,6 @@ Parameters:
     Type: String
     Default: us.anthropic.claude-sonnet-4-6
     Description: Bedrock inference profile used by both session architects.
-  BedrockImageModelId:
-    Type: String
-    Default: amazon.nova-canvas-v1:0
-    Description: Bedrock text-to-image model used for one AI character portrait per campaign.
   MicrovmImageName:
     Type: String
     Default: dungeon-agent-fastapi
@@ -367,7 +363,8 @@ Resources:
           MICROVM_IMAGE_NAME: !Ref MicrovmImageName
           WS_MANAGEMENT_ENDPOINT: !Sub "https://${ControlPlaneWebSocketApi}.execute-api.${AWS::Region}.${AWS::URLSuffix}/prod"
           SPEECH_CACHE_BUCKET: !Ref SpeechCacheBucket
-          BEDROCK_IMAGE_MODEL_ID: !Ref BedrockImageModelId
+          BEDROCK_IMAGE_MODEL_ID: stability.stable-image-core-v1:1
+          BEDROCK_IMAGE_REGION: us-west-2
 
   WorkflowTaskLogGroup:
     Type: AWS::Logs::LogGroup

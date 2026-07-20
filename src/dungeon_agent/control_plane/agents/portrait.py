@@ -6,7 +6,9 @@ from typing import Any, Protocol
 
 from dungeon_agent.domain.game import PlayerCharacter
 
-DEFAULT_IMAGE_MODEL_ID = "amazon.nova-canvas-v1:0"
+# Nova Canvas is Legacy and blocked after inactivity; Stable Image Core is Active in us-west-2.
+DEFAULT_IMAGE_MODEL_ID = "stability.stable-image-core-v1:1"
+DEFAULT_IMAGE_REGION = "us-west-2"
 PORTRAIT_STYLE = "moody candlelit oil painting, dark brown and ember tones"
 PORTRAIT_NEGATIVE_PROMPT = "text, watermark, signature, extra limbs, blurry, cartoon"
 
@@ -30,22 +32,15 @@ def generate_character_portrait(
     character: PlayerCharacter,
     *,
     model_id: str = DEFAULT_IMAGE_MODEL_ID,
-    size: int = 1024,
 ) -> bytes:
-    """Call Bedrock text-to-image and return the decoded image bytes."""
+    """Call Bedrock Stable Image Core and return the decoded PNG bytes."""
     body = json.dumps(
         {
-            "taskType": "TEXT_IMAGE",
-            "textToImageParams": {
-                "text": build_portrait_prompt(character),
-                "negativeText": PORTRAIT_NEGATIVE_PROMPT,
-            },
-            "imageGenerationConfig": {
-                "numberOfImages": 1,
-                "height": size,
-                "width": size,
-                "quality": "standard",
-            },
+            "prompt": build_portrait_prompt(character),
+            "negative_prompt": PORTRAIT_NEGATIVE_PROMPT,
+            "mode": "text-to-image",
+            "aspect_ratio": "1:1",
+            "output_format": "png",
         }
     )
     response = bedrock_client.invoke_model(
@@ -55,9 +50,9 @@ def generate_character_portrait(
         contentType="application/json",
     )
     payload = json.loads(response["body"].read())
-    error = payload.get("error")
-    if error:
-        raise RuntimeError(f"Bedrock image generation failed: {error}")
+    finish_reasons = payload.get("finish_reasons") or []
+    if finish_reasons and finish_reasons[0] is not None:
+        raise RuntimeError(f"Bedrock image generation filtered: {finish_reasons[0]}")
     images = payload.get("images")
     if not images:
         raise RuntimeError("Bedrock image generation returned no images")

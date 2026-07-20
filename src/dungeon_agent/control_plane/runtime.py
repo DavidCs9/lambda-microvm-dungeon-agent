@@ -10,6 +10,7 @@ from botocore.config import Config
 from dungeon_agent.audio.polly import DEFAULT_VOICES, S3PollySpeechSynthesizer
 from dungeon_agent.control_plane.agents import (
     DEFAULT_IMAGE_MODEL_ID,
+    DEFAULT_IMAGE_REGION,
     AdventureArchitect,
     BedrockPortraitGenerator,
     CharacterArchitect,
@@ -212,7 +213,7 @@ def _build_portrait_generator() -> BedrockPortraitGenerator | None:
     if "SPEECH_CACHE_BUCKET" not in os.environ:
         return None
     model_id = os.environ.get("BEDROCK_IMAGE_MODEL_ID", DEFAULT_IMAGE_MODEL_ID)
-    image_region = os.environ.get("BEDROCK_IMAGE_REGION", "us-east-1")
+    image_region = os.environ.get("BEDROCK_IMAGE_REGION", DEFAULT_IMAGE_REGION)
     image_config = Config(
         retries={"total_max_attempts": 2, "mode": "adaptive"},
         connect_timeout=10,
