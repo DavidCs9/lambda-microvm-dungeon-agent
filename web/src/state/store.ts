@@ -342,15 +342,19 @@ function applyEvent(event: ControlPlaneEvent): void {
       }
       const phase = typeof payload.phase === "string" ? payload.phase : session.phase;
       const awaitingAction = phase === "ready";
+      const revision =
+        typeof payload.revision === "number" ? payload.revision : session.revision;
       setState({
         session: {
           ...session,
           phase,
+          revision,
           status: awaitingAction ? "ready" : session.status,
           lastEventSequence: Math.max(session.lastEventSequence, event.sequence),
         },
         phaseLabel: phase,
         phaseKind: "session",
+        ...(typeof payload.revision === "number" ? { expectedRevision: revision } : {}),
         ...(awaitingAction ? { turnPending: false } : {}),
       });
       return;
@@ -478,7 +482,7 @@ function applyEvent(event: ControlPlaneEvent): void {
         session: {
           ...session,
           revision,
-          status: "active",
+          status: "ready",
           lastEventSequence: Math.max(session.lastEventSequence, event.sequence),
         },
         expectedRevision: revision,
@@ -756,6 +760,21 @@ export const gameActions = {
       await api.submitAction(session.sessionId, trimmed, state.expectedRevision);
     } catch (error) {
       pendingActionText = "";
+      if (error instanceof ApiError && error.status === 409) {
+        try {
+          const refreshed = await api.getSession(session.sessionId);
+          const serverSession = refreshed.session;
+          setState({
+            session: serverSession,
+            expectedRevision: serverSession.revision,
+            turnPending: serverSession.status === "active",
+            errorMessage: errorMessageOf(error),
+          });
+          return;
+        } catch (refreshError) {
+          console.warn("submitAction: session refresh after 409 failed", refreshError);
+        }
+      }
       setState({
         turnPending: false,
         errorMessage: errorMessageOf(error),
@@ -862,7 +881,7 @@ export const gameActions = {
         expectedRevision: session.revision,
         turnLog,
         narrationStream: "",
-        turnPending: false,
+        turnPending: session.status === "active",
         diceBeat: null,
         outcome: null,
         phaseLabel: null,

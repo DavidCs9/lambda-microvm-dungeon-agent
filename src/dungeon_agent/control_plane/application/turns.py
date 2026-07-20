@@ -184,12 +184,12 @@ class TurnWorker:
         return "completed"
 
     def _fail(self, command: SubmitTurnCommand, error: Exception) -> None:
-        print(f"turn {command.turn_id} failed: {type(error).__name__}")
+        print(f"turn {command.turn_id} failed: {type(error).__name__}: {error}")
         try:
             session = self._sessions.get(command.session_id)
             if session is None or session.status is not SessionStatus.ACTIVE:
                 return
-            self._save(
+            session = self._save(
                 session.model_copy(
                     update={
                         "status": SessionStatus.READY,
@@ -202,7 +202,11 @@ class TurnWorker:
             self._emit(
                 command,
                 EventType.SESSION_PHASE_CHANGED,
-                PhaseChangedPayload(phase=SessionPhase.READY, elapsed_ms=0),
+                PhaseChangedPayload(
+                    phase=SessionPhase.READY,
+                    elapsed_ms=0,
+                    revision=session.revision,
+                ),
                 self._clock(),
             )
         except Exception as rollback_error:

@@ -7,6 +7,7 @@ from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Protocol, cast
+from uuid import uuid4
 
 from dungeon_agent.control_plane.domain.models import MicrovmLaunchResult, SessionId
 from dungeon_agent.domain.game import (
@@ -129,7 +130,9 @@ class LambdaMicrovmManager:
             },
             maximumDurationInSeconds=1_800,
             logging={"disabled": {}},
-            clientToken=str(session_id),
+            # Unique per launch: reusing session_id as the token breaks rehydrate
+            # after idle terminate (Lambda MicroVMs rejects the duplicate token).
+            clientToken=f"{session_id}-{uuid4().hex}",
         )
         self._metrics.record("launch", self._elapsed_ms(started))
         microvm_id = self._required_string(response, "microvmId")
