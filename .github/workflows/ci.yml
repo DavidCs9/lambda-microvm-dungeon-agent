@@ -14,8 +14,69 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  changes:
+    name: Detect lanes
+    runs-on: ubuntu-latest
+    outputs:
+      web: ${{ steps.filter.outputs.web }}
+      python: ${{ steps.filter.outputs.python }}
+      microvm: ${{ steps.filter.outputs.microvm }}
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7.0.0
+      - name: Filter paths by deploy lane
+        uses: dorny/paths-filter@v3.0.2
+        id: filter
+        with:
+          filters: |
+            web:
+              - 'web/**'
+              - '.github/workflows/ci.yml'
+            python:
+              - 'src/**'
+              - 'tests/**'
+              - 'evals/**'
+              - 'scripts/**'
+              - 'pyproject.toml'
+              - 'uv.lock'
+              - '.github/workflows/ci.yml'
+            microvm:
+              - 'Dockerfile'
+              - 'pyproject.toml'
+              - 'uv.lock'
+              - 'src/dungeon_agent/**'
+              - '!src/dungeon_agent/control_plane/**'
+              - 'scripts/build_microvm_image.py'
+              - 'src/dungeon_agent/operations/image_builder.py'
+              - '.github/workflows/ci.yml'
+              - '.github/workflows/release.yml'
+
+  web:
+    name: Frontend build
+    needs: changes
+    if: needs.changes.outputs.web == 'true'
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: web
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7.0.0
+      - name: Set up Node.js
+        uses: actions/setup-node@v4.4.0
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - name: Install and build
+        run: |
+          npm ci
+          npm run build
+
   test:
     name: Python 3.14
+    needs: changes
+    if: needs.changes.outputs.python == 'true'
     runs-on: ubuntu-latest
     steps:
       - name: Check out repository
@@ -38,6 +99,8 @@ jobs:
 
   container:
     name: Build ARM64 container
+    needs: changes
+    if: needs.changes.outputs.microvm == 'true'
     runs-on: ubuntu-latest
     steps:
       - name: Check out repository
@@ -55,6 +118,8 @@ jobs:
 
   package:
     name: Package release source
+    needs: changes
+    if: needs.changes.outputs.microvm == 'true'
     runs-on: ubuntu-latest
     steps:
       - name: Check out repository
@@ -76,3 +141,36 @@ jobs:
           path: dist/microvm-source.zip
           if-no-files-found: error
           retention-days: 7
+
+  ci:
+    name: CI
+    needs: [changes, web, test, container, package]
+    if: always() && !cancelled()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Require lane jobs that ran
+        run: |
+          set -euo pipefail
+          failed=0
+          for result in \
+            "${{ needs.web.result }}" \
+            "${{ needs.test.result }}" \
+            "${{ needs.container.result }}" \
+            "${{ needs.package.result }}"
+          do
+            case "$result" in
+              success|skipped) ;;
+              *)
+                echo "Lane job result: $result"
+                failed=1
+                ;;
+            esac
+          done
+          if [[ "${{ needs.changes.result }}" != "success" ]]; then
+            echo "Detect lanes failed: ${{ needs.changes.result }}"
+            failed=1
+          fi
+          if [[ "$failed" -ne 0 ]]; then
+            exit 1
+          fi
+          echo "web=${{ needs.changes.outputs.web }} python=${{ needs.changes.outputs.python }} microvm=${{ needs.changes.outputs.microvm }}"

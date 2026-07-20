@@ -1,0 +1,39 @@
+---
+description: Pick the minimum deploy lane (FE, SAM control plane, or MicroVM image) after code changes
+alwaysApply: true
+---
+
+# Deploy lanes — minimum validation
+
+After any change, pick the **minimum** lane that can exercise it. Prefer FE-only or local `uv run` / pytest. Image publish and SAM deploy are expensive; only trigger when the change cannot be validated without them.
+
+## Lanes
+
+| Lane | Paths | Validate with | Do not |
+|---|---|---|---|
+| **FE only** | `web/**` (and copy/docs) | `npm run dev` / `npm run build` against existing stack `ApiUrl` / `WebSocketUrl` | Any AWS deploy; do not wait on Python/ARM64/package CI |
+| **Control plane (SAM)** | `src/dungeon_agent/control_plane/**`, `infra/control-plane/**` | Push to `main` (path-filtered) or `workflow_dispatch` on `.github/workflows/deploy-control-plane.yml`; Python CI only | Rebuild MicroVM image; skip ARM64/package CI |
+| **MicroVM image** | `Dockerfile`, `scripts/build_microvm_image*`, game/API runtime under `src/dungeon_agent/**` **outside** `control_plane/` (also `pyproject.toml` / `uv.lock` when they affect the image) | Tag `v*` / `release.yml`, or `python -m scripts.build_microvm_image`; then resolve new `IMAGE_VERSION`; full Python + ARM64 + package CI | SAM-deploy unless CP env/contract also changed |
+
+## CI (`.github/workflows/ci.yml`)
+
+Path filters mirror the lanes. Jobs are conditional; the aggregating job named **CI** always runs so merges are not blocked by skipped lane jobs.
+
+- `web/**` → Frontend build only
+- `control_plane/**` (and other Python paths) → Python 3.14; no container/package unless MicroVM paths also changed
+- MicroVM paths (non-CP `src/dungeon_agent/**`, Dockerfile, image builder) → Python + ARM64 + package
+- Docs/meta only → Detect lanes + CI gate (green)
+
+Prefer requiring the **CI** check in branch protection, not the individual lane job names.
+
+## Compose when needed
+
+- CP API/WS contract + web client → SAM deploy **and** FE refresh
+- Game rules inside MicroVM + turn worker env/contract → image publish **and** SAM deploy
+- FE polish only → never wait on image or SAM
+
+## Agent behavior
+
+- After a `web/`-only change: suggest `npm run dev`; do **not** propose SAM or image publish.
+- After turn-worker / SAM template / CP Lambda changes: propose CP deploy only.
+- After game-runtime changes that ship in the MicroVM: propose image publish and mention picking up the new `IMAGE_VERSION`.
