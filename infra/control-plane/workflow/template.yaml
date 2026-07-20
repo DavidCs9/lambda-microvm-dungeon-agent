@@ -101,16 +101,6 @@ Resources:
             Status: Enabled
             Prefix: speech/
             ExpirationInDays: 7
-      CorsConfiguration:
-        CorsRules:
-          - AllowedOrigins:
-              - "*"
-            AllowedMethods:
-              - GET
-              - HEAD
-            AllowedHeaders:
-              - "*"
-            MaxAge: 300
       PublicAccessBlockConfiguration:
         BlockPublicAcls: true
         BlockPublicPolicy: true
