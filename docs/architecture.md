@@ -1,42 +1,96 @@
 # Architecture
 
-The current local architecture is documented below. The accepted direction for the web control
-plane and durable sessions is [RFC 0001](rfcs/0001-web-control-plane.md), with the campaign and
-play split in [RFC 0002](rfcs/0002-campaign-play-split.md), the showcase browser client in
-[RFC 0003](rfcs/0003-videogame-web-client.md), and owner campaign resume in
-[RFC 0004](rfcs/0004-resume-existing-campaign.md). Executable slices live in the
-[web control plane implementation plan](plans/web-control-plane.md).
+Dungeon Agent is an AI one-shot RPG. The primary path is a browser showcase client against a
+sandbox AWS control plane: campaigns are generated with Bedrock and stored durably; play sessions
+fork a ready campaign into an isolated Lambda MicroVM that owns dice and world mutations.
 
-The lab separates orchestration from untrusted execution:
+RFCs: [0001](rfcs/0001-web-control-plane.md) control plane, [0002](rfcs/0002-campaign-play-split.md)
+campaign vs play, [0003](rfcs/0003-videogame-web-client.md) web client,
+[0004](rfcs/0004-resume-existing-campaign.md) resume, [0007](rfcs/0007-live-polly-narrator.md)
+speech. Deploy lanes: [`.cursor/rules/deploy-lanes.mdc`](../.cursor/rules/deploy-lanes.mdc).
 
-1. A local Adventure Architect generates one small, structured one-shot per session.
-2. A separate Character Architect receives that plan and creates a protagonist whose desire,
-   weakness, relationships, and prior knowledge are grounded in the new world.
-3. The validated world and protagonist are stored inside the session's authenticated MicroVM.
-4. A local Dungeon Master turns each free-form action into typed success and failure branches.
-5. The MicroVM rolls the d20, validates proposed changes, and applies exactly one branch.
-6. Each player session receives a dedicated Lambda MicroVM and workspace.
-7. Lifecycle hooks preserve and validate state across suspend and resume.
+## Trust boundary
 
-The FastAPI backend intentionally implements state operations only. Its OpenAPI contract can support a separate web client later. Arbitrary code execution will be added only with MicroVM isolation, resource limits, no AWS credentials, and restricted network egress.
+Orchestration and model calls stay outside the MicroVM. The guest FastAPI process has no AWS
+credentials: it only validates and applies turn proposals (d20, inventory/location rules, win/lose).
+Sandbox auth today is `x-player-id` / WebSocket `playerId` (JWT later). See [security.md](security.md).
 
-The master orchestrator runs outside the MicroVM. It owns the Bedrock conversation, MicroVM lifecycle, short-lived endpoint token, and player loop. The MicroVM remains a narrow state and tool-execution boundary rather than receiving model credentials.
+## System context
 
-Application code uses an installable `src` layout and is split by responsibility:
+```mermaid
+C4Context
+title Dungeon Agent — System Context
 
-- `src/dungeon_agent/domain/` — framework-neutral game schemas and presentation views
-- `src/dungeon_agent/control_plane/domain/` — versioned web session contracts and application ports
-- `src/dungeon_agent/api/` — FastAPI backend hosted inside the MicroVM
-- `src/dungeon_agent/cli.py` — CLI parsing and dependency composition
-- `src/dungeon_agent/orchestrator/locales.py` — official languages and selection
-- `src/dungeon_agent/orchestrator/session.py` — MicroVM lifecycle and API adapter
-- `src/dungeon_agent/orchestrator/agents.py` — typed world, character, and Dungeon Master adapters
-- `src/dungeon_agent/orchestrator/game.py` — presentation-neutral generated-adventure loop
-- `src/dungeon_agent/api/adventure.py` — authoritative d20 and state-change validator
-- `src/dungeon_agent/microvm.py` — shared authenticated HTTP and lifecycle primitives
-- `src/dungeon_agent/operations/` — image-building and benchmark workflows
-- `src/dungeon_agent/resources/locales/` — runtime-loaded language and action-vocabulary JSON
-- `evals/` — deterministic state safety and Bedrock adventure-model comparisons
+Person(player, "Player", "Browser; sandbox x-player-id")
+System(da, "Dungeon Agent", "AI one-shot RPG: campaigns, play sessions, narration")
+System_Ext(bedrock, "Amazon Bedrock", "Adventure/character architects, DM, portraits")
+System_Ext(polly, "Amazon Polly", "Narration speech")
+System_Ext(microvm_platform, "AWS Lambda MicroVMs", "Isolated game runtime host")
 
-The `scripts/` directory contains only operational entrypoints for building an image and running
-the lifecycle benchmark. Reusable behavior remains in the `dungeon_agent` package.
+Rel(player, da, "HTTP + WebSocket")
+Rel(da, bedrock, "Converse / image")
+Rel(da, polly, "SynthesizeSpeech")
+Rel(da, microvm_platform, "Run / auth / terminate")
+```
+
+## Containers
+
+Control plane here is one box: API Gateway HTTP + WebSocket, Lambdas (HTTP, realtime, workflow
+tasks, turn worker), and Step Functions (create-campaign, create-session).
+
+```mermaid
+C4Container
+title Dungeon Agent — Containers
+
+Person(player, "Player", "Browser")
+
+System_Boundary(da, "Dungeon Agent") {
+  Container(web, "Web SPA", "React/Vite", "Play UI, Polly playback")
+  Container(cp, "Control Plane", "API GW + Lambda + SFN", "Campaign/session workflows, turns, realtime, speech")
+  ContainerDb(ddb, "Session store", "DynamoDB", "Campaigns, sessions, events, snapshots")
+  ContainerDb(s3, "Media cache", "S3", "Speech + portrait objects")
+  Container(vm, "Game MicroVM", "FastAPI", "Dice, validate, apply world")
+}
+
+System_Ext(bedrock, "Amazon Bedrock", "LLMs + image")
+System_Ext(polly, "Amazon Polly", "TTS")
+
+Rel(player, web, "Uses")
+Rel(web, cp, "REST + WebSocket")
+Rel(cp, ddb, "Read/write")
+Rel(cp, s3, "Cache media")
+Rel(cp, bedrock, "Generate + DM")
+Rel(cp, polly, "TTS")
+Rel(cp, vm, "Init + apply turns")
+```
+
+### Main flows
+
+1. **Create campaign** — `POST /campaigns` starts create-campaign SFN: Bedrock adventure + character
+   (optional portrait to S3) → DynamoDB artifacts → WebSocket `campaign.ready`. No MicroVM.
+2. **Create session** — `POST /sessions` starts create-session SFN: launch MicroVM, fork campaign
+   artifacts, `PUT /v1/adventure`, durable world snapshot → `session.ready`.
+3. **Turn** — `POST /sessions/{id}/actions` accepts and async-invokes the turn worker: Bedrock
+   Dungeon Master → `POST` MicroVM `/v1/turns` → snapshot + sequenced events (WS fan-out).
+
+The browser never talks to the MicroVM. Idle MicroVMs may suspend; if gone, the turn worker
+rehydrates from the DynamoDB snapshot.
+
+A local CLI/TUI path (`cli.py`, `orchestrator/`) still exists for lab smoke tests; it is not the
+web play path.
+
+## Code map
+
+- `web/` — showcase SPA (Vite/React)
+- `src/dungeon_agent/control_plane/` — HTTP, realtime, workflow steps, turn worker, Bedrock agents,
+  MicroVM manager, DynamoDB persistence
+- `src/dungeon_agent/api/` — FastAPI guest inside the MicroVM (`/v1/adventure`, `/v1/turns`, …)
+- `src/dungeon_agent/domain/` — framework-neutral game schemas
+- `src/dungeon_agent/microvm.py` — shared authenticated HTTP to the guest
+- `src/dungeon_agent/cli.py`, `orchestrator/`, `tui/` — local play / smoke path
+- `src/dungeon_agent/operations/` — MicroVM image build and benchmarks
+- `infra/control-plane/workflow/` — SAM stack for the sandbox control plane
+- `evals/` — deterministic state safety and Bedrock comparisons
+
+`scripts/` holds operational entrypoints (image build, lifecycle benchmark). Reusable behavior
+stays in the `dungeon_agent` package.
