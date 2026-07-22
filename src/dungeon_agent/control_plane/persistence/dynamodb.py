@@ -68,7 +68,6 @@ class DynamoDbControlPlaneRepository(DynamoDbAggregateRepository):
 
     def list_active_by_owner(self, owner_id: str) -> tuple[SessionRecord, ...]:
         """List one owner's live sessions via ``ByOwner``, newest ``createdAt`` first.
-
         The GSI has no sort key, so order is applied in process. Hard cap: 10.
         """
         values = _active_status_values(owner_id)

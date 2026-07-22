@@ -57,7 +57,6 @@ class TurnWorker:
         ):
             # The worker is invoked asynchronously; a duplicate delivery must not replay.
             return "skipped"
-
         snapshot = self._snapshots.load_snapshot(command.session_id)
         microvm_id = session.active_microvm_id
         if microvm_id is None:
@@ -78,7 +77,6 @@ class TurnWorker:
                 )
             )
             microvm_id = replacement.microvm_id
-
         world_prompt = cast(dict[str, object], snapshot.model_dump(mode="json"))
         dungeon_master = DungeonMaster(self._agent, session.language)
         proposal = dungeon_master.adjudicate(command.action, world_prompt)
@@ -87,12 +85,10 @@ class TurnWorker:
         except TurnRejectedError as error:
             proposal = dungeon_master.adjudicate(command.action, world_prompt, str(error)[:500])
             world = self._microvms.apply_turn(microvm_id, command.action, proposal)
-
         self._snapshots.save_snapshot(command.session_id, world)
         result = world.last_result
         if result is None:
             raise RuntimeError("MicroVM returned no turn result")
-
         finished = world.status in {"won", "lost"}
         session = self._save(
             session.model_copy(

@@ -1,7 +1,6 @@
-import logging
 from collections.abc import Callable
 from datetime import datetime
-from typing import Any, cast
+from typing import Any
 
 from dungeon_agent.control_plane.domain.enums import (
     CampaignPhase,
@@ -33,7 +32,6 @@ from dungeon_agent.control_plane.http.models import (
 from dungeon_agent.control_plane.http.workflows import ensure_workflow
 from dungeon_agent.control_plane.identifiers import new_campaign_id
 
-LOGGER = logging.getLogger(__name__)
 CAMPAIGN_DEPENDENCY = "A campaign dependency is temporarily unavailable."
 
 
@@ -44,13 +42,12 @@ class CampaignHttpHandlers:
         workflows: Any,
         *,
         openings: Any | None = None,
-        portrait_presigner: Any | None = None,
         clock: Clock | None = None,
         campaign_id_factory: Callable[[], CampaignId] = new_campaign_id,
         max_campaigns_per_owner: int = 10,
     ) -> None:
         self._store, self._workflows = store, workflows
-        self._openings, self._portrait_presigner = openings, portrait_presigner
+        self._openings = openings
         self._clock = clock or utc_now
         self._campaign_id_factory = campaign_id_factory
         self._max_campaigns_per_owner = max_campaigns_per_owner
@@ -77,7 +74,6 @@ class CampaignHttpHandlers:
             campaign_count = self._store.count_by_owner(identity.owner_id)
         except Exception:
             return self._dependency_error(correlation_id)
-
         if campaign_count >= self._max_campaigns_per_owner:
             return error_result(
                 429,
@@ -86,7 +82,6 @@ class CampaignHttpHandlers:
                 False,
                 correlation_id,
             )
-
         try:
             candidate = CampaignRecord(
                 campaign_id=self._campaign_id_factory(),
@@ -174,23 +169,9 @@ class CampaignHttpHandlers:
             body=OpeningEnvelope(
                 campaign_id=campaign_id,
                 opening=opening,
-                portrait_url=self._resolve_portrait_url(campaign.character_ref, correlation_id),
             ),
             correlation_id=correlation_id,
         )
-
-    def _resolve_portrait_url(self, character_ref: str, correlation_id: str) -> str | None:
-        """Best-effort presign; a missing or broken portrait never fails the opening."""
-        if self._openings is None or self._portrait_presigner is None:
-            return None
-        try:
-            portrait_key = self._openings.load_portrait_key(character_ref)
-            if portrait_key is None:
-                return None
-            return cast(str, self._portrait_presigner.presigned_url(portrait_key))
-        except Exception:
-            LOGGER.exception("portrait_presign_failed", extra={"correlation_id": correlation_id})
-            return None
 
     def list_events(
         self,

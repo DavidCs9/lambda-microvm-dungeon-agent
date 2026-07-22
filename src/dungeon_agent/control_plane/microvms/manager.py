@@ -209,7 +209,6 @@ class LambdaMicrovmManager:
                     f"Expected one MicroVM image named {image_identifier!r}, found {len(matches)}"
                 )
             image_identifier = self._required_string(matches[0], "imageArn")
-
         image = self._client.get_microvm_image(imageIdentifier=image_identifier)
         return _ImageVersion(
             arn=self._required_string(image, "imageArn"),

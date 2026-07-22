@@ -8,8 +8,6 @@ class SessionStatus(StrEnum):
     ACTIVE = "active"
     COMPLETED = "completed"
     FAILED = "failed"
-
-
 ACTIVE_SESSION_STATUSES = (
     SessionStatus.REQUESTED,
     SessionStatus.CREATING,

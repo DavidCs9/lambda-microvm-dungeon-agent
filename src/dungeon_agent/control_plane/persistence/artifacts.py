@@ -38,15 +38,15 @@ class DynamoDbArtifactStore:
         aggregate_id: str,
         character: PlayerCharacter,
         opening: OpeningDocument,
-        portrait_key: str | None = None,
     ) -> str:
-        item: dict[str, AttributeValue] = {
-            "document": _string(character.model_dump_json()),
-            "opening": _string(opening.model_dump_json(by_alias=True)),
-        }
-        if self._aggregate == "CAMPAIGN" and portrait_key is not None:
-            item["portraitKey"] = _string(portrait_key)
-        self._put(_partition_key(self._aggregate, aggregate_id), "CHARACTER", item)
+        self._put(
+            _partition_key(self._aggregate, aggregate_id),
+            "CHARACTER",
+            {
+                "document": _string(character.model_dump_json()),
+                "opening": _string(opening.model_dump_json(by_alias=True)),
+            },
+        )
         return _reference(self._aggregate, aggregate_id, "CHARACTER")
 
     def load_character(self, character_ref: str) -> PlayerCharacter:
@@ -58,14 +58,6 @@ class DynamoDbArtifactStore:
         return OpeningDocument.model_validate_json(
             self._get(self._partition_key_for(character_ref, "CHARACTER"), "CHARACTER", "opening")
         )
-
-    def load_portrait_key(self, character_ref: str) -> str | None:
-        try:
-            return self._get(
-                self._partition_key_for(character_ref, "CHARACTER"), "CHARACTER", "portraitKey"
-            )
-        except LookupError, RuntimeError:
-            return None
 
     def save_snapshot(self, session_id: SessionId, world: WorldState) -> None:
         self._client.put_item(

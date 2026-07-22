@@ -94,8 +94,6 @@ class SpeechEnvelope(ContractModel):
     url: str = Field(min_length=1)
     expires_in_seconds: int = Field(ge=1, le=3600)
     cache_hit: bool
-
-
 HttpBody = (
     SessionEnvelope
     | CampaignEnvelope

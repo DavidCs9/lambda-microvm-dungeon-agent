@@ -39,7 +39,6 @@ def prepare_run(
         raise ValueError("workflow state must be an object")
     if validate is not None:
         validate(raw_state)
-
     now = clock()
     entered_at = parse_time(required_string(event, "stateEnteredAt"))
     state = dict(raw_state)

@@ -28,23 +28,16 @@ class DynamoDbAggregateRepository:
         idempotency_ttl_seconds: int,
         extra_metadata: Callable[[Any], Mapping[str, AttributeValue] | None] | None = None,
     ) -> None:
-        if not table_name:
-            raise ValueError("table_name must not be empty")
-        if idempotency_ttl_seconds <= 0:
-            raise ValueError("idempotency_ttl_seconds must be positive")
+        if not table_name or idempotency_ttl_seconds <= 0:
+            raise ValueError("table_name must be set and idempotency TTL must be positive")
         self._client, self._table, self._table_name = client, self, table_name
-        self._aggregate, self._aggregate_name, self._aggregate_id_attr = (
-            aggregate,
-            aggregate.lower(),
-            aggregate_id_attr,
-        )
+        self._aggregate, self._aggregate_name = aggregate, aggregate.lower()
+        self._aggregate_id_attr = aggregate_id_attr
         self._record_id, self._event_record_id = record_id, event_record_id
         self._decode_record, self._decode_event = decode_record, decode_event
         self._already_exists_error = already_exists_error
-        self._revision_conflict_error, self._sequence_conflict_error = (
-            revision_conflict_error,
-            sequence_conflict_error,
-        )
+        self._revision_conflict_error = revision_conflict_error
+        self._sequence_conflict_error = sequence_conflict_error
         self._idempotency_ttl_seconds = idempotency_ttl_seconds
         self._extra_metadata = extra_metadata
 
@@ -58,68 +51,54 @@ class DynamoDbAggregateRepository:
 
     def create(self, record: Any, idempotency_key: str) -> Any:
         aggregate_id = self._record_id(record)
-        existing = self.find_by_idempotency_key(record.owner_id, idempotency_key)
-        if existing is not None:
+        if (existing := self.find_by_idempotency_key(record.owner_id, idempotency_key)) is not None:
             return existing
         try:
             self._client.transact_write_items(
                 TransactItems=[
-                    {
-                        "Put": {
-                            "TableName": self._table_name,
-                            "Item": self._metadata_item(record),
-                            "ConditionExpression": "attribute_not_exists(PK)",
-                        }
-                    },
-                    {
-                        "Put": {
-                            "TableName": self._table_name,
-                            "Item": self._idempotency_item(record, idempotency_key),
-                            "ConditionExpression": "attribute_not_exists(PK)",
-                        }
-                    },
+                    self._put(self._metadata_item(record)),
+                    self._put(self._idempotency_item(record, idempotency_key)),
                 ]
             )
         except self.transaction_cancelled as error:
-            existing = self.find_by_idempotency_key(record.owner_id, idempotency_key)
-            if existing is not None:
+            if (
+                existing := self.find_by_idempotency_key(record.owner_id, idempotency_key)
+            ) is not None:
                 return existing
-            raise self._already_exists_error(
-                f"{self._aggregate_name} or idempotency record already exists: {aggregate_id}"
-            ) from error
+            message = f"{self._aggregate_name} or idempotency record already exists: {aggregate_id}"
+            raise self._already_exists_error(message) from error
         return record
 
     def get(self, aggregate_id: str) -> Any | None:
-        response = self._client.get_item(
+        item = self._client.get_item(
             TableName=self._table_name,
-            Key={"PK": string(self._pk(aggregate_id)), "SK": string("METADATA")},
+            Key=self._key(aggregate_id, "METADATA"),
             ConsistentRead=True,
-        )
-        item = response.get("Item")
+        ).get("Item")
         return self._decode_record(item) if isinstance(item, Mapping) else None
 
     def find_by_idempotency_key(self, owner_id: str, idempotency_key: str) -> Any | None:
-        response = self._client.get_item(
+        item = self._client.get_item(
             TableName=self._table_name,
             Key={"PK": string(f"OWNER#{owner_id}"), "SK": string(f"IDEMPOTENCY#{idempotency_key}")},
             ConsistentRead=True,
+        ).get("Item")
+        return (
+            None
+            if not isinstance(item, Mapping)
+            else self.get(attribute_string(item, self._aggregate_id_attr))
         )
-        item = response.get("Item")
-        if not isinstance(item, Mapping):
-            return None
-        return self.get(attribute_string(item, self._aggregate_id_attr))
 
     def save(self, record: Any, *, expected_revision: int) -> Any:
         aggregate_id = self._record_id(record)
         if record.revision != expected_revision + 1:
             raise self._revision_conflict_error(
-                f"saved {self._aggregate_name} revision must be exactly one greater "
-                "than expected revision"
+                f"saved {self._aggregate_name} revision must be exactly one greater than expected revision"
             )
         try:
             response = self._client.update_item(
                 TableName=self._table_name,
-                Key={"PK": string(self._pk(aggregate_id)), "SK": string("METADATA")},
+                Key=self._key(aggregate_id, "METADATA"),
                 UpdateExpression="SET #document = :document, #revision = :nextRevision, #updatedAt = :updatedAt, #status = :status",
                 ConditionExpression="#revision = :expectedRevision",
                 ExpressionAttributeNames={
@@ -158,7 +137,7 @@ class DynamoDbAggregateRepository:
                     {
                         "Update": {
                             "TableName": self._table_name,
-                            "Key": {"PK": string(self._pk(aggregate_id)), "SK": string("METADATA")},
+                            "Key": self._key(aggregate_id, "METADATA"),
                             "UpdateExpression": "SET #lastSequence = :nextSequence",
                             "ConditionExpression": "#lastSequence = :expectedSequence",
                             "ExpressionAttributeNames": {"#lastSequence": "lastEventSequence"},
@@ -168,20 +147,16 @@ class DynamoDbAggregateRepository:
                             },
                         }
                     },
-                    {
-                        "Put": {
-                            "TableName": self._table_name,
-                            "Item": {
-                                "PK": string(self._pk(aggregate_id)),
-                                "SK": string(f"EVENT#{event.sequence:020d}"),
-                                "entityType": string("EVENT"),
-                                "sequence": number(event.sequence),
-                                "occurredAt": string(event.occurred_at.isoformat()),
-                                "document": string(event.model_dump_json(by_alias=True)),
-                            },
-                            "ConditionExpression": "attribute_not_exists(PK)",
+                    self._put(
+                        {
+                            "PK": string(self._pk(aggregate_id)),
+                            "SK": string(f"EVENT#{event.sequence:020d}"),
+                            "entityType": string("EVENT"),
+                            "sequence": number(event.sequence),
+                            "occurredAt": string(event.occurred_at.isoformat()),
+                            "document": string(event.model_dump_json(by_alias=True)),
                         }
-                    },
+                    ),
                 ]
             )
         except self.transaction_cancelled as error:
@@ -190,27 +165,21 @@ class DynamoDbAggregateRepository:
             ) from error
 
     def list_after(self, aggregate_id: str, sequence: int) -> tuple[Any, ...]:
-        events: list[Any] = []
-        for page in self._client.get_paginator("query").paginate(
-            TableName=self._table_name,
-            KeyConditionExpression="PK = :pk AND SK BETWEEN :after AND :eventEnd",
-            ExpressionAttributeValues={
+        request = {
+            "TableName": self._table_name,
+            "KeyConditionExpression": "PK = :pk AND SK BETWEEN :after AND :eventEnd",
+            "ExpressionAttributeValues": {
                 ":pk": string(self._pk(aggregate_id)),
                 ":after": string(f"EVENT#{sequence:020d}~"),
                 ":eventEnd": string("EVENT#99999999999999999999"),
             },
-            ConsistentRead=True,
-            ScanIndexForward=True,
-        ):
-            items = page.get("Items", [])
-            if not isinstance(items, list):
-                raise RuntimeError("DynamoDB query returned invalid event items")
-            events.extend(
-                self._decode_event(attribute_string(item, "document"))
-                for item in items
-                if isinstance(item, Mapping)
-            )
-        return tuple(events)
+            "ConsistentRead": True,
+            "ScanIndexForward": True,
+        }
+        return tuple(
+            self._decode_event(attribute_string(item, "document"))
+            for item in self._items_from_query(request, "event")
+        )
 
     def count_index_items(
         self,
@@ -241,11 +210,16 @@ class DynamoDbAggregateRepository:
         names: dict[str, str] | None = None,
     ) -> tuple[Mapping[str, object], ...]:
         request = self._query_request(index_name, key_condition, values, filter_expression, names)
+        return self._items_from_query(request, "aggregate")
+
+    def _items_from_query(
+        self, request: Mapping[str, object], label: str
+    ) -> tuple[Mapping[str, object], ...]:
         found: list[Mapping[str, object]] = []
         for page in self._client.get_paginator("query").paginate(**request):
             items = page.get("Items", [])
             if not isinstance(items, list):
-                raise RuntimeError("DynamoDB list query returned invalid aggregate items")
+                raise RuntimeError(f"DynamoDB query returned invalid {label} items")
             found.extend(item for item in items if isinstance(item, Mapping))
         return tuple(found)
 
@@ -284,8 +258,7 @@ class DynamoDbAggregateRepository:
             "updatedAt": string(record.updated_at.isoformat()),
             "document": string(record.model_dump_json(by_alias=True)),
         }
-        extra = None if self._extra_metadata is None else self._extra_metadata(record)
-        if extra is not None:
+        if self._extra_metadata is not None and (extra := self._extra_metadata(record)) is not None:
             item.update(extra)
         return item
 
@@ -301,8 +274,20 @@ class DynamoDbAggregateRepository:
             "expiresAt": number(expires_at),
         }
 
+    def _key(self, aggregate_id: str, sort_key: str) -> Item:
+        return {"PK": string(self._pk(aggregate_id)), "SK": string(sort_key)}
+
     def _pk(self, aggregate_id: str) -> str:
         return f"{self._aggregate}#{aggregate_id}"
+
+    def _put(self, item: Item) -> dict[str, object]:
+        return {
+            "Put": {
+                "TableName": self._table_name,
+                "Item": item,
+                "ConditionExpression": "attribute_not_exists(PK)",
+            }
+        }
 
 
 def attribute_string(item: Mapping[str, object], name: str) -> str:

@@ -71,7 +71,6 @@ class DurableSessionWorkflowStub:
             run.workflow_arn,
             run.entered_at,
         )
-
         if operation == "CreateSessionRecord":
             session = self._update_session(
                 state, status=SessionStatus.CREATING, workflow_arn=workflow_arn
@@ -83,7 +82,6 @@ class DurableSessionWorkflowStub:
                 state,
                 now,
             )
-
         raw_phase = event.get("phase")
         if isinstance(raw_phase, str):
             phase = SessionPhase(raw_phase)
@@ -93,7 +91,6 @@ class DurableSessionWorkflowStub:
             self._emit(
                 session.session_id, EventType.SESSION_PHASE_CHANGED, phase_payload, state, now
             )
-
         if operation == "LaunchMicrovm":
             if self._microvms is None:
                 _missing("MicroVM manager")
