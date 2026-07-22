@@ -1,25 +1,14 @@
-from typing import Any, Protocol
+from typing import Any
 
 from dungeon_agent.control_plane.domain.models import CampaignEvent, SessionEvent
 from dungeon_agent.control_plane.realtime.models import ConnectionRecord
-
-
-class _ApiGatewayExceptions(Protocol):
-    GoneException: type[Exception]
-
-
-class ApiGatewayManagementClient(Protocol):
-    @property
-    def exceptions(self) -> _ApiGatewayExceptions: ...
-
-    def post_to_connection(self, **kwargs: object) -> object: ...
 
 
 class BestEffortEventDelivery:
     def __init__(
         self,
         connections: Any,
-        client: ApiGatewayManagementClient,
+        client: Any,
     ) -> None:
         self._connections = connections
         self._client = client

@@ -1,20 +1,17 @@
 from collections.abc import Mapping
 
-from dungeon_agent.control_plane.domain.enums import SessionStatus
+from dungeon_agent.control_plane.domain.enums import ACTIVE_SESSION_STATUSES
 from dungeon_agent.control_plane.domain.models import (
     CampaignId,
     SessionEvent,
-    SessionId,
     SessionRecord,
 )
 from dungeon_agent.control_plane.persistence.dynamo_helpers import (
     AttributeValue,
-    DynamoDbAggregateStore,
+    DynamoDbAggregateRepository,
     attribute_int,
     attribute_string,
     create_dynamodb_client,
-    event_item,
-    metadata_item,
     string,
 )
 from dungeon_agent.control_plane.persistence.dynamo_types import DynamoDbClient
@@ -24,18 +21,13 @@ from dungeon_agent.control_plane.persistence.errors import (
     SessionRevisionConflictError,
 )
 
-_ACTIVE_STATUS_VALUES = tuple(
-    status.value
-    for status in (
-        SessionStatus.REQUESTED,
-        SessionStatus.CREATING,
-        SessionStatus.READY,
-        SessionStatus.ACTIVE,
-    )
+_ACTIVE_STATUS_VALUES = tuple(status.value for status in ACTIVE_SESSION_STATUSES)
+_ACTIVE_STATUS_PLACEHOLDERS = ", ".join(
+    f":status{index}" for index in range(len(_ACTIVE_STATUS_VALUES))
 )
 
 
-class DynamoDbControlPlaneRepository:
+class DynamoDbControlPlaneRepository(DynamoDbAggregateRepository):
     """Implement session and event ports with a DynamoDB single-table layout.
 
     Access patterns:
@@ -52,117 +44,29 @@ class DynamoDbControlPlaneRepository:
         *,
         idempotency_ttl_seconds: int = 86_400,
     ) -> None:
-        if not table_name:
-            raise ValueError("table_name must not be empty")
-        if idempotency_ttl_seconds <= 0:
-            raise ValueError("idempotency_ttl_seconds must be positive")
-        self._table = DynamoDbAggregateStore(client, table_name, "SESSION")
-        self._idempotency_ttl_seconds = idempotency_ttl_seconds
-
-    def create(self, session: SessionRecord, idempotency_key: str) -> SessionRecord:
-        existing = self.find_by_idempotency_key(session.owner_id, idempotency_key)
-        if existing is not None:
-            return existing
-
-        try:
-            self._table.create_with_idempotency(
-                aggregate_item=self._session_item(session),
-                owner_id=session.owner_id,
-                idempotency_key=idempotency_key,
-                aggregate_id_attr="sessionId",
-                aggregate_id=session.session_id,
-                created_at=session.created_at,
-                ttl_seconds=self._idempotency_ttl_seconds,
-            )
-        except self._table.transaction_cancelled as error:
-            # A concurrent duplicate is successful idempotency. A collision on only the
-            # session key is a real conflict and must remain visible to the caller.
-            existing = self.find_by_idempotency_key(session.owner_id, idempotency_key)
-            if existing is not None:
-                return existing
-            raise SessionAlreadyExistsError(
-                f"session or idempotency record already exists: {session.session_id}"
-            ) from error
-        return session
-
-    def get(self, session_id: SessionId) -> SessionRecord | None:
-        raw_item = self._table.get_metadata_item(session_id)
-        if raw_item is None:
-            return None
-        return self._session_from_item(raw_item)
-
-    def find_by_idempotency_key(self, owner_id: str, idempotency_key: str) -> SessionRecord | None:
-        session_id = self._table.get_idempotency_id(owner_id, idempotency_key, "sessionId")
-        if session_id is None:
-            return None
-        return self.get(session_id)
-
-    def save(self, session: SessionRecord, *, expected_revision: int) -> SessionRecord:
-        if session.revision != expected_revision + 1:
-            raise SessionRevisionConflictError(
-                "saved session revision must be exactly one greater than expected revision"
-            )
-        try:
-            attributes = self._table.save_metadata(
-                aggregate_id=session.session_id,
-                document=session.model_dump_json(by_alias=True),
-                revision=session.revision,
-                expected_revision=expected_revision,
-                updated_at=session.updated_at,
-                status=session.status.value,
-            )
-        except self._table.conditional_check_failed as error:
-            raise SessionRevisionConflictError(
-                f"session revision conflict: {session.session_id}"
-            ) from error
-        return self._session_from_item(attributes)
-
-    def append(self, event: SessionEvent, *, expected_previous_sequence: int) -> None:
-        if event.sequence != expected_previous_sequence + 1:
-            raise EventSequenceConflictError(
-                "event sequence must be exactly one greater than expected previous sequence"
-            )
-        try:
-            self._table.append_event(
-                aggregate_id=event.session_id,
-                event_item=event_item(
-                    aggregate="SESSION",
-                    aggregate_id=event.session_id,
-                    sequence=event.sequence,
-                    occurred_at=event.occurred_at,
-                    document=event.model_dump_json(by_alias=True),
-                ),
-                sequence=event.sequence,
-                expected_previous_sequence=expected_previous_sequence,
-            )
-        except self._table.transaction_cancelled as error:
-            raise EventSequenceConflictError(
-                f"event sequence conflict: {event.session_id}/{event.sequence}"
-            ) from error
-
-    def list_after(self, session_id: SessionId, sequence: int) -> tuple[SessionEvent, ...]:
-        return self._table.list_events_after(
-            session_id,
-            sequence,
-            SessionEvent.model_validate_json,
+        super().__init__(
+            client,
+            table_name,
+            aggregate="SESSION",
+            aggregate_id_attr="sessionId",
+            already_exists_error=SessionAlreadyExistsError,
+            revision_conflict_error=SessionRevisionConflictError,
+            sequence_conflict_error=EventSequenceConflictError,
+            record_id=lambda session: session.session_id,
+            event_record_id=lambda event: event.session_id,
+            decode_record=self._session_from_item,
+            decode_event=SessionEvent.model_validate_json,
+            idempotency_ttl_seconds=idempotency_ttl_seconds,
+            extra_metadata=_session_extra,
         )
 
     def count_active_by_owner(self, owner_id: str) -> int:
-        values: dict[str, AttributeValue] = {
-            ":owner": string(owner_id),
-            **{
-                f":status{index}": string(status)
-                for index, status in enumerate(_ACTIVE_STATUS_VALUES)
-            },
-        }
-        status_placeholders = ", ".join(
-            f":status{index}" for index in range(len(_ACTIVE_STATUS_VALUES))
-        )
+        values = _active_status_values(owner_id)
         return self._table.count_index_items(
             index_name="ByOwner",
             key_condition="ownerId = :owner",
             values=values,
-            filter_expression=f"#status IN ({status_placeholders})",
+            filter_expression=f"#status IN ({_ACTIVE_STATUS_PLACEHOLDERS})",
             names={"#status": "status"},
         )
 
@@ -171,22 +75,13 @@ class DynamoDbControlPlaneRepository:
 
         The GSI has no sort key, so order is applied in process. Hard cap: 10.
         """
-        values: dict[str, AttributeValue] = {
-            ":owner": string(owner_id),
-            **{
-                f":status{index}": string(status)
-                for index, status in enumerate(_ACTIVE_STATUS_VALUES)
-            },
-        }
-        status_placeholders = ", ".join(
-            f":status{index}" for index in range(len(_ACTIVE_STATUS_VALUES))
-        )
+        values = _active_status_values(owner_id)
         sessions = [
             self._session_from_item(item)
             for item in self._table.list_index_items(
                 index_name="ByOwner",
                 key_condition="ownerId = :owner",
-                filter_expression=f"#status IN ({status_placeholders})",
+                filter_expression=f"#status IN ({_ACTIVE_STATUS_PLACEHOLDERS})",
                 names={"#status": "status"},
                 values=values,
             )
@@ -201,27 +96,8 @@ class DynamoDbControlPlaneRepository:
             values={":campaign": string(campaign_id)},
         )
 
-    @classmethod
-    def _session_item(cls, session: SessionRecord) -> dict[str, AttributeValue]:
-        extra = (
-            {"campaignId": string(session.campaign_id)} if session.campaign_id is not None else None
-        )
-        return metadata_item(
-            aggregate="SESSION",
-            aggregate_id=session.session_id,
-            aggregate_id_attr="sessionId",
-            owner_id=session.owner_id,
-            status=session.status.value,
-            revision=session.revision,
-            last_event_sequence=session.last_event_sequence,
-            created_at=session.created_at,
-            updated_at=session.updated_at,
-            document=session.model_dump_json(by_alias=True),
-            extra=extra,
-        )
-
-    @classmethod
-    def _session_from_item(cls, item: Mapping[str, object]) -> SessionRecord:
+    @staticmethod
+    def _session_from_item(item: Mapping[str, object]) -> SessionRecord:
         session = SessionRecord.model_validate_json(attribute_string(item, "document"))
         return session.model_copy(
             update={
@@ -229,6 +105,17 @@ class DynamoDbControlPlaneRepository:
                 "last_event_sequence": attribute_int(item, "lastEventSequence"),
             }
         )
+
+
+def _active_status_values(owner_id: str) -> dict[str, AttributeValue]:
+    return {
+        ":owner": string(owner_id),
+        **{f":status{index}": string(status) for index, status in enumerate(_ACTIVE_STATUS_VALUES)},
+    }
+
+
+def _session_extra(session: SessionRecord) -> dict[str, AttributeValue] | None:
+    return {"campaignId": string(session.campaign_id)} if session.campaign_id is not None else None
 
 
 def create_dynamodb_repository(

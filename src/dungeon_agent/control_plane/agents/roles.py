@@ -2,13 +2,9 @@
 
 import json
 import secrets
-from typing import Protocol, TypeVar
-
-from pydantic import BaseModel
+from typing import Any, cast
 
 from dungeon_agent.domain.game import AdventurePlan, LanguageCode, PlayerCharacter, TurnProposal
-
-OutputModel = TypeVar("OutputModel", bound=BaseModel)
 
 # Injected into each adventure prompt so campaigns do not collapse to one premise.
 ADVENTURE_THEME_SEEDS: tuple[str, ...] = (
@@ -45,20 +41,6 @@ CHARACTER_PRONOUN_SEEDS: tuple[tuple[str, str], ...] = (
 )
 
 
-class StructuredAgentPort(Protocol):
-    def invoke(
-        self,
-        *,
-        system: str,
-        prompt: str,
-        tool_name: str,
-        tool_description: str,
-        output_model: type[OutputModel],
-        max_tokens: int,
-        temperature: float,
-    ) -> OutputModel: ...
-
-
 def _language_name(language: LanguageCode) -> str:
     return "Spanish" if language == "es" else "English"
 
@@ -66,13 +48,13 @@ def _language_name(language: LanguageCode) -> str:
 class AdventureArchitect:
     """Create one small, replayable adventure for a new session."""
 
-    def __init__(self, agent: StructuredAgentPort) -> None:
+    def __init__(self, agent: Any) -> None:
         self.agent = agent
 
     def create(self, language: LanguageCode, *, theme_seed: str | None = None) -> AdventurePlan:
         language_name = _language_name(language)
         theme = theme_seed if theme_seed is not None else secrets.choice(ADVENTURE_THEME_SEEDS)
-        return self.agent.invoke(
+        result = self.agent.invoke(
             system=(
                 "You design compact tabletop fantasy one-shots. Create coherent, playful "
                 "adventures that support improvisation and at least three meaningfully different "
@@ -101,12 +83,13 @@ class AdventureArchitect:
             max_tokens=3_000,
             temperature=0.9,
         )
+        return cast(AdventurePlan, result)
 
 
 class CharacterArchitect:
     """Create a protagonist with strong reasons to inhabit the generated world."""
 
-    def __init__(self, agent: StructuredAgentPort) -> None:
+    def __init__(self, agent: Any) -> None:
         self.agent = agent
 
     def create(
@@ -118,7 +101,7 @@ class CharacterArchitect:
     ) -> PlayerCharacter:
         language_name = _language_name(language)
         pronouns = pronoun_seed if pronoun_seed is not None else _pronoun_seed(language)
-        return self.agent.invoke(
+        result = self.agent.invoke(
             system=(
                 "You design memorable player characters for short tabletop role-playing games. "
                 "Create a person the player can inhabit, not a generic class or a long biography. "
@@ -157,6 +140,7 @@ class CharacterArchitect:
             max_tokens=2_000,
             temperature=0.85,
         )
+        return cast(PlayerCharacter, result)
 
 
 def _pronoun_seed(language: LanguageCode) -> str:
@@ -167,7 +151,7 @@ def _pronoun_seed(language: LanguageCode) -> str:
 class DungeonMaster:
     """Interpret a free-form player action into two validated outcome branches."""
 
-    def __init__(self, agent: StructuredAgentPort, language: LanguageCode) -> None:
+    def __init__(self, agent: Any, language: LanguageCode) -> None:
         self.agent = agent
         self.language = language
 
@@ -178,7 +162,7 @@ class DungeonMaster:
         rejection_feedback: str | None = None,
     ) -> TurnProposal:
         language_name = _language_name(self.language)
-        return self.agent.invoke(
+        result = self.agent.invoke(
             system=(
                 "You are a fair, energetic tabletop dungeon master. Reward creative ideas and "
                 "allow plausible approaches that were not anticipated by the adventure author. "
@@ -207,3 +191,4 @@ class DungeonMaster:
             max_tokens=1_200,
             temperature=0.65,
         )
+        return cast(TurnProposal, result)

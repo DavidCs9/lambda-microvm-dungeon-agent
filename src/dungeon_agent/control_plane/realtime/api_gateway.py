@@ -1,6 +1,6 @@
 import json
 from collections.abc import Mapping
-from typing import Any, Protocol
+from typing import Any
 
 from pydantic import TypeAdapter, ValidationError
 
@@ -12,12 +12,8 @@ _SESSION_ID = TypeAdapter(SessionId)
 _CAMPAIGN_ID = TypeAdapter(CampaignId)
 
 
-class ConnectionSender(Protocol):
-    def send(self, connection_id: str, data: bytes) -> None: ...
-
-
 class ApiGatewayWebSocketAdapter:
-    def __init__(self, service: RealtimeSessionService, sender: ConnectionSender) -> None:
+    def __init__(self, service: RealtimeSessionService, sender: Any) -> None:
         self._service = service
         self._sender = sender
 

@@ -5,7 +5,7 @@ from collections.abc import Callable, Mapping
 from datetime import datetime
 from typing import Any, Literal, cast
 
-from dungeon_agent.control_plane.agents.roles import DungeonMaster, StructuredAgentPort
+from dungeon_agent.control_plane.agents.roles import DungeonMaster
 from dungeon_agent.control_plane.domain.enums import EventType, SessionPhase, SessionStatus
 from dungeon_agent.control_plane.domain.models import (
     DiceRolledPayload,
@@ -29,7 +29,7 @@ class TurnWorker:
         self,
         store: Any,
         snapshots: Any,
-        agent: StructuredAgentPort,
+        agent: Any,
         microvms: Any,
         *,
         delivery: Any | None = None,

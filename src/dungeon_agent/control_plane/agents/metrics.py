@@ -1,12 +1,8 @@
 """Observability port required by model adapters."""
 
-from typing import Protocol
+from typing import Any
 
 from dungeon_agent.control_plane.domain.models import RoleGenerationMetrics
-
-
-class AgentMetricsPort(Protocol):
-    def record(self, *, input_tokens: int, output_tokens: int, latency_ms: float) -> None: ...
 
 
 class RoleMetricsCollector:
@@ -17,7 +13,7 @@ class RoleMetricsCollector:
     instance would leak usage from a previous campaign.
     """
 
-    def __init__(self, sink: AgentMetricsPort | None = None) -> None:
+    def __init__(self, sink: Any | None = None) -> None:
         self._sink = sink
         self.reset()
 

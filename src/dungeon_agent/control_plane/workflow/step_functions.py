@@ -1,5 +1,5 @@
 from collections.abc import Mapping
-from typing import Protocol
+from typing import Any, cast
 
 from dungeon_agent.control_plane.domain.models import (
     CreateCampaignWorkflowInput,
@@ -7,21 +7,10 @@ from dungeon_agent.control_plane.domain.models import (
 )
 
 
-class _StepFunctionsExceptions(Protocol):
-    ExecutionAlreadyExists: type[Exception]
-
-
-class StepFunctionsClient(Protocol):
-    @property
-    def exceptions(self) -> _StepFunctionsExceptions: ...
-
-    def start_execution(self, **kwargs: object) -> Mapping[str, object]: ...
-
-
 class StepFunctionsWorkflowStarter:
     def __init__(
         self,
-        client: StepFunctionsClient,
+        client: Any,
         state_machine_arn: str,
         *,
         campaign_state_machine_arn: str | None = None,
@@ -48,10 +37,13 @@ class StepFunctionsWorkflowStarter:
 
     def _start(self, state_machine_arn: str, name: str, payload: str) -> str:
         try:
-            response = self._client.start_execution(
-                stateMachineArn=state_machine_arn,
-                name=name,
-                input=payload,
+            response = cast(
+                Mapping[str, object],
+                self._client.start_execution(
+                    stateMachineArn=state_machine_arn,
+                    name=name,
+                    input=payload,
+                ),
             )
         except self._client.exceptions.ExecutionAlreadyExists:
             return self._execution_arn(state_machine_arn, name)

@@ -1,4 +1,4 @@
-from typing import Any, Protocol
+from typing import Any
 
 from dungeon_agent.control_plane.domain.models import CampaignId
 
@@ -7,24 +7,6 @@ PORTRAIT_CONTENT_TYPE = "image/png"
 
 def portrait_object_key(campaign_id: CampaignId) -> str:
     return f"portraits/{campaign_id}.png"
-
-
-class S3ClientProtocol(Protocol):
-    def put_object(
-        self,
-        *,
-        Bucket: str,
-        Key: str,
-        Body: bytes,
-        ContentType: str,
-    ) -> object: ...
-
-    def generate_presigned_url(
-        self,
-        ClientMethod: str,
-        Params: dict[str, str],
-        ExpiresIn: int,
-    ) -> str: ...
 
 
 class S3PortraitStore:

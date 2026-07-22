@@ -1,14 +1,11 @@
-from collections.abc import Callable, Mapping
-from datetime import datetime
+from collections.abc import Callable
 from threading import RLock
-from typing import Protocol, Self
+from typing import Any
 
-from dungeon_agent.control_plane.domain.enums import SessionStatus
+from dungeon_agent.control_plane.domain.enums import ACTIVE_SESSION_STATUSES
 from dungeon_agent.control_plane.domain.models import (
-    CampaignEvent,
     CampaignId,
     CampaignRecord,
-    SessionEvent,
     SessionRecord,
 )
 from dungeon_agent.control_plane.persistence.errors import (
@@ -21,36 +18,14 @@ from dungeon_agent.control_plane.persistence.errors import (
     SessionRevisionConflictError,
 )
 
-_ACTIVE_STATUSES = frozenset(
-    {
-        SessionStatus.REQUESTED,
-        SessionStatus.CREATING,
-        SessionStatus.READY,
-        SessionStatus.ACTIVE,
-    }
-)
 
-
-class _AggregateRecord(Protocol):
-    owner_id: str
-    revision: int
-    last_event_sequence: int
-    created_at: datetime
-
-    def model_copy(self, *, update: Mapping[str, object]) -> Self: ...
-
-
-class _SequencedEvent(Protocol):
-    sequence: int
-
-
-class _InMemoryAggregateRepository[RecordT: _AggregateRecord, EventT: _SequencedEvent]:
+class _InMemoryAggregateRepository:
     def __init__(
         self,
         *,
         aggregate_name: str,
-        record_id: Callable[[RecordT], str],
-        event_record_id: Callable[[EventT], str],
+        record_id: Callable[[Any], str],
+        event_record_id: Callable[[Any], str],
         already_exists_error: type[PersistenceConflictError],
         revision_conflict_error: type[PersistenceConflictError],
         sequence_conflict_error: type[PersistenceConflictError],
@@ -61,12 +36,12 @@ class _InMemoryAggregateRepository[RecordT: _AggregateRecord, EventT: _Sequenced
         self._already_exists_error = already_exists_error
         self._revision_conflict_error = revision_conflict_error
         self._sequence_conflict_error = sequence_conflict_error
-        self._records: dict[str, RecordT] = {}
+        self._records: dict[str, Any] = {}
         self._idempotency: dict[tuple[str, str], str] = {}
-        self._events: dict[str, dict[int, EventT]] = {}
+        self._events: dict[str, dict[int, Any]] = {}
         self._lock = RLock()
 
-    def create(self, record: RecordT, idempotency_key: str) -> RecordT:
+    def create(self, record: Any, idempotency_key: str) -> Any:
         lookup_key = (record.owner_id, idempotency_key)
         aggregate_id = self._record_id(record)
         with self._lock:
@@ -82,16 +57,16 @@ class _InMemoryAggregateRepository[RecordT: _AggregateRecord, EventT: _Sequenced
             self._events[aggregate_id] = {}
             return record
 
-    def get(self, aggregate_id: str) -> RecordT | None:
+    def get(self, aggregate_id: str) -> Any | None:
         with self._lock:
             return self._records.get(aggregate_id)
 
-    def find_by_idempotency_key(self, owner_id: str, idempotency_key: str) -> RecordT | None:
+    def find_by_idempotency_key(self, owner_id: str, idempotency_key: str) -> Any | None:
         with self._lock:
             aggregate_id = self._idempotency.get((owner_id, idempotency_key))
             return None if aggregate_id is None else self._records.get(aggregate_id)
 
-    def save(self, record: RecordT, *, expected_revision: int) -> RecordT:
+    def save(self, record: Any, *, expected_revision: int) -> Any:
         if record.revision != expected_revision + 1:
             raise self._revision_conflict_error(
                 f"saved {self._aggregate_name} revision must be exactly one greater "
@@ -110,7 +85,7 @@ class _InMemoryAggregateRepository[RecordT: _AggregateRecord, EventT: _Sequenced
             self._records[aggregate_id] = stored
             return stored
 
-    def append(self, event: EventT, *, expected_previous_sequence: int) -> None:
+    def append(self, event: Any, *, expected_previous_sequence: int) -> None:
         if event.sequence != expected_previous_sequence + 1:
             raise self._sequence_conflict_error(
                 "event sequence must be exactly one greater than expected previous sequence"
@@ -130,13 +105,13 @@ class _InMemoryAggregateRepository[RecordT: _AggregateRecord, EventT: _Sequenced
                 update={"last_event_sequence": event.sequence}
             )
 
-    def list_after(self, aggregate_id: str, sequence: int) -> tuple[EventT, ...]:
+    def list_after(self, aggregate_id: str, sequence: int) -> tuple[Any, ...]:
         with self._lock:
             events = self._events.get(aggregate_id, {})
             return tuple(events[index] for index in sorted(events) if index > sequence)
 
 
-class InMemoryControlPlaneRepository(_InMemoryAggregateRepository[SessionRecord, SessionEvent]):
+class InMemoryControlPlaneRepository(_InMemoryAggregateRepository):
     def __init__(self) -> None:
         super().__init__(
             aggregate_name="session",
@@ -153,7 +128,7 @@ class InMemoryControlPlaneRepository(_InMemoryAggregateRepository[SessionRecord,
             return sum(
                 1
                 for session in self._sessions.values()
-                if session.owner_id == owner_id and session.status in _ACTIVE_STATUSES
+                if session.owner_id == owner_id and session.status in ACTIVE_SESSION_STATUSES
             )
 
     def list_active_by_owner(self, owner_id: str) -> tuple[SessionRecord, ...]:
@@ -161,7 +136,7 @@ class InMemoryControlPlaneRepository(_InMemoryAggregateRepository[SessionRecord,
             sessions = [
                 session
                 for session in self._sessions.values()
-                if session.owner_id == owner_id and session.status in _ACTIVE_STATUSES
+                if session.owner_id == owner_id and session.status in ACTIVE_SESSION_STATUSES
             ]
         sessions.sort(key=lambda session: session.created_at, reverse=True)
         return tuple(sessions[:10])
@@ -173,7 +148,7 @@ class InMemoryControlPlaneRepository(_InMemoryAggregateRepository[SessionRecord,
             )
 
 
-class InMemoryCampaignRepository(_InMemoryAggregateRepository[CampaignRecord, CampaignEvent]):
+class InMemoryCampaignRepository(_InMemoryAggregateRepository):
     def __init__(self) -> None:
         super().__init__(
             aggregate_name="campaign",

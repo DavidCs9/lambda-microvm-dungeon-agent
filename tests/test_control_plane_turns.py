@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 
-from dungeon_agent.control_plane.agents.roles import OutputModel
 from dungeon_agent.control_plane.domain.enums import EventType, SessionPhase, SessionStatus
 from dungeon_agent.control_plane.domain.models import (
     MicrovmLaunchResult,
@@ -51,7 +50,7 @@ class FakeAgent:
     def __init__(self, output: TurnProposal) -> None:
         self.output = output
 
-    def invoke(self, *, output_model: type[OutputModel], **kwargs: object) -> OutputModel:
+    def invoke(self, *, output_model: type[TurnProposal], **kwargs: object) -> TurnProposal:
         return output_model.model_validate(self.output.model_dump(mode="python"))
 
 

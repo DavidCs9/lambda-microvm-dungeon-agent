@@ -1,7 +1,7 @@
 import os
 from collections.abc import Mapping
 from importlib import import_module
-from typing import Any, Protocol, cast
+from typing import Any, cast
 
 from dungeon_agent.audio.polly import DEFAULT_VOICES, S3PollySpeechSynthesizer
 from dungeon_agent.control_plane.agents import (
@@ -12,7 +12,7 @@ from dungeon_agent.control_plane.agents import (
     CharacterArchitect,
     StructuredBedrockAgent,
 )
-from dungeon_agent.control_plane.agents.metrics import AgentMetricsPort, RoleMetricsCollector
+from dungeon_agent.control_plane.agents.metrics import RoleMetricsCollector
 from dungeon_agent.control_plane.domain.models import SubmitTurnCommand
 from dungeon_agent.control_plane.http import (
     ApiGatewayHttpAdapter,
@@ -22,7 +22,6 @@ from dungeon_agent.control_plane.http import (
 )
 from dungeon_agent.control_plane.microvms.manager import (
     LambdaMicrovmManager,
-    LambdaMicrovmsClient,
 )
 from dungeon_agent.control_plane.persistence.dynamodb import create_dynamodb_repository
 from dungeon_agent.control_plane.persistence.dynamodb_campaigns import (
@@ -32,7 +31,6 @@ from dungeon_agent.control_plane.realtime.api_gateway import ApiGatewayWebSocket
 from dungeon_agent.control_plane.realtime.delivery import BestEffortEventDelivery
 from dungeon_agent.control_plane.realtime.dynamodb import (
     DynamoDbConnectionRepository,
-    DynamoTable,
 )
 from dungeon_agent.control_plane.realtime.service import RealtimeSessionService
 from dungeon_agent.control_plane.steps import (
@@ -42,7 +40,6 @@ from dungeon_agent.control_plane.steps import (
     DynamoDbCharacterBundles,
     DynamoDbWorldSnapshots,
 )
-from dungeon_agent.control_plane.steps.artifacts import DynamoDbArtifactClient
 from dungeon_agent.control_plane.steps.portraits import S3PortraitStore
 from dungeon_agent.control_plane.telemetry import EmfTelemetry
 from dungeon_agent.control_plane.turns import TurnWorker
@@ -51,7 +48,6 @@ from dungeon_agent.control_plane.workflow import (
     DurableSessionWorkflowStub,
     StepFunctionsWorkflowStarter,
 )
-from dungeon_agent.control_plane.workflow.step_functions import StepFunctionsClient
 
 
 def _boto3() -> Any:
@@ -112,12 +108,8 @@ class _MicrovmMetrics:
         _TELEMETRY.microvm(operation, "success", latency_ms)
 
 
-class _LambdaClient(Protocol):
-    def invoke(self, **kwargs: object) -> Mapping[str, object]: ...
-
-
 class LambdaTurnWorkerInvoker:
-    def __init__(self, client: _LambdaClient, function_name: str) -> None:
+    def __init__(self, client: Any, function_name: str) -> None:
         self._client = client
         self._function_name = function_name
 
@@ -138,7 +130,7 @@ def _management_client() -> Any:
 
 def _connection_repository() -> DynamoDbConnectionRepository:
     resource = _boto3().resource("dynamodb", region_name=_REGION, config=_CONFIG)
-    return DynamoDbConnectionRepository(cast(DynamoTable, resource.Table(_TABLE_NAME)))
+    return DynamoDbConnectionRepository(resource.Table(_TABLE_NAME))
 
 
 def _build_delivery() -> BestEffortEventDelivery | None:
@@ -162,7 +154,7 @@ class _ApiGatewaySender:
 
 def _microvm_manager() -> LambdaMicrovmManager:
     return LambdaMicrovmManager(
-        cast(LambdaMicrovmsClient, _boto3().client("lambda-microvms", config=_CONFIG)),
+        _boto3().client("lambda-microvms", config=_CONFIG),
         os.environ["MICROVM_IMAGE_NAME"],
         _REGION,
         metrics=_MicrovmMetrics(),
@@ -217,7 +209,7 @@ def _build_portrait_generator() -> BedrockPortraitGenerator | None:
 
 
 def _build_http_adapter() -> ApiGatewayHttpAdapter:
-    client = cast(StepFunctionsClient, _boto3().client("stepfunctions", config=_CONFIG))
+    client = _boto3().client("stepfunctions", config=_CONFIG)
     starter = StepFunctionsWorkflowStarter(
         client,
         os.environ["STATE_MACHINE_ARN"],
@@ -231,7 +223,7 @@ def _build_http_adapter() -> ApiGatewayHttpAdapter:
         delivery=_build_delivery(),
         microvms=_microvm_manager() if "MICROVM_IMAGE_NAME" in os.environ else None,
     )
-    artifact_client = cast(DynamoDbArtifactClient, _boto3().client("dynamodb", config=_CONFIG))
+    artifact_client = _boto3().client("dynamodb", config=_CONFIG)
     campaigns = CampaignHttpHandlers(
         _CAMPAIGN_REPOSITORY,
         starter,
@@ -252,8 +244,7 @@ def _build_turn_invoker() -> LambdaTurnWorkerInvoker | None:
     function_name = os.environ.get("TURN_WORKER_FUNCTION_NAME")
     if function_name is None:
         return None
-    client = cast(_LambdaClient, _boto3().client("lambda", config=_CONFIG))
-    return LambdaTurnWorkerInvoker(client, function_name)
+    return LambdaTurnWorkerInvoker(_boto3().client("lambda", config=_CONFIG), function_name)
 
 
 _HTTP_ADAPTER = (
@@ -263,9 +254,7 @@ _HTTP_ADAPTER = (
 )
 
 
-def _structured_agent(
-    operation: str, metrics: AgentMetricsPort | None = None
-) -> StructuredBedrockAgent:
+def _structured_agent(operation: str, metrics: Any | None = None) -> StructuredBedrockAgent:
     return StructuredBedrockAgent(
         cast(Any, _boto3().client("bedrock-runtime", config=_BEDROCK_CONFIG)),
         os.environ["BEDROCK_MODEL_ID"],
@@ -278,7 +267,7 @@ def _build_workflow() -> DurableSessionWorkflowStub:
     if image_name is None:
         return DurableSessionWorkflowStub(_REPOSITORY, delivery=_build_delivery())
 
-    artifact_client = cast(DynamoDbArtifactClient, _boto3().client("dynamodb", config=_CONFIG))
+    artifact_client = _boto3().client("dynamodb", config=_CONFIG)
     return DurableSessionWorkflowStub(
         _REPOSITORY,
         campaigns=_CAMPAIGN_REPOSITORY,
@@ -307,7 +296,7 @@ def _build_campaign_workflow() -> DurableCampaignWorkflowStub:
             delivery=_build_delivery(),
         )
 
-    artifact_client = cast(DynamoDbArtifactClient, _boto3().client("dynamodb", config=_CONFIG))
+    artifact_client = _boto3().client("dynamodb", config=_CONFIG)
     adventures = DynamoDbAdventurePlans(artifact_client, _CAMPAIGN_TABLE_NAME, aggregate="CAMPAIGN")
     characters = DynamoDbCharacterBundles(
         artifact_client, _CAMPAIGN_TABLE_NAME, aggregate="CAMPAIGN"
@@ -339,7 +328,7 @@ _CAMPAIGN_WORKFLOW = _build_campaign_workflow()
 
 
 def _build_turn_worker() -> TurnWorker:
-    artifact_client = cast(DynamoDbArtifactClient, _boto3().client("dynamodb", config=_CONFIG))
+    artifact_client = _boto3().client("dynamodb", config=_CONFIG)
     return TurnWorker(
         _REPOSITORY,
         DynamoDbWorldSnapshots(artifact_client, _TABLE_NAME),

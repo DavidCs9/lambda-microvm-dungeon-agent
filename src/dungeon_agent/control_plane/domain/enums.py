@@ -10,6 +10,14 @@ class SessionStatus(StrEnum):
     FAILED = "failed"
 
 
+ACTIVE_SESSION_STATUSES = (
+    SessionStatus.REQUESTED,
+    SessionStatus.CREATING,
+    SessionStatus.READY,
+    SessionStatus.ACTIVE,
+)
+
+
 class SessionPhase(StrEnum):
     REQUESTED = "requested"
     STARTING_MICROVM = "starting_microvm"

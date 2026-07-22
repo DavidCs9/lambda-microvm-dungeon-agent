@@ -7,8 +7,6 @@ from typing import Any, TypeVar
 
 from pydantic import BaseModel, ValidationError
 
-from dungeon_agent.control_plane.agents.metrics import AgentMetricsPort
-
 OutputModel = TypeVar("OutputModel", bound=BaseModel)
 
 
@@ -19,7 +17,7 @@ class StructuredBedrockAgent:
         self,
         client: Any,
         model_id: str,
-        metrics: AgentMetricsPort,
+        metrics: Any,
     ) -> None:
         self.client = client
         self.model_id = model_id

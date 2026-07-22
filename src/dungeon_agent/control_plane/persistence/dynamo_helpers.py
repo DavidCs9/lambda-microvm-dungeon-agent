@@ -274,6 +274,140 @@ class DynamoDbAggregateStore:
         return request
 
 
+class DynamoDbAggregateRepository:
+    def __init__(
+        self,
+        client: DynamoDbClient,
+        table_name: str,
+        *,
+        aggregate: str,
+        aggregate_id_attr: str,
+        record_id: Callable[[Any], str],
+        event_record_id: Callable[[Any], str],
+        decode_record: Callable[[Mapping[str, object]], Any],
+        decode_event: Callable[[str], Any],
+        already_exists_error: type[Exception],
+        revision_conflict_error: type[Exception],
+        sequence_conflict_error: type[Exception],
+        idempotency_ttl_seconds: int,
+        extra_metadata: Callable[[Any], Mapping[str, AttributeValue] | None] | None = None,
+    ) -> None:
+        if idempotency_ttl_seconds <= 0:
+            raise ValueError("idempotency_ttl_seconds must be positive")
+        self._table = DynamoDbAggregateStore(client, table_name, aggregate)
+        self._aggregate = aggregate
+        self._aggregate_name = aggregate.lower()
+        self._aggregate_id_attr = aggregate_id_attr
+        self._record_id = record_id
+        self._event_record_id = event_record_id
+        self._decode_record = decode_record
+        self._decode_event = decode_event
+        self._already_exists_error = already_exists_error
+        self._revision_conflict_error = revision_conflict_error
+        self._sequence_conflict_error = sequence_conflict_error
+        self._idempotency_ttl_seconds = idempotency_ttl_seconds
+        self._extra_metadata = extra_metadata
+
+    def create(self, record: Any, idempotency_key: str) -> Any:
+        aggregate_id = self._record_id(record)
+        existing = self.find_by_idempotency_key(record.owner_id, idempotency_key)
+        if existing is not None:
+            return existing
+        try:
+            self._table.create_with_idempotency(
+                aggregate_item=self._metadata_item(record),
+                owner_id=record.owner_id,
+                idempotency_key=idempotency_key,
+                aggregate_id_attr=self._aggregate_id_attr,
+                aggregate_id=aggregate_id,
+                created_at=record.created_at,
+                ttl_seconds=self._idempotency_ttl_seconds,
+            )
+        except self._table.transaction_cancelled as error:
+            existing = self.find_by_idempotency_key(record.owner_id, idempotency_key)
+            if existing is not None:
+                return existing
+            raise self._already_exists_error(
+                f"{self._aggregate_name} or idempotency record already exists: {aggregate_id}"
+            ) from error
+        return record
+
+    def get(self, aggregate_id: str) -> Any | None:
+        item = self._table.get_metadata_item(aggregate_id)
+        return None if item is None else self._decode_record(item)
+
+    def find_by_idempotency_key(self, owner_id: str, idempotency_key: str) -> Any | None:
+        aggregate_id = self._table.get_idempotency_id(
+            owner_id, idempotency_key, self._aggregate_id_attr
+        )
+        return None if aggregate_id is None else self.get(aggregate_id)
+
+    def save(self, record: Any, *, expected_revision: int) -> Any:
+        aggregate_id = self._record_id(record)
+        if record.revision != expected_revision + 1:
+            raise self._revision_conflict_error(
+                f"saved {self._aggregate_name} revision must be exactly one greater "
+                "than expected revision"
+            )
+        try:
+            attributes = self._table.save_metadata(
+                aggregate_id=aggregate_id,
+                document=record.model_dump_json(by_alias=True),
+                revision=record.revision,
+                expected_revision=expected_revision,
+                updated_at=record.updated_at,
+                status=record.status.value,
+            )
+        except self._table.conditional_check_failed as error:
+            raise self._revision_conflict_error(
+                f"{self._aggregate_name} revision conflict: {aggregate_id}"
+            ) from error
+        return self._decode_record(attributes)
+
+    def append(self, event: Any, *, expected_previous_sequence: int) -> None:
+        aggregate_id = self._event_record_id(event)
+        if event.sequence != expected_previous_sequence + 1:
+            raise self._sequence_conflict_error(
+                "event sequence must be exactly one greater than expected previous sequence"
+            )
+        try:
+            self._table.append_event(
+                aggregate_id=aggregate_id,
+                event_item=event_item(
+                    aggregate=self._aggregate,
+                    aggregate_id=aggregate_id,
+                    sequence=event.sequence,
+                    occurred_at=event.occurred_at,
+                    document=event.model_dump_json(by_alias=True),
+                ),
+                sequence=event.sequence,
+                expected_previous_sequence=expected_previous_sequence,
+            )
+        except self._table.transaction_cancelled as error:
+            raise self._sequence_conflict_error(
+                f"event sequence conflict: {aggregate_id}/{event.sequence}"
+            ) from error
+
+    def list_after(self, aggregate_id: str, sequence: int) -> tuple[Any, ...]:
+        return self._table.list_events_after(aggregate_id, sequence, self._decode_event)
+
+    def _metadata_item(self, record: Any) -> Item:
+        aggregate_id = self._record_id(record)
+        return metadata_item(
+            aggregate=self._aggregate,
+            aggregate_id=aggregate_id,
+            aggregate_id_attr=self._aggregate_id_attr,
+            owner_id=record.owner_id,
+            status=record.status.value,
+            revision=record.revision,
+            last_event_sequence=record.last_event_sequence,
+            created_at=record.created_at,
+            updated_at=record.updated_at,
+            document=record.model_dump_json(by_alias=True),
+            extra=None if self._extra_metadata is None else self._extra_metadata(record),
+        )
+
+
 def metadata_item(
     *,
     aggregate: str,

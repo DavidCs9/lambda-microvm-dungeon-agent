@@ -37,6 +37,7 @@ from dungeon_agent.control_plane.http.models import (
     SubmitActionRequest,
     TurnAcceptedEnvelope,
 )
+from dungeon_agent.control_plane.http.workflows import ensure_workflow
 from dungeon_agent.control_plane.identifiers import new_session_id, new_turn_id
 from dungeon_agent.control_plane.persistence.errors import SessionRevisionConflictError
 
@@ -484,33 +485,26 @@ class SessionHttpHandlers:
             return session
         if session.campaign_id is None or session.campaign_revision is None:
             raise RuntimeError("session has no campaign snapshot reference")
-        workflow_arn = self._workflows.start_create_session(
-            CreateSessionWorkflowInput(
-                session_id=session.session_id,
-                owner_id=session.owner_id,
-                language=session.language,
-                campaign_id=session.campaign_id,
-                campaign_revision=session.campaign_revision,
-                idempotency_key=idempotency_key,
-                correlation_id=correlation_id,
-                requested_at=session.created_at,
+        return SessionRecord.model_validate(
+            ensure_workflow(
+                session,
+                store=self._store,
+                aggregate_id=session.session_id,
+                now=now,
+                start=lambda: self._workflows.start_create_session(
+                    CreateSessionWorkflowInput(
+                        session_id=session.session_id,
+                        owner_id=session.owner_id,
+                        language=session.language,
+                        campaign_id=session.campaign_id,
+                        campaign_revision=session.campaign_revision,
+                        idempotency_key=idempotency_key,
+                        correlation_id=correlation_id,
+                        requested_at=session.created_at,
+                    )
+                ),
             )
         )
-        updated = session.model_copy(
-            update={
-                "workflow_execution_arn": workflow_arn,
-                "revision": session.revision + 1,
-                "updated_at": now,
-            }
-        )
-        try:
-            saved = self._store.save(updated, expected_revision=session.revision)
-            return SessionRecord.model_validate(saved)
-        except Exception:
-            current = self._store.get(session.session_id)
-            if current is not None and current.workflow_execution_arn is not None:
-                return SessionRecord.model_validate(current)
-            raise
 
     def _access_error(
         self,

@@ -1,24 +1,12 @@
 from collections.abc import Mapping
-from typing import Protocol
+from typing import Any
 
 from dungeon_agent.control_plane.domain.models import CampaignId, SessionId
 from dungeon_agent.control_plane.realtime.models import ConnectionRecord
 
 
-class DynamoTable(Protocol):
-    def put_item(self, **kwargs: object) -> Mapping[str, object]: ...
-
-    def get_item(self, **kwargs: object) -> Mapping[str, object]: ...
-
-    def update_item(self, **kwargs: object) -> Mapping[str, object]: ...
-
-    def delete_item(self, **kwargs: object) -> Mapping[str, object]: ...
-
-    def query(self, **kwargs: object) -> Mapping[str, object]: ...
-
-
 class DynamoDbConnectionRepository:
-    def __init__(self, table: DynamoTable) -> None:
+    def __init__(self, table: Any) -> None:
         self._table = table
 
     def put(self, connection: ConnectionRecord) -> None:

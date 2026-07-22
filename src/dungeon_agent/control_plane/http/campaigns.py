@@ -29,6 +29,7 @@ from dungeon_agent.control_plane.http.models import (
     HttpResult,
     OpeningEnvelope,
 )
+from dungeon_agent.control_plane.http.workflows import ensure_workflow
 from dungeon_agent.control_plane.identifiers import new_campaign_id
 
 LOGGER = logging.getLogger(__name__)
@@ -245,33 +246,24 @@ class CampaignHttpHandlers:
         correlation_id: str,
         now: datetime,
     ) -> CampaignRecord:
-        if campaign.workflow_execution_arn is not None:
-            return campaign
-        workflow_arn = self._workflows.start_create_campaign(
-            CreateCampaignWorkflowInput(
-                campaign_id=campaign.campaign_id,
-                owner_id=campaign.owner_id,
-                language=campaign.language,
-                idempotency_key=idempotency_key,
-                correlation_id=correlation_id,
-                requested_at=campaign.created_at,
+        return CampaignRecord.model_validate(
+            ensure_workflow(
+                campaign,
+                store=self._store,
+                aggregate_id=campaign.campaign_id,
+                now=now,
+                start=lambda: self._workflows.start_create_campaign(
+                    CreateCampaignWorkflowInput(
+                        campaign_id=campaign.campaign_id,
+                        owner_id=campaign.owner_id,
+                        language=campaign.language,
+                        idempotency_key=idempotency_key,
+                        correlation_id=correlation_id,
+                        requested_at=campaign.created_at,
+                    )
+                ),
             )
         )
-        updated = campaign.model_copy(
-            update={
-                "workflow_execution_arn": workflow_arn,
-                "revision": campaign.revision + 1,
-                "updated_at": now,
-            }
-        )
-        try:
-            saved = self._store.save(updated, expected_revision=campaign.revision)
-            return CampaignRecord.model_validate(saved)
-        except Exception:
-            current = self._store.get(campaign.campaign_id)
-            if current is not None and current.workflow_execution_arn is not None:
-                return CampaignRecord.model_validate(current)
-            raise
 
     def _access_error(
         self,

@@ -1,5 +1,5 @@
 from collections.abc import Mapping
-from typing import Literal, Protocol
+from typing import Any, Literal
 
 from dungeon_agent.control_plane.domain.models import OpeningDocument, SessionId
 from dungeon_agent.domain.game import AdventurePlan, PlayerCharacter, WorldState
@@ -8,16 +8,10 @@ AttributeValue = dict[str, str]
 ArtifactAggregate = Literal["SESSION", "CAMPAIGN"]
 
 
-class DynamoDbArtifactClient(Protocol):
-    def put_item(self, **kwargs: object) -> Mapping[str, object]: ...
-
-    def get_item(self, **kwargs: object) -> Mapping[str, object]: ...
-
-
 class DynamoDbAdventurePlans:
     def __init__(
         self,
-        client: DynamoDbArtifactClient,
+        client: Any,
         table_name: str,
         *,
         aggregate: ArtifactAggregate = "SESSION",
@@ -63,7 +57,7 @@ class DynamoDbAdventurePlans:
 class DynamoDbCharacterBundles:
     def __init__(
         self,
-        client: DynamoDbArtifactClient,
+        client: Any,
         table_name: str,
         *,
         aggregate: ArtifactAggregate = "SESSION",
@@ -120,7 +114,7 @@ class DynamoDbCharacterBundles:
 
 
 class DynamoDbWorldSnapshots:
-    def __init__(self, client: DynamoDbArtifactClient, table_name: str) -> None:
+    def __init__(self, client: Any, table_name: str) -> None:
         self._client = client
         self._table_name = table_name
 
