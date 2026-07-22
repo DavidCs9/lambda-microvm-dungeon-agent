@@ -1,3 +1,5 @@
+"""Validated rules for generated one-shot adventures."""
+
 import secrets
 
 from dungeon_agent.api.models import (
