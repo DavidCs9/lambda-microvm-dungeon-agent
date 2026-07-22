@@ -8,17 +8,13 @@ from dungeon_agent.audio.polly import (
     speech_content_digest,
 )
 from dungeon_agent.control_plane.http.api_gateway import ApiGatewayHttpAdapter
-from dungeon_agent.control_plane.http.handlers import (
-    CampaignHttpHandlers,
-    SessionHttpHandlers,
-    SpeechHttpHandlers,
-)
+from dungeon_agent.control_plane.http.campaigns import CampaignHttpHandlers
+from dungeon_agent.control_plane.http.sessions import SessionHttpHandlers
+from dungeon_agent.control_plane.http.speech import SpeechHttpHandlers
 from tests.test_control_plane_http import (
     CAMPAIGN_ID,
     NOW,
-    FakeCampaignEventRepository,
     FakeCampaignRepository,
-    FakeEventRepository,
     FakeMicrovmManager,
     FakeOpeningLoader,
     FakeSessionRepository,
@@ -74,7 +70,6 @@ class FakeS3Client:
 
 def _speech_adapter() -> tuple[ApiGatewayHttpAdapter, FakePollyClient, FakeS3Client]:
     sessions = FakeSessionRepository()
-    events = FakeEventRepository()
     workflows = FakeWorkflowStarter()
     campaigns = FakeCampaignRepository()
     campaigns.records[CAMPAIGN_ID] = ready_campaign()
@@ -88,7 +83,6 @@ def _speech_adapter() -> tuple[ApiGatewayHttpAdapter, FakePollyClient, FakeS3Cli
     )
     handlers = SessionHttpHandlers(
         sessions,
-        events,
         workflows,
         campaigns,
         microvms=FakeMicrovmManager(),
@@ -97,7 +91,6 @@ def _speech_adapter() -> tuple[ApiGatewayHttpAdapter, FakePollyClient, FakeS3Cli
     )
     campaign_handlers = CampaignHttpHandlers(
         campaigns,
-        FakeCampaignEventRepository(),
         workflows,
         openings=FakeOpeningLoader(),
         clock=lambda: NOW,

@@ -11,11 +11,7 @@ from pydantic import TypeAdapter, ValidationError
 
 from dungeon_agent.control_plane.domain.enums import CampaignStatus, ErrorCode
 from dungeon_agent.control_plane.domain.models import CampaignId, SessionId
-from dungeon_agent.control_plane.http.handlers import (
-    CampaignHttpHandlers,
-    SessionHttpHandlers,
-    SpeechHttpHandlers,
-)
+from dungeon_agent.control_plane.http.campaigns import CampaignHttpHandlers
 from dungeon_agent.control_plane.http.models import (
     AuthenticatedIdentity,
     CreateCampaignRequest,
@@ -24,6 +20,8 @@ from dungeon_agent.control_plane.http.models import (
     SpeechRequest,
     SubmitActionRequest,
 )
+from dungeon_agent.control_plane.http.sessions import SessionHttpHandlers
+from dungeon_agent.control_plane.http.speech import SpeechHttpHandlers
 
 SESSION_ID_ADAPTER = TypeAdapter(SessionId)
 CAMPAIGN_ID_ADAPTER = TypeAdapter(CampaignId)

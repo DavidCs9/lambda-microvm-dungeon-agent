@@ -268,7 +268,7 @@ def test_mark_campaign_ready_persists_opening_title() -> None:
     repository = InMemoryCampaignRepository()
     campaign = make_campaign()
     repository.create(campaign, "create-request-001")
-    stub = DurableCampaignWorkflowStub(repository, repository)
+    stub = DurableCampaignWorkflowStub(repository)
     opening = sandbox_opening(campaign.language)
 
     result = stub.handle(
@@ -320,7 +320,7 @@ def test_emit_campaign_ready_reuses_stashed_opening() -> None:
             return sandbox_opening("en")
 
     loader = CountingLoader()
-    stub = DurableCampaignWorkflowStub(repository, repository, openings=loader)
+    stub = DurableCampaignWorkflowStub(repository, openings=loader)
     opening = sandbox_opening("en").model_copy(update={"title": "Stashed title"})
 
     stub.handle(

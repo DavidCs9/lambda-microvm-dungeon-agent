@@ -11,12 +11,12 @@ from dungeon_agent.control_plane.domain.models import (
     SubmitTurnCommand,
     TurnId,
 )
-from dungeon_agent.control_plane.http.handlers import SessionHttpHandlers
 from dungeon_agent.control_plane.http.models import (
     AuthenticatedIdentity,
     HttpResult,
     SubmitActionRequest,
 )
+from dungeon_agent.control_plane.http.sessions import SessionHttpHandlers
 from dungeon_agent.control_plane.identifiers import new_turn_id
 from dungeon_agent.control_plane.persistence.memory import (
     InMemoryCampaignRepository,
@@ -137,7 +137,6 @@ def _handlers(
 ) -> SessionHttpHandlers:
     return SessionHttpHandlers(
         repository,
-        repository,
         FakeWorkflows(),
         InMemoryCampaignRepository(),
         turns=invoker,
@@ -247,7 +246,6 @@ def test_worker_applies_the_turn_and_emits_authoritative_events() -> None:
     microvms = FakeMicrovms(_turn_world())
     worker = TurnWorker(
         repository,
-        repository,
         snapshots,
         FakeAgent(proposal()),
         microvms,
@@ -270,7 +268,6 @@ def test_worker_applies_the_turn_and_emits_authoritative_events() -> None:
 def test_worker_skips_a_duplicate_async_delivery() -> None:
     repository = _repository()  # READY, no matching checkout
     worker = TurnWorker(
-        repository,
         repository,
         FakeSnapshots(_turn_world()),
         FakeAgent(proposal()),
@@ -301,7 +298,6 @@ def test_worker_failure_returns_the_session_to_ready() -> None:
             raise LookupError("missing snapshot")
 
     worker = TurnWorker(
-        repository,
         repository,
         BrokenSnapshots(_turn_world()),
         FakeAgent(proposal()),

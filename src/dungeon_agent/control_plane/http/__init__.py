@@ -1,11 +1,9 @@
 """Framework-neutral HTTP control-plane entry points."""
 
 from dungeon_agent.control_plane.http.api_gateway import ApiGatewayHttpAdapter
-from dungeon_agent.control_plane.http.handlers import (
-    CampaignHttpHandlers,
-    SessionHttpHandlers,
-    SpeechHttpHandlers,
-)
+from dungeon_agent.control_plane.http.campaigns import CampaignHttpHandlers
+from dungeon_agent.control_plane.http.sessions import SessionHttpHandlers
+from dungeon_agent.control_plane.http.speech import SpeechHttpHandlers
 
 __all__ = [
     "ApiGatewayHttpAdapter",

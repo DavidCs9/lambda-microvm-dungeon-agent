@@ -35,8 +35,7 @@ class DurableCampaignWorkflowStub:
 
     def __init__(
         self,
-        campaigns: Any,
-        events: Any,
+        store: Any,
         *,
         adventure_step: AdventureStep | None = None,
         character_step: CharacterStep | None = None,
@@ -47,8 +46,7 @@ class DurableCampaignWorkflowStub:
         delivery: Any | None = None,
         clock: Clock | None = None,
     ) -> None:
-        self._campaigns = campaigns
-        self._events = events
+        self._store = store
         self._adventure_step = adventure_step
         self._character_step = character_step
         self._openings = openings
@@ -90,8 +88,7 @@ class DurableCampaignWorkflowStub:
                 workflow_arn=workflow_arn,
             )
             append_campaign_event(
-                self._campaigns,
-                self._events,
+                self._store,
                 self._delivery,
                 campaign.campaign_id,
                 EventType.CAMPAIGN_CREATION_STARTED,
@@ -109,8 +106,7 @@ class DurableCampaignWorkflowStub:
             state["phaseTimestamps"] = phase_timestamps
             state["phase"] = phase.value
             append_campaign_event(
-                self._campaigns,
-                self._events,
+                self._store,
                 self._delivery,
                 campaign.campaign_id,
                 EventType.CAMPAIGN_PHASE_CHANGED,
@@ -177,8 +173,7 @@ class DurableCampaignWorkflowStub:
                 )
             )
             append_campaign_event(
-                self._campaigns,
-                self._events,
+                self._store,
                 self._delivery,
                 campaign.campaign_id,
                 EventType.CAMPAIGN_READY,
@@ -201,8 +196,7 @@ class DurableCampaignWorkflowStub:
         elif operation == "EmitCampaignCreationFailed":
             campaign = self._required_campaign(state)
             append_campaign_event(
-                self._campaigns,
-                self._events,
+                self._store,
                 self._delivery,
                 campaign.campaign_id,
                 EventType.CAMPAIGN_CREATION_FAILED,
@@ -229,7 +223,7 @@ class DurableCampaignWorkflowStub:
 
     def _required_campaign(self, state: Mapping[str, object]) -> CampaignRecord:
         campaign_id: CampaignId = _required_string(state, "campaignId")
-        campaign = self._campaigns.get(campaign_id)
+        campaign = self._store.get(campaign_id)
         if campaign is None:
             raise ValueError(f"campaign does not exist: {campaign_id}")
         return CampaignRecord.model_validate(campaign)
@@ -263,7 +257,7 @@ class DurableCampaignWorkflowStub:
             }
         )
         validated = CampaignRecord.model_validate(updated)
-        saved = self._campaigns.save(validated, expected_revision=current.revision)
+        saved = self._store.save(validated, expected_revision=current.revision)
         return CampaignRecord.model_validate(saved)
 
 

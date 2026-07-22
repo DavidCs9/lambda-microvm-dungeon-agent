@@ -1,15 +1,16 @@
 """DynamoDB single-table adapter for campaigns and their ordered events."""
 
-from collections.abc import Iterable, Mapping
+from collections.abc import Mapping
 from datetime import timedelta
 from importlib import import_module
-from typing import Any, Protocol, cast
+from typing import Any, cast
 
 from dungeon_agent.control_plane.domain.models import (
     CampaignEvent,
     CampaignId,
     CampaignRecord,
 )
+from dungeon_agent.control_plane.persistence.dynamo_types import DynamoDbClient
 from dungeon_agent.control_plane.persistence.errors import (
     CampaignAlreadyExistsError,
     CampaignEventSequenceConflictError,
@@ -18,28 +19,6 @@ from dungeon_agent.control_plane.persistence.errors import (
 
 AttributeValue = dict[str, str]
 Item = dict[str, AttributeValue]
-
-
-class _DynamoDbExceptions(Protocol):
-    ConditionalCheckFailedException: type[Exception]
-    TransactionCanceledException: type[Exception]
-
-
-class _QueryPaginator(Protocol):
-    def paginate(self, **kwargs: object) -> Iterable[Mapping[str, object]]: ...
-
-
-class _DynamoDbClient(Protocol):
-    @property
-    def exceptions(self) -> _DynamoDbExceptions: ...
-
-    def get_item(self, **kwargs: object) -> Mapping[str, object]: ...
-
-    def update_item(self, **kwargs: object) -> Mapping[str, object]: ...
-
-    def transact_write_items(self, **kwargs: object) -> Mapping[str, object]: ...
-
-    def get_paginator(self, operation_name: str) -> _QueryPaginator: ...
 
 
 class DynamoDbCampaignRepository:
@@ -55,7 +34,7 @@ class DynamoDbCampaignRepository:
 
     def __init__(
         self,
-        client: _DynamoDbClient,
+        client: DynamoDbClient,
         table_name: str,
         *,
         idempotency_ttl_seconds: int = 86_400,
@@ -389,7 +368,7 @@ def create_dynamodb_campaign_repository(
         read_timeout=10,
     )
     client = cast(
-        _DynamoDbClient,
+        DynamoDbClient,
         boto3.client("dynamodb", region_name=region_name, config=config),
     )
     return DynamoDbCampaignRepository(

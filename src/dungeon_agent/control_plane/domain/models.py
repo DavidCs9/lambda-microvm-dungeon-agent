@@ -32,16 +32,6 @@ def _require_aware(value: datetime, field_name: str) -> None:
         raise ValueError(f"{field_name} must include a timezone")
 
 
-class CreateSessionCommand(ContractModel):
-    schema_version: Literal[1] = 1
-    owner_id: OwnerId
-    language: LanguageCode
-    campaign_id: CampaignId
-    campaign_revision: int = Field(ge=0)
-    idempotency_key: IdempotencyKey
-    correlation_id: CorrelationId
-
-
 class CreateSessionWorkflowInput(ContractModel):
     schema_version: Literal[1] = 1
     session_id: SessionId
@@ -57,14 +47,6 @@ class CreateSessionWorkflowInput(ContractModel):
     def validate_requested_at(self) -> CreateSessionWorkflowInput:
         _require_aware(self.requested_at, "requested_at")
         return self
-
-
-class CreateCampaignCommand(ContractModel):
-    schema_version: Literal[1] = 1
-    owner_id: OwnerId
-    language: LanguageCode
-    idempotency_key: IdempotencyKey
-    correlation_id: CorrelationId
 
 
 class CreateCampaignWorkflowInput(ContractModel):

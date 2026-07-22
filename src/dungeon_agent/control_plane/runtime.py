@@ -237,7 +237,6 @@ def _build_http_adapter() -> ApiGatewayHttpAdapter:
     )
     sessions = SessionHttpHandlers(
         _REPOSITORY,
-        _REPOSITORY,
         starter,
         _CAMPAIGN_REPOSITORY,
         turns=_build_turn_invoker(),
@@ -246,7 +245,6 @@ def _build_http_adapter() -> ApiGatewayHttpAdapter:
     )
     artifact_client = cast(DynamoDbArtifactClient, _boto3().client("dynamodb", config=_CONFIG))
     campaigns = CampaignHttpHandlers(
-        _CAMPAIGN_REPOSITORY,
         _CAMPAIGN_REPOSITORY,
         starter,
         openings=DynamoDbCampaignCharacterBundles(artifact_client, _CAMPAIGN_TABLE_NAME),
@@ -288,11 +286,10 @@ def _structured_agent(
 def _build_workflow() -> DurableSessionWorkflowStub:
     image_name = os.environ.get("MICROVM_IMAGE_NAME")
     if image_name is None:
-        return DurableSessionWorkflowStub(_REPOSITORY, _REPOSITORY, delivery=_build_delivery())
+        return DurableSessionWorkflowStub(_REPOSITORY, delivery=_build_delivery())
 
     artifact_client = cast(DynamoDbArtifactClient, _boto3().client("dynamodb", config=_CONFIG))
     return DurableSessionWorkflowStub(
-        _REPOSITORY,
         _REPOSITORY,
         campaigns=_CAMPAIGN_REPOSITORY,
         campaign_adventures=DynamoDbCampaignAdventurePlans(artifact_client, _CAMPAIGN_TABLE_NAME),
@@ -313,7 +310,6 @@ def _build_campaign_workflow() -> DurableCampaignWorkflowStub:
     if model_id is None:
         return DurableCampaignWorkflowStub(
             _CAMPAIGN_REPOSITORY,
-            _CAMPAIGN_REPOSITORY,
             delivery=_build_delivery(),
         )
 
@@ -323,7 +319,6 @@ def _build_campaign_workflow() -> DurableCampaignWorkflowStub:
     adventure_metrics = RoleMetricsCollector(_AgentMetrics("AdventureArchitect"))
     character_metrics = RoleMetricsCollector(_AgentMetrics("CharacterArchitect"))
     return DurableCampaignWorkflowStub(
-        _CAMPAIGN_REPOSITORY,
         _CAMPAIGN_REPOSITORY,
         adventure_step=AdventureStep(
             AdventureArchitect(_structured_agent("AdventureArchitect", adventure_metrics)),
@@ -351,7 +346,6 @@ def _build_turn_worker() -> TurnWorker:
     artifact_client = cast(DynamoDbArtifactClient, _boto3().client("dynamodb", config=_CONFIG))
     return TurnWorker(
         _REPOSITORY,
-        _REPOSITORY,
         DynamoDbWorldSnapshots(artifact_client, _TABLE_NAME),
         _structured_agent("DungeonMaster"),
         _microvm_manager(),
@@ -369,9 +363,7 @@ def _build_websocket_adapter(endpoint: str) -> ApiGatewayWebSocketAdapter:
     service = RealtimeSessionService(
         connections,
         _REPOSITORY,
-        _REPOSITORY,
-        campaigns=_CAMPAIGN_REPOSITORY,
-        campaign_events=_CAMPAIGN_REPOSITORY,
+        campaign_store=_CAMPAIGN_REPOSITORY,
     )
     return ApiGatewayWebSocketAdapter(service, _ApiGatewaySender(client, connections))
 

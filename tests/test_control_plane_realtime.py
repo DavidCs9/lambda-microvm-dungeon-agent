@@ -53,7 +53,7 @@ def test_connect_subscribe_and_replay_durable_events() -> None:
     event = make_event()
     store.append(event, expected_previous_sequence=0)
     connections = InMemoryConnectionRepository()
-    realtime = RealtimeSessionService(connections, store, store, clock=lambda: NOW)
+    realtime = RealtimeSessionService(connections, store, clock=lambda: NOW)
 
     connection = realtime.connect("connection-1", "user_demo")
     replay = realtime.subscribe("connection-1", "user_demo", SESSION_ID, after_sequence=0)
@@ -66,9 +66,7 @@ def test_connect_subscribe_and_replay_durable_events() -> None:
 def test_subscribe_rejects_a_different_owner() -> None:
     store = InMemoryControlPlaneRepository()
     store.create(make_session(), "create-request-001")
-    realtime = RealtimeSessionService(
-        InMemoryConnectionRepository(), store, store, clock=lambda: NOW
-    )
+    realtime = RealtimeSessionService(InMemoryConnectionRepository(), store, clock=lambda: NOW)
     realtime.connect("connection-1", "user_demo")
 
     with pytest.raises(PermissionError):
@@ -101,7 +99,7 @@ def test_delivery_removes_stale_connections() -> None:
     store = InMemoryControlPlaneRepository()
     store.create(make_session(), "create-request-001")
     connections = InMemoryConnectionRepository()
-    realtime = RealtimeSessionService(connections, store, store, clock=lambda: NOW)
+    realtime = RealtimeSessionService(connections, store, clock=lambda: NOW)
     realtime.connect("connection-1", "user_demo")
     realtime.subscribe("connection-1", "user_demo", SESSION_ID, after_sequence=0)
     client = FakeManagementClient()
@@ -156,7 +154,7 @@ def test_dynamodb_adapter_writes_ttl_to_connection_and_subscription() -> None:
     repository = DynamoDbConnectionRepository(table)
     store = InMemoryControlPlaneRepository()
     store.create(make_session(), "create-request-001")
-    realtime = RealtimeSessionService(repository, store, store, clock=lambda: NOW)
+    realtime = RealtimeSessionService(repository, store, clock=lambda: NOW)
 
     connection = realtime.connect("connection-1", "user_demo")
     realtime.subscribe("connection-1", "user_demo", SESSION_ID, after_sequence=0)

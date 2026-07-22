@@ -33,8 +33,7 @@ class DurableSessionWorkflowStub:
 
     def __init__(
         self,
-        sessions: Any,
-        events: Any,
+        store: Any,
         *,
         campaigns: Any | None = None,
         campaign_adventures: Any | None = None,
@@ -46,8 +45,7 @@ class DurableSessionWorkflowStub:
         delivery: Any | None = None,
         clock: Clock | None = None,
     ) -> None:
-        self._sessions = sessions
-        self._events = events
+        self._store = store
         self._campaigns = campaigns
         self._campaign_adventures = campaign_adventures
         self._campaign_characters = campaign_characters
@@ -86,8 +84,7 @@ class DurableSessionWorkflowStub:
                 workflow_arn=workflow_arn,
             )
             append_session_event(
-                self._sessions,
-                self._events,
+                self._store,
                 self._delivery,
                 session.session_id,
                 EventType.SESSION_CREATION_STARTED,
@@ -105,8 +102,7 @@ class DurableSessionWorkflowStub:
             state["phaseTimestamps"] = phase_timestamps
             state["phase"] = phase.value
             append_session_event(
-                self._sessions,
-                self._events,
+                self._store,
                 self._delivery,
                 session.session_id,
                 EventType.SESSION_PHASE_CHANGED,
@@ -168,8 +164,7 @@ class DurableSessionWorkflowStub:
                 else self._characters.load_opening(_required_string(state, "characterRef"))
             )
             append_session_event(
-                self._sessions,
-                self._events,
+                self._store,
                 self._delivery,
                 session.session_id,
                 EventType.SESSION_READY,
@@ -198,8 +193,7 @@ class DurableSessionWorkflowStub:
         elif operation == "EmitSessionCreationFailed":
             session = self._required_session(state)
             append_session_event(
-                self._sessions,
-                self._events,
+                self._store,
                 self._delivery,
                 session.session_id,
                 EventType.SESSION_CREATION_FAILED,
@@ -239,7 +233,7 @@ class DurableSessionWorkflowStub:
 
     def _required_session(self, state: Mapping[str, object]) -> SessionRecord:
         session_id: SessionId = _required_string(state, "sessionId")
-        session = self._sessions.get(session_id)
+        session = self._store.get(session_id)
         if session is None:
             raise ValueError(f"session does not exist: {session_id}")
         return SessionRecord.model_validate(session)
@@ -265,7 +259,7 @@ class DurableSessionWorkflowStub:
             }
         )
         validated = SessionRecord.model_validate(updated)
-        saved = self._sessions.save(validated, expected_revision=current.revision)
+        saved = self._store.save(validated, expected_revision=current.revision)
         return SessionRecord.model_validate(saved)
 
 

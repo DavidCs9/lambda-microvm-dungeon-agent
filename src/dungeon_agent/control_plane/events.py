@@ -23,8 +23,7 @@ Clock = Callable[[], datetime]
 
 
 def append_session_event(
-    sessions: Any,
-    events: Any,
+    store: Any,
     delivery: Any | None,
     session_id: SessionId,
     event_type: EventType,
@@ -36,7 +35,7 @@ def append_session_event(
 ) -> SessionEvent:
     """Store one sequenced event, then fan it out without failing the caller."""
     for _ in range(attempts):
-        session = sessions.get(session_id)
+        session = store.get(session_id)
         if session is None:
             raise ValueError(f"session does not exist: {session_id}")
         event = SessionEvent(
@@ -49,7 +48,7 @@ def append_session_event(
             payload=payload,
         )
         try:
-            events.append(event, expected_previous_sequence=session.last_event_sequence)
+            store.append(event, expected_previous_sequence=session.last_event_sequence)
         except EventSequenceConflictError:
             continue
         if delivery is not None:
@@ -62,8 +61,7 @@ def append_session_event(
 
 
 def append_campaign_event(
-    campaigns: Any,
-    events: Any,
+    store: Any,
     delivery: Any | None,
     campaign_id: CampaignId,
     event_type: EventType,
@@ -75,7 +73,7 @@ def append_campaign_event(
 ) -> CampaignEvent:
     """Store one sequenced campaign event, then fan it out without failing the caller."""
     for _ in range(attempts):
-        campaign = campaigns.get(campaign_id)
+        campaign = store.get(campaign_id)
         if campaign is None:
             raise ValueError(f"campaign does not exist: {campaign_id}")
         event = CampaignEvent(
@@ -88,7 +86,7 @@ def append_campaign_event(
             payload=payload,
         )
         try:
-            events.append(event, expected_previous_sequence=campaign.last_event_sequence)
+            store.append(event, expected_previous_sequence=campaign.last_event_sequence)
         except CampaignEventSequenceConflictError:
             continue
         if delivery is not None:

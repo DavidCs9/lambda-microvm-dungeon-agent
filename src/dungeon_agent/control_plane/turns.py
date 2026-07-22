@@ -27,8 +27,7 @@ class TurnWorker:
 
     def __init__(
         self,
-        sessions: Any,
-        events: Any,
+        store: Any,
         snapshots: Any,
         agent: StructuredAgentPort,
         microvms: Any,
@@ -38,8 +37,7 @@ class TurnWorker:
         clock: Clock | None = None,
         monotonic: Callable[[], float] = time.monotonic,
     ) -> None:
-        self._sessions = sessions
-        self._events = events
+        self._store = store
         self._snapshots = snapshots
         self._agent = agent
         self._microvms = microvms
@@ -68,7 +66,7 @@ class TurnWorker:
         return {"turnId": command.turn_id, "status": outcome}
 
     def _run(self, command: SubmitTurnCommand) -> str:
-        session = self._sessions.get(command.session_id)
+        session = self._store.get(command.session_id)
         if (
             session is None
             or session.owner_id != command.owner_id
@@ -164,7 +162,7 @@ class TurnWorker:
     def _fail(self, command: SubmitTurnCommand, error: Exception) -> None:
         print(f"turn {command.turn_id} failed: {type(error).__name__}: {error}")
         try:
-            session = self._sessions.get(command.session_id)
+            session = self._store.get(command.session_id)
             if session is None or session.status is not SessionStatus.ACTIVE:
                 return
             session = self._save(
@@ -192,7 +190,7 @@ class TurnWorker:
 
     def _save(self, session: SessionRecord) -> SessionRecord:
         validated = SessionRecord.model_validate(session)
-        saved = self._sessions.save(validated, expected_revision=validated.revision - 1)
+        saved = self._store.save(validated, expected_revision=validated.revision - 1)
         return SessionRecord.model_validate(saved)
 
     def _emit(
@@ -206,8 +204,7 @@ class TurnWorker:
         now: datetime,
     ) -> None:
         append_session_event(
-            self._sessions,
-            self._events,
+            self._store,
             self._delivery,
             command.session_id,
             event_type,

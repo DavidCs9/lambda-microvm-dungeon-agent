@@ -23,10 +23,8 @@ from dungeon_agent.control_plane.domain.models import (
     SessionRecord,
 )
 from dungeon_agent.control_plane.http.api_gateway import ApiGatewayHttpAdapter
-from dungeon_agent.control_plane.http.handlers import (
-    CampaignHttpHandlers,
-    SessionHttpHandlers,
-)
+from dungeon_agent.control_plane.http.campaigns import CampaignHttpHandlers
+from dungeon_agent.control_plane.http.sessions import SessionHttpHandlers
 
 NOW = datetime(2026, 7, 18, 21, 0, tzinfo=UTC)
 SESSION_ID: SessionId = "ses_01J00000000000000000000000"
@@ -42,20 +40,13 @@ _ACTIVE_STATUSES = frozenset(
         SessionStatus.ACTIVE,
     }
 )
-_ACTIVE_STATUSES = frozenset(
-    {
-        SessionStatus.REQUESTED,
-        SessionStatus.CREATING,
-        SessionStatus.READY,
-        SessionStatus.ACTIVE,
-    }
-)
 
 
 class FakeSessionRepository:
     def __init__(self) -> None:
         self.records: dict[str, SessionRecord] = {}
         self.idempotency: dict[tuple[str, str], str] = {}
+        self.events: dict[str, tuple[SessionEvent, ...]] = {}
 
     def create(self, session: SessionRecord, idempotency_key: str) -> SessionRecord:
         key = (session.owner_id, idempotency_key)
@@ -98,11 +89,6 @@ class FakeSessionRepository:
     def count_by_campaign(self, campaign_id: CampaignId) -> int:
         return sum(1 for session in self.records.values() if session.campaign_id == campaign_id)
 
-
-class FakeEventRepository:
-    def __init__(self) -> None:
-        self.events: dict[str, tuple[SessionEvent, ...]] = {}
-
     def append(self, event: SessionEvent, *, expected_previous_sequence: int) -> None:
         current = self.events.get(event.session_id, ())
         assert len(current) == expected_previous_sequence
@@ -118,6 +104,7 @@ class FakeCampaignRepository:
     def __init__(self) -> None:
         self.records: dict[str, CampaignRecord] = {}
         self.idempotency: dict[tuple[str, str], str] = {}
+        self.events: dict[str, tuple[CampaignEvent, ...]] = {}
 
     def create(self, campaign: CampaignRecord, idempotency_key: str) -> CampaignRecord:
         key = (campaign.owner_id, idempotency_key)
@@ -154,6 +141,16 @@ class FakeCampaignRepository:
         ]
         campaigns.sort(key=lambda campaign: campaign.created_at, reverse=True)
         return tuple(campaigns[:50])
+
+    def append(self, event: CampaignEvent, *, expected_previous_sequence: int) -> None:
+        current = self.events.get(event.campaign_id, ())
+        assert len(current) == expected_previous_sequence
+        self.events[event.campaign_id] = (*current, event)
+
+    def list_after(self, campaign_id: CampaignId, sequence: int) -> tuple[CampaignEvent, ...]:
+        return tuple(
+            event for event in self.events.get(campaign_id, ()) if event.sequence > sequence
+        )
 
 
 class FakeMicrovmManager:
@@ -200,21 +197,6 @@ class FakeOpeningLoader:
         return None
 
 
-class FakeCampaignEventRepository:
-    def __init__(self) -> None:
-        self.events: dict[str, tuple[CampaignEvent, ...]] = {}
-
-    def append(self, event: CampaignEvent, *, expected_previous_sequence: int) -> None:
-        current = self.events.get(event.campaign_id, ())
-        assert len(current) == expected_previous_sequence
-        self.events[event.campaign_id] = (*current, event)
-
-    def list_after(self, campaign_id: CampaignId, sequence: int) -> tuple[CampaignEvent, ...]:
-        return tuple(
-            event for event in self.events.get(campaign_id, ()) if event.sequence > sequence
-        )
-
-
 class FakeWorkflowStarter:
     def __init__(self) -> None:
         self.calls: list[CreateSessionWorkflowInput] = []
@@ -258,20 +240,18 @@ def ready_campaign(owner_id: str = "user_demo") -> CampaignRecord:
 def _adapter() -> tuple[
     ApiGatewayHttpAdapter,
     FakeSessionRepository,
-    FakeEventRepository,
+    FakeSessionRepository,
     FakeWorkflowStarter,
     FakeCampaignRepository,
     FakeMicrovmManager,
 ]:
     sessions = FakeSessionRepository()
-    events = FakeEventRepository()
     workflows = FakeWorkflowStarter()
     campaigns = FakeCampaignRepository()
     campaigns.records[CAMPAIGN_ID] = ready_campaign()
     microvms = FakeMicrovmManager()
     handlers = SessionHttpHandlers(
         sessions,
-        events,
         workflows,
         campaigns,
         microvms=microvms,
@@ -280,7 +260,6 @@ def _adapter() -> tuple[
     )
     campaign_handlers = CampaignHttpHandlers(
         campaigns,
-        FakeCampaignEventRepository(),
         workflows,
         openings=FakeOpeningLoader(),
         clock=lambda: NOW,
@@ -289,7 +268,7 @@ def _adapter() -> tuple[
     return (
         ApiGatewayHttpAdapter(handlers, campaign_handlers),
         sessions,
-        events,
+        sessions,
         workflows,
         campaigns,
         microvms,
