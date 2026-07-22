@@ -37,36 +37,28 @@ def _validate_timestamps(created_at: datetime, updated_at: datetime) -> None:
         raise ValueError("updated_at cannot precede created_at")
 
 
-class CreateSessionWorkflowInput(ContractModel):
+class _WorkflowInput(ContractModel):
     schema_version: Literal[1] = 1
-    session_id: SessionId
     owner_id: OwnerId
     language: LanguageCode
+    idempotency_key: IdempotencyKey
+    correlation_id: CorrelationId
+    requested_at: datetime
+
+    @model_validator(mode="after")
+    def validate_requested_at(self) -> _WorkflowInput:
+        _require_aware(self.requested_at, "requested_at")
+        return self
+
+
+class CreateSessionWorkflowInput(_WorkflowInput):
+    session_id: SessionId
     campaign_id: CampaignId
     campaign_revision: int = Field(ge=0)
-    idempotency_key: IdempotencyKey
-    correlation_id: CorrelationId
-    requested_at: datetime
-
-    @model_validator(mode="after")
-    def validate_requested_at(self) -> CreateSessionWorkflowInput:
-        _require_aware(self.requested_at, "requested_at")
-        return self
 
 
-class CreateCampaignWorkflowInput(ContractModel):
-    schema_version: Literal[1] = 1
+class CreateCampaignWorkflowInput(_WorkflowInput):
     campaign_id: CampaignId
-    owner_id: OwnerId
-    language: LanguageCode
-    idempotency_key: IdempotencyKey
-    correlation_id: CorrelationId
-    requested_at: datetime
-
-    @model_validator(mode="after")
-    def validate_requested_at(self) -> CreateCampaignWorkflowInput:
-        _require_aware(self.requested_at, "requested_at")
-        return self
 
 
 class SubmitTurnCommand(ContractModel):
@@ -80,27 +72,33 @@ class SubmitTurnCommand(ContractModel):
     correlation_id: CorrelationId
 
 
-class SessionRecord(ContractModel):
+class _AggregateRecord(ContractModel):
     schema_version: Literal[1] = 1
-    session_id: SessionId
     owner_id: OwnerId
     language: LanguageCode
-    status: SessionStatus
-    phase: SessionPhase
     revision: int = Field(ge=0)
     last_event_sequence: int = Field(ge=0)
     created_at: datetime
     updated_at: datetime
+    workflow_execution_arn: str | None = Field(default=None, min_length=20, max_length=2_048)
+
+    def _validate_timestamps(self) -> None:
+        _validate_timestamps(self.created_at, self.updated_at)
+
+
+class SessionRecord(_AggregateRecord):
+    session_id: SessionId
+    status: SessionStatus
+    phase: SessionPhase
     campaign_id: CampaignId | None = None
     campaign_revision: int | None = Field(default=None, ge=0)
-    workflow_execution_arn: str | None = Field(default=None, min_length=20, max_length=2_048)
     active_microvm_id: str | None = Field(default=None, min_length=1, max_length=200)
     last_turn_id: TurnId | None = None
     last_action_idempotency_key: IdempotencyKey | None = None
 
     @model_validator(mode="after")
     def validate_lifecycle(self) -> SessionRecord:
-        _validate_timestamps(self.created_at, self.updated_at)
+        self._validate_timestamps()
         expected_phase = {
             SessionStatus.REQUESTED: SessionPhase.REQUESTED,
             SessionStatus.READY: SessionPhase.READY,
@@ -118,25 +116,17 @@ class SessionRecord(ContractModel):
         return self
 
 
-class CampaignRecord(ContractModel):
-    schema_version: Literal[1] = 1
+class CampaignRecord(_AggregateRecord):
     campaign_id: CampaignId
-    owner_id: OwnerId
-    language: LanguageCode
     status: CampaignStatus
     phase: CampaignPhase
-    revision: int = Field(ge=0)
-    last_event_sequence: int = Field(ge=0)
-    created_at: datetime
-    updated_at: datetime
     adventure_ref: ArtifactRef | None = None
     character_ref: ArtifactRef | None = None
     opening_title: str | None = None
-    workflow_execution_arn: str | None = Field(default=None, min_length=20, max_length=2_048)
 
     @model_validator(mode="after")
     def validate_lifecycle(self) -> CampaignRecord:
-        _validate_timestamps(self.created_at, self.updated_at)
+        self._validate_timestamps()
         expected_phase = {
             CampaignStatus.REQUESTED: CampaignPhase.REQUESTED,
             CampaignStatus.READY: CampaignPhase.READY,
@@ -171,17 +161,19 @@ class OpeningDocument(ContractModel):
             raise ValueError("opening block positions must be contiguous and ordered")
         if len({block.id for block in self.blocks}) != len(self.blocks):
             raise ValueError("opening block ids must be unique")
-        kinds = [block.kind for block in self.blocks]
-        for kind, label in (
-            (OpeningBlockKind.IDENTITY, "identity"),
-            (OpeningBlockKind.MOTIVATION, "motivation"),
-            (OpeningBlockKind.SITUATION, "situation"),
+        counts = {
+            kind: sum(block.kind is kind for block in self.blocks) for kind in OpeningBlockKind
+        }
+        for kind in (
+            OpeningBlockKind.IDENTITY,
+            OpeningBlockKind.MOTIVATION,
+            OpeningBlockKind.SITUATION,
         ):
-            if kinds.count(kind) != 1:
-                raise ValueError(f"opening requires exactly one {label} block")
-        if kinds.count(OpeningBlockKind.KNOWLEDGE) < 2:
+            if counts[kind] != 1:
+                raise ValueError(f"opening requires exactly one {kind.value} block")
+        if counts[OpeningBlockKind.KNOWLEDGE] < 2:
             raise ValueError("opening requires at least two knowledge blocks")
-        if kinds.count(OpeningBlockKind.POSSIBLE_ACTION) != 3:
+        if counts[OpeningBlockKind.POSSIBLE_ACTION] != 3:
             raise ValueError("opening requires exactly three possible actions")
         if not any(block.narratable for block in self.blocks):
             raise ValueError("opening requires narratable content")

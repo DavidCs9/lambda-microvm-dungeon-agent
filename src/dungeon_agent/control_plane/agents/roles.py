@@ -1,27 +1,9 @@
 import json
-import secrets
 from typing import Any, cast
 
 from dungeon_agent.domain.game import AdventurePlan, LanguageCode, PlayerCharacter, TurnProposal
 
-ADVENTURE_THEME_SEEDS: tuple[str, ...] = (
-    "a floating market that drifts overnight",
-    "a glass greenhouse trapped in perpetual dusk",
-    "a courier guild whose maps keep lying",
-    "a salt mine that sings when danger nears",
-    "a lighthouse that points inland instead of to sea",
-    "a traveling theater missing its lead mask",
-    "a bridge toll that demands memories, not coin",
-    "a river that bargains for names",
-)
-
-CHARACTER_PRONOUN_SEEDS: tuple[tuple[str, str], ...] = (
-    ("él / lo", "he/him"),
-    ("él / lo", "he/him"),
-    ("ella / la", "she/her"),
-    ("ella / la", "she/her"),
-    ("elle / le", "they/them"),
-)
+ADVENTURE_THEME_SEED = "a floating market that drifts overnight"
 
 
 def _language_name(language: LanguageCode) -> str:
@@ -34,17 +16,15 @@ class AdventureArchitect:
 
     def create(self, language: LanguageCode, *, theme_seed: str | None = None) -> AdventurePlan:
         language_name = _language_name(language)
-        theme = theme_seed if theme_seed is not None else secrets.choice(ADVENTURE_THEME_SEEDS)
+        theme = theme_seed or ADVENTURE_THEME_SEED
         result = self.agent.invoke(
             system=(
-                "Design a compact fantasy one-shot with simple lore, declared exits, lowercase "
-                "snake_case IDs, and at least three real solution paths. Do not copy commercial "
-                "fiction or default to a silent bell/tower. Keep descriptions one short sentence."
+                "Design a compact fantasy one-shot with declared exits, snake_case IDs, at least "
+                "three solution paths, no commercial-fiction copies, and no silent bell/tower."
             ),
             prompt=(
-                f"Create a new 10-15 minute adventure in {language_name}, inspired by: {theme}. "
-                "Include one objective, 3-5 connected locations, 1-2 motivated NPCs, useful "
-                "items, secrets, max_turns, and a two-sentence opening under 180 characters."
+                f"Create a 10-15 minute {language_name} adventure inspired by {theme}: objective, "
+                "3-5 locations, 1-2 NPCs, useful items, secrets, max_turns, and short opening."
             ),
             tool_name="create_adventure",
             tool_description="Return the complete validated adventure plan.",
@@ -66,9 +46,8 @@ class CharacterArchitect:
         pronouns = pronoun_seed if pronoun_seed is not None else _pronoun_seed(language)
         result = self.agent.invoke(
             system=(
-                "Design one playable protagonist tightly tied to the adventure without revealing "
-                "secrets. Keep prose short, vary gender/presentation, avoid commercial fiction, "
-                "and make the three opening choices investigative, social, and risky."
+                "Design one concise protagonist tied to the adventure, vary gender/presentation, "
+                "hide secrets, and make choices investigative, social, and risky."
             ),
             prompt=json.dumps(
                 {
@@ -93,8 +72,7 @@ class CharacterArchitect:
 
 
 def _pronoun_seed(language: LanguageCode) -> str:
-    spanish, english = secrets.choice(CHARACTER_PRONOUN_SEEDS)
-    return spanish if language == "es" else english
+    return "él / lo" if language == "es" else "he/him"
 
 
 class DungeonMaster:
@@ -111,9 +89,8 @@ class DungeonMaster:
         language_name = _language_name(self.language)
         result = self.agent.invoke(
             system=(
-                "Be a fair, energetic dungeon master. Roll only for risky actions, encode every "
-                "state change in changes using declared IDs, move failures forward, set victory "
-                "only when earned, and keep narration to 1-3 vivid sentences."
+                "Be a fair dungeon master. Roll only for risk, use declared IDs in changes, move "
+                "failures forward, set earned victory only, and narrate in 1-3 vivid sentences."
             ),
             prompt=json.dumps(
                 {

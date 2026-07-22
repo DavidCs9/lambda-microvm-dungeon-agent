@@ -64,15 +64,12 @@ class DurableCampaignWorkflowStub:
         self._monotonic = monotonic
 
     def handle(self, event: Mapping[str, object]) -> dict[str, object]:
-        run = prepare_run(
-            event,
-            self._clock,
-            validate=(
-                CreateCampaignWorkflowInput.model_validate
-                if event.get("operation") == "ValidateCampaign"
-                else None
-            ),
+        validate = (
+            CreateCampaignWorkflowInput.model_validate
+            if event.get("operation") == "ValidateCampaign"
+            else None
         )
+        run = prepare_run(event, self._clock, validate=validate)
         operation, state, now, workflow_arn, entered_at = (
             run.operation,
             run.state,
@@ -83,14 +80,13 @@ class DurableCampaignWorkflowStub:
 
         if operation == "CreateCampaignRecord":
             campaign = self._update_campaign(
-                state,
-                status=CampaignStatus.CREATING,
-                workflow_arn=workflow_arn,
+                state, status=CampaignStatus.CREATING, workflow_arn=workflow_arn
             )
+            started_payload = CampaignCreationStartedPayload(language=campaign.language)
             self._emit(
                 campaign.campaign_id,
                 EventType.CAMPAIGN_CREATION_STARTED,
-                CampaignCreationStartedPayload(language=campaign.language),
+                started_payload,
                 state,
                 now,
             )
@@ -100,12 +96,11 @@ class DurableCampaignWorkflowStub:
             phase = CampaignPhase(raw_phase)
             campaign = self._update_campaign(state, phase=phase, workflow_arn=workflow_arn)
             mark_phase(state, phase, entered_at)
+            phase_payload = CampaignPhaseChangedPayload(
+                phase=phase, elapsed_ms=elapsed_ms(now, entered_at)
+            )
             self._emit(
-                campaign.campaign_id,
-                EventType.CAMPAIGN_PHASE_CHANGED,
-                CampaignPhaseChangedPayload(phase=phase, elapsed_ms=elapsed_ms(now, entered_at)),
-                state,
-                now,
+                campaign.campaign_id, EventType.CAMPAIGN_PHASE_CHANGED, phase_payload, state, now
             )
 
         if operation == "GenerateAdventure":
@@ -142,13 +137,8 @@ class DurableCampaignWorkflowStub:
                 if opening_payload is not None
                 else self._load_opening(required_string(state, "characterRef"))
             )
-            self._emit(
-                campaign.campaign_id,
-                EventType.CAMPAIGN_READY,
-                CampaignReadyPayload(revision=campaign.revision, opening=opening),
-                state,
-                now,
-            )
+            ready_payload = CampaignReadyPayload(revision=campaign.revision, opening=opening)
+            self._emit(campaign.campaign_id, EventType.CAMPAIGN_READY, ready_payload, state, now)
         elif operation == "MarkCampaignFailed":
             campaign = self._update_campaign(
                 state,
@@ -160,15 +150,11 @@ class DurableCampaignWorkflowStub:
             state["phase"] = campaign.phase.value
         elif operation == "EmitCampaignCreationFailed":
             campaign = self._required_campaign(state)
+            failed_payload = CampaignCreationFailedPayload(
+                code=ErrorCode.CAMPAIGN_CREATION_FAILED, retryable=False
+            )
             self._emit(
-                campaign.campaign_id,
-                EventType.CAMPAIGN_CREATION_FAILED,
-                CampaignCreationFailedPayload(
-                    code=ErrorCode.CAMPAIGN_CREATION_FAILED,
-                    retryable=False,
-                ),
-                state,
-                now,
+                campaign.campaign_id, EventType.CAMPAIGN_CREATION_FAILED, failed_payload, state, now
             )
         return state
 

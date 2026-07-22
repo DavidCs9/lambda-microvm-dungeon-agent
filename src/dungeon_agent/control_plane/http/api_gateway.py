@@ -45,19 +45,35 @@ class ApiGatewayHttpAdapter:
         self._allow_sandbox_identity = allow_sandbox_identity
         sessions, campaigns = self._handlers, self._campaigns
         self._routes: dict[str, RouteHandler] = {
-            "POST /sessions": self._create,
-            "POST /sessions/{sessionId}/actions": self._submit_action,
+            "POST /sessions": lambda e, h, i, c: sessions.create_session(
+                i,
+                CreateSessionRequest.model_validate(_json_body(e)),
+                idempotency_key=h.get("idempotency-key", ""),
+                correlation_id=c,
+            ),
+            "POST /sessions/{sessionId}/actions": lambda e, h, i, c: sessions.submit_action(
+                i,
+                _session_id(e),
+                SubmitActionRequest.model_validate(_json_body(e)),
+                idempotency_key=h.get("idempotency-key", ""),
+                correlation_id=c,
+            ),
             "GET /sessions/{sessionId}": lambda e, _h, i, c: sessions.get_session(
                 i, _session_id(e), correlation_id=c
             ),
             "GET /sessions/{sessionId}/events": lambda e, _h, i, c: sessions.list_events(
                 i, _session_id(e), after=_replay_after(e), correlation_id=c
             ),
-            "GET /sessions": self._list_active_sessions,
+            "GET /sessions": lambda e, _h, i, c: _list_active_sessions(sessions, e, i, c),
             "POST /sessions/{sessionId}/abandon": lambda e, _h, i, c: sessions.abandon_session(
                 i, _session_id(e), correlation_id=c
             ),
-            "POST /campaigns": self._create_campaign,
+            "POST /campaigns": lambda e, h, i, c: campaigns.create_campaign(
+                i,
+                CreateCampaignRequest.model_validate(_json_body(e)),
+                idempotency_key=h.get("idempotency-key", ""),
+                correlation_id=c,
+            ),
             "GET /campaigns": lambda e, _h, i, c: campaigns.list_campaigns(
                 i, status=_campaign_status_filter(e), correlation_id=c
             ),
@@ -105,69 +121,6 @@ class ApiGatewayHttpAdapter:
             )
         return self._serialize(result)
 
-    def _create(
-        self,
-        event: Mapping[str, Any],
-        headers: Mapping[str, str],
-        identity: AuthenticatedIdentity,
-        correlation_id: str,
-    ) -> HttpResult:
-        idempotency_key = headers.get("idempotency-key", "")
-        request = CreateSessionRequest.model_validate(_json_body(event))
-        return self._handlers.create_session(
-            identity,
-            request,
-            idempotency_key=idempotency_key,
-            correlation_id=correlation_id,
-        )
-
-    def _create_campaign(
-        self,
-        event: Mapping[str, Any],
-        headers: Mapping[str, str],
-        identity: AuthenticatedIdentity,
-        correlation_id: str,
-    ) -> HttpResult:
-        idempotency_key = headers.get("idempotency-key", "")
-        request = CreateCampaignRequest.model_validate(_json_body(event))
-        return self._campaigns.create_campaign(
-            identity,
-            request,
-            idempotency_key=idempotency_key,
-            correlation_id=correlation_id,
-        )
-
-    def _submit_action(
-        self,
-        event: Mapping[str, Any],
-        headers: Mapping[str, str],
-        identity: AuthenticatedIdentity,
-        correlation_id: str,
-    ) -> HttpResult:
-        session_id = _session_id(event)
-        idempotency_key = headers.get("idempotency-key", "")
-        request = SubmitActionRequest.model_validate(_json_body(event))
-        return self._handlers.submit_action(
-            identity,
-            session_id,
-            request,
-            idempotency_key=idempotency_key,
-            correlation_id=correlation_id,
-        )
-
-    def _list_active_sessions(
-        self,
-        event: Mapping[str, Any],
-        _headers: Mapping[str, str],
-        identity: AuthenticatedIdentity,
-        correlation_id: str,
-    ) -> HttpResult:
-        _require_active_status_filter(event)
-        return self._handlers.list_active_sessions(
-            identity,
-            correlation_id=correlation_id,
-        )
-
     def _synthesize_speech(
         self,
         event: Mapping[str, Any],
@@ -195,25 +148,24 @@ class ApiGatewayHttpAdapter:
 
 
 def _normalized_headers(value: object) -> dict[str, str]:
-    if not isinstance(value, Mapping):
-        return {}
-    return {str(key).lower(): str(header) for key, header in value.items()}
+    return (
+        {str(key).lower(): str(header) for key, header in value.items()}
+        if isinstance(value, Mapping)
+        else {}
+    )
 
 
 def _correlation_id(headers: Mapping[str, str], event: Mapping[str, Any]) -> str:
-    candidates = [headers.get("x-correlation-id"), _request_id(event)]
+    request_context = event.get("requestContext")
+    request_id = request_context.get("requestId") if isinstance(request_context, Mapping) else None
+    candidates = [
+        headers.get("x-correlation-id"),
+        str(request_id) if request_id is not None else None,
+    ]
     for candidate in candidates:
         if candidate is not None and SAFE_CORRELATION_ID.fullmatch(candidate):
             return candidate
     return f"corr_{uuid4().hex}"
-
-
-def _request_id(event: Mapping[str, Any]) -> str | None:
-    request_context = event.get("requestContext")
-    if not isinstance(request_context, Mapping):
-        return None
-    request_id = request_context.get("requestId")
-    return str(request_id) if request_id is not None else None
 
 
 def _identity(event: Mapping[str, Any]) -> AuthenticatedIdentity | None:
@@ -264,6 +216,16 @@ def _path_parameter[T](event: Mapping[str, Any], name: str, adapter: TypeAdapter
     return adapter.validate_python(parameters.get(name))
 
 
+def _list_active_sessions(
+    sessions: SessionHttpHandlers,
+    event: Mapping[str, Any],
+    identity: AuthenticatedIdentity,
+    correlation_id: str,
+) -> HttpResult:
+    _require_active_status_filter(event)
+    return sessions.list_active_sessions(identity, correlation_id=correlation_id)
+
+
 def _session_id(event: Mapping[str, Any]) -> SessionId:
     return _path_parameter(event, "sessionId", SESSION_ID_ADAPTER)
 
@@ -273,9 +235,7 @@ def _campaign_id(event: Mapping[str, Any]) -> CampaignId:
 
 
 def _replay_after(event: Mapping[str, Any]) -> int:
-    query = event.get("queryStringParameters") or {}
-    if not isinstance(query, Mapping):
-        raise ValueError("queryStringParameters must be an object")
+    query = _query(event)
     after = int(query.get("after", 0))
     if after < 0:
         raise ValueError("after must be non-negative")
@@ -283,18 +243,20 @@ def _replay_after(event: Mapping[str, Any]) -> int:
 
 
 def _require_active_status_filter(event: Mapping[str, Any]) -> None:
-    query = event.get("queryStringParameters") or {}
-    if not isinstance(query, Mapping):
-        raise ValueError("queryStringParameters must be an object")
-    if query.get("status") != "active":
+    if _query(event).get("status") != "active":
         raise ValueError("status must be 'active'")
 
 
 def _campaign_status_filter(event: Mapping[str, Any]) -> str | None:
-    query = event.get("queryStringParameters") or {}
-    if not isinstance(query, Mapping):
-        raise ValueError("queryStringParameters must be an object")
+    query = _query(event)
     status = query.get("status")
     if status is None or status == "":
         return None
     return CampaignStatus(str(status)).value
+
+
+def _query(event: Mapping[str, Any]) -> Mapping[str, Any]:
+    query: Any = event.get("queryStringParameters") or {}
+    if not isinstance(query, Mapping):
+        raise ValueError("queryStringParameters must be an object")
+    return query

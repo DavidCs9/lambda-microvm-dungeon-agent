@@ -58,15 +58,12 @@ class DurableSessionWorkflowStub:
         self._clock = clock or (lambda: datetime.now(UTC))
 
     def handle(self, event: Mapping[str, object]) -> dict[str, object]:
-        run = prepare_run(
-            event,
-            self._clock,
-            validate=(
-                CreateSessionWorkflowInput.model_validate
-                if event.get("operation") == "ValidateSession"
-                else None
-            ),
+        validate = (
+            CreateSessionWorkflowInput.model_validate
+            if event.get("operation") == "ValidateSession"
+            else None
         )
+        run = prepare_run(event, self._clock, validate=validate)
         operation, state, now, workflow_arn, entered_at = (
             run.operation,
             run.state,
@@ -77,9 +74,7 @@ class DurableSessionWorkflowStub:
 
         if operation == "CreateSessionRecord":
             session = self._update_session(
-                state,
-                status=SessionStatus.CREATING,
-                workflow_arn=workflow_arn,
+                state, status=SessionStatus.CREATING, workflow_arn=workflow_arn
             )
             self._emit(
                 session.session_id,
@@ -94,19 +89,17 @@ class DurableSessionWorkflowStub:
             phase = SessionPhase(raw_phase)
             session = self._update_session(state, phase=phase, workflow_arn=workflow_arn)
             mark_phase(state, phase, entered_at)
+            phase_payload = PhaseChangedPayload(phase=phase, elapsed_ms=elapsed_ms(now, entered_at))
             self._emit(
-                session.session_id,
-                EventType.SESSION_PHASE_CHANGED,
-                PhaseChangedPayload(phase=phase, elapsed_ms=elapsed_ms(now, entered_at)),
-                state,
-                now,
+                session.session_id, EventType.SESSION_PHASE_CHANGED, phase_payload, state, now
             )
 
         if operation == "LaunchMicrovm":
             if self._microvms is None:
                 _missing("MicroVM manager")
-            session_id: SessionId = required_string(state, "sessionId")
-            state["microvmRef"] = self._microvms.launch(session_id).microvm_id
+            state["microvmRef"] = self._microvms.launch(
+                required_string(state, "sessionId")
+            ).microvm_id
         elif operation == "ForkCampaignIntoSession":
             if (
                 self._campaigns is None
@@ -144,13 +137,8 @@ class DurableSessionWorkflowStub:
             if self._characters is None:
                 _missing("session character store")
             opening = self._characters.load_opening(required_string(state, "characterRef"))
-            self._emit(
-                session.session_id,
-                EventType.SESSION_READY,
-                SessionReadyPayload(revision=session.revision, opening=opening),
-                state,
-                now,
-            )
+            ready_payload = SessionReadyPayload(revision=session.revision, opening=opening)
+            self._emit(session.session_id, EventType.SESSION_READY, ready_payload, state, now)
         elif operation == "MarkSessionFailed":
             microvm_ref = state.get("microvmRef")
             if self._microvms is not None and isinstance(microvm_ref, str):
@@ -168,20 +156,15 @@ class DurableSessionWorkflowStub:
             state["phase"] = session.phase.value
         elif operation == "EmitSessionCreationFailed":
             session = self._required_session(state)
+            failed_payload = CreationFailedPayload(
+                code=ErrorCode.SESSION_CREATION_FAILED, retryable=False
+            )
             self._emit(
-                session.session_id,
-                EventType.SESSION_CREATION_FAILED,
-                CreationFailedPayload(
-                    code=ErrorCode.SESSION_CREATION_FAILED,
-                    retryable=False,
-                ),
-                state,
-                now,
+                session.session_id, EventType.SESSION_CREATION_FAILED, failed_payload, state, now
             )
         return state
 
     def _fork_campaign(self, state: dict[str, object]) -> None:
-        """Copy the campaign snapshot into session-owned artifacts exactly once."""
         assert self._campaigns is not None
         assert self._campaign_adventures is not None
         assert self._campaign_characters is not None

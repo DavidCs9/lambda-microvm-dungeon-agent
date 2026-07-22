@@ -168,14 +168,16 @@ def _build_http_adapter() -> ApiGatewayHttpAdapter:
         delivery=_build_delivery(),
         microvms=_microvm_manager() if "MICROVM_IMAGE_NAME" in os.environ else None,
     )
-    campaigns = CampaignHttpHandlers(
-        _CAMPAIGN_REPOSITORY,
-        starter,
-        openings=_artifacts(_CAMPAIGN_TABLE_NAME, "CAMPAIGN"),
-        portrait_presigner=_build_portrait_store(),
-    )
     return ApiGatewayHttpAdapter(
-        sessions, campaigns, speech=_build_speech_handlers(), allow_sandbox_identity=True
+        sessions,
+        CampaignHttpHandlers(
+            _CAMPAIGN_REPOSITORY,
+            starter,
+            openings=_artifacts(_CAMPAIGN_TABLE_NAME, "CAMPAIGN"),
+            portrait_presigner=_build_portrait_store(),
+        ),
+        speech=_build_speech_handlers(),
+        allow_sandbox_identity=True,
     )
 
 
@@ -194,10 +196,8 @@ _HTTP_ADAPTER = (
 
 
 def _structured_agent() -> StructuredBedrockAgent:
-    return StructuredBedrockAgent(
-        cast(Any, _client("bedrock-runtime", config=_BEDROCK_CONFIG)),
-        os.environ["BEDROCK_MODEL_ID"],
-    )
+    bedrock = cast(Any, _client("bedrock-runtime", config=_BEDROCK_CONFIG))
+    return StructuredBedrockAgent(bedrock, os.environ["BEDROCK_MODEL_ID"])
 
 
 def _build_workflow() -> DurableSessionWorkflowStub:
@@ -290,5 +290,4 @@ def websocket_handler(event: Mapping[str, Any], context: object) -> dict[str, An
     stage = request_context.get("stage")
     if not isinstance(domain, str) or not isinstance(stage, str):
         return {"statusCode": 400}
-    adapter = _build_websocket_adapter(f"https://{domain}/{stage}")
-    return adapter(event, context)
+    return _build_websocket_adapter(f"https://{domain}/{stage}")(event, context)
