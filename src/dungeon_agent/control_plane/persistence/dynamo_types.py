@@ -1,5 +1,3 @@
-"""Small boto3 DynamoDB duck types shared by adapters."""
-
 from collections.abc import Iterable, Mapping
 from typing import Protocol
 

@@ -1,5 +1,3 @@
-"""Durable session workflow tasks backed by the session repositories."""
-
 from collections.abc import Callable, Mapping
 from datetime import UTC, datetime
 from typing import Any, cast
@@ -30,8 +28,6 @@ Clock = Callable[[], datetime]
 
 
 class DurableSessionWorkflowStub:
-    """Start a model-free play session by forking a ready campaign."""
-
     def __init__(
         self,
         store: Any,

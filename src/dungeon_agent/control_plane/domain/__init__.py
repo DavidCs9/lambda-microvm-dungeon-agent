@@ -1,5 +1,3 @@
-"""Stable domain contracts for the web control plane."""
-
 from dungeon_agent.control_plane.domain.enums import (
     CampaignPhase,
     CampaignStatus,

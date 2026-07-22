@@ -1,5 +1,3 @@
-"""Small DynamoDB stores for workflow artifacts kept out of Step Functions state."""
-
 from collections.abc import Mapping
 from typing import Literal, Protocol
 
@@ -17,8 +15,6 @@ class DynamoDbArtifactClient(Protocol):
 
 
 class DynamoDbAdventurePlans:
-    """Adventure artifacts scoped to either a session or a campaign."""
-
     def __init__(
         self,
         client: DynamoDbArtifactClient,
@@ -65,8 +61,6 @@ class DynamoDbAdventurePlans:
 
 
 class DynamoDbCharacterBundles:
-    """Character and opening artifacts scoped to either a session or a campaign."""
-
     def __init__(
         self,
         client: DynamoDbArtifactClient,
@@ -126,8 +120,6 @@ class DynamoDbCharacterBundles:
 
 
 class DynamoDbWorldSnapshots:
-    """Keep the latest authoritative world snapshot outside workflow state."""
-
     def __init__(self, client: DynamoDbArtifactClient, table_name: str) -> None:
         self._client = client
         self._table_name = table_name

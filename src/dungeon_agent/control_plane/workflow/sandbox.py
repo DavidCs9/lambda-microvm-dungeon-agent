@@ -1,5 +1,3 @@
-"""Deterministic opening used when workflow dependencies run in sandbox mode."""
-
 from dungeon_agent.control_plane.domain.enums import OpeningBlockKind
 from dungeon_agent.control_plane.domain.models import OpeningBlock, OpeningDocument
 from dungeon_agent.domain.game import LanguageCode

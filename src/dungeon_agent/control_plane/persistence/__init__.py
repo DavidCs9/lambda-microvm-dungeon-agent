@@ -1,5 +1,3 @@
-"""Persistence helpers for durable control-plane sessions and events."""
-
 from dungeon_agent.control_plane.persistence.errors import (
     EventSequenceConflictError,
     SessionAlreadyExistsError,

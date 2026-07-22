@@ -1,5 +1,3 @@
-"""Amazon Step Functions workflow starter."""
-
 from collections.abc import Mapping
 from typing import Protocol
 
@@ -21,8 +19,6 @@ class StepFunctionsClient(Protocol):
 
 
 class StepFunctionsWorkflowStarter:
-    """Start Standard executions named after their session or campaign."""
-
     def __init__(
         self,
         client: StepFunctionsClient,

@@ -1,5 +1,3 @@
-"""Durable campaign workflow tasks backed by the campaign repositories."""
-
 from collections.abc import Callable, Mapping
 from datetime import UTC, datetime
 from typing import Any
@@ -32,8 +30,6 @@ Clock = Callable[[], datetime]
 
 
 class DurableCampaignWorkflowStub:
-    """Generate a world and protagonist once, with no MicroVM involvement."""
-
     def __init__(
         self,
         store: Any,

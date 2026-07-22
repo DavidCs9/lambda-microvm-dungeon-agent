@@ -1,5 +1,3 @@
-"""S3 storage and presigned reads for one campaign portrait."""
-
 from typing import Any, Protocol
 
 from dungeon_agent.control_plane.domain.models import CampaignId
@@ -30,8 +28,6 @@ class S3ClientProtocol(Protocol):
 
 
 class S3PortraitStore:
-    """Store one PNG portrait per campaign and presign reads on demand."""
-
     def __init__(
         self,
         s3_client: Any,

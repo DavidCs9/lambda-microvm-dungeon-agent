@@ -1,5 +1,3 @@
-"""Typed agent adapters shared by local and hosted orchestration."""
-
 from dungeon_agent.control_plane.agents.bedrock import StructuredBedrockAgent
 from dungeon_agent.control_plane.agents.portrait import (
     DEFAULT_IMAGE_MODEL_ID,

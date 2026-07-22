@@ -1,9 +1,7 @@
-"""Thin AWS API Gateway HTTP API v2 transport adapter."""
-
 import base64
 import json
 import re
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from typing import Any
 from uuid import uuid4
 
@@ -12,6 +10,7 @@ from pydantic import TypeAdapter, ValidationError
 from dungeon_agent.control_plane.domain.enums import CampaignStatus, ErrorCode
 from dungeon_agent.control_plane.domain.models import CampaignId, SessionId
 from dungeon_agent.control_plane.http.campaigns import CampaignHttpHandlers
+from dungeon_agent.control_plane.http.errors import dependency_error, error_result
 from dungeon_agent.control_plane.http.models import (
     AuthenticatedIdentity,
     CreateCampaignRequest,
@@ -26,11 +25,12 @@ from dungeon_agent.control_plane.http.speech import SpeechHttpHandlers
 SESSION_ID_ADAPTER = TypeAdapter(SessionId)
 CAMPAIGN_ID_ADAPTER = TypeAdapter(CampaignId)
 SAFE_CORRELATION_ID = re.compile(r"^[A-Za-z0-9._:-]{8,100}$")
+type RouteHandler = Callable[
+    [Mapping[str, Any], Mapping[str, str], AuthenticatedIdentity, str], HttpResult
+]
 
 
 class ApiGatewayHttpAdapter:
-    """Map HTTP API v2 proxy events onto framework-neutral control-plane handlers."""
-
     def __init__(
         self,
         handlers: SessionHttpHandlers,
@@ -43,6 +43,58 @@ class ApiGatewayHttpAdapter:
         self._campaigns = campaigns
         self._speech = speech
         self._allow_sandbox_identity = allow_sandbox_identity
+        self._routes: dict[str, RouteHandler] = {
+            "POST /sessions": self._create,
+            "POST /sessions/{sessionId}/actions": self._submit_action,
+            "GET /sessions/{sessionId}": (
+                lambda event, _headers, identity, correlation_id: self._handlers.get_session(
+                    identity, _session_id(event), correlation_id=correlation_id
+                )
+            ),
+            "GET /sessions/{sessionId}/events": (
+                lambda event, _headers, identity, correlation_id: self._handlers.list_events(
+                    identity,
+                    _session_id(event),
+                    after=_replay_after(event),
+                    correlation_id=correlation_id,
+                )
+            ),
+            "GET /sessions": self._list_active_sessions,
+            "POST /sessions/{sessionId}/abandon": (
+                lambda event, _headers, identity, correlation_id: self._handlers.abandon_session(
+                    identity, _session_id(event), correlation_id=correlation_id
+                )
+            ),
+            "POST /campaigns": self._create_campaign,
+            "GET /campaigns": (
+                lambda event, _headers, identity, correlation_id: self._campaigns.list_campaigns(
+                    identity,
+                    status=_campaign_status_filter(event),
+                    correlation_id=correlation_id,
+                )
+            ),
+            "GET /campaigns/{campaignId}": (
+                lambda event, _headers, identity, correlation_id: self._campaigns.get_campaign(
+                    identity, _campaign_id(event), correlation_id=correlation_id
+                )
+            ),
+            "GET /campaigns/{campaignId}/events": (
+                lambda event, _headers, identity, correlation_id: self._campaigns.list_events(
+                    identity,
+                    _campaign_id(event),
+                    after=_replay_after(event),
+                    correlation_id=correlation_id,
+                )
+            ),
+            "GET /campaigns/{campaignId}/opening": (
+                lambda event, _headers, identity, correlation_id: (
+                    self._campaigns.get_campaign_opening(
+                        identity, _campaign_id(event), correlation_id=correlation_id
+                    )
+                )
+            ),
+            "POST /speech": self._synthesize_speech,
+        }
 
     def __call__(self, event: Mapping[str, Any], _context: object = None) -> dict[str, Any]:
         headers = _normalized_headers(event.get("headers"))
@@ -52,7 +104,7 @@ class ApiGatewayHttpAdapter:
             identity = _sandbox_identity(headers)
         if identity is None:
             return self._serialize(
-                self._handlers.error(
+                error_result(
                     status_code=401,
                     code=ErrorCode.NOT_AUTHENTICATED,
                     message="Authentication is required.",
@@ -62,41 +114,20 @@ class ApiGatewayHttpAdapter:
             )
 
         route_key = str(event.get("routeKey", ""))
+        route = self._routes.get(route_key)
         try:
-            if route_key == "POST /sessions":
-                result = self._create(event, headers, identity, correlation_id)
-            elif route_key == "POST /sessions/{sessionId}/actions":
-                result = self._submit_action(event, headers, identity, correlation_id)
-            elif route_key == "GET /sessions/{sessionId}":
-                result = self._get_session(event, identity, correlation_id)
-            elif route_key == "GET /sessions/{sessionId}/events":
-                result = self._list_events(event, identity, correlation_id)
-            elif route_key == "GET /sessions":
-                result = self._list_active_sessions(event, identity, correlation_id)
-            elif route_key == "POST /sessions/{sessionId}/abandon":
-                result = self._abandon_session(event, identity, correlation_id)
-            elif route_key == "POST /campaigns":
-                result = self._create_campaign(event, headers, identity, correlation_id)
-            elif route_key == "GET /campaigns":
-                result = self._list_campaigns(event, identity, correlation_id)
-            elif route_key == "GET /campaigns/{campaignId}":
-                result = self._get_campaign(event, identity, correlation_id)
-            elif route_key == "GET /campaigns/{campaignId}/events":
-                result = self._list_campaign_events(event, identity, correlation_id)
-            elif route_key == "GET /campaigns/{campaignId}/opening":
-                result = self._get_campaign_opening(event, identity, correlation_id)
-            elif route_key == "POST /speech":
-                result = self._synthesize_speech(event, identity, correlation_id)
-            else:
-                result = self._handlers.error(
+            if route is None:
+                result = error_result(
                     status_code=404,
                     code=ErrorCode.SESSION_NOT_FOUND,
                     message="Route not found.",
                     retryable=False,
                     correlation_id=correlation_id,
                 )
+            else:
+                result = route(event, headers, identity, correlation_id)
         except TypeError, ValueError, ValidationError, json.JSONDecodeError:
-            result = self._handlers.error(
+            result = error_result(
                 status_code=400,
                 code=ErrorCode.VALIDATION_FAILED,
                 message="The request is invalid.",
@@ -113,8 +144,7 @@ class ApiGatewayHttpAdapter:
         correlation_id: str,
     ) -> HttpResult:
         idempotency_key = headers.get("idempotency-key", "")
-        payload = _json_body(event)
-        request = CreateSessionRequest.model_validate(payload)
+        request = CreateSessionRequest.model_validate(_json_body(event))
         return self._handlers.create_session(
             identity,
             request,
@@ -130,63 +160,11 @@ class ApiGatewayHttpAdapter:
         correlation_id: str,
     ) -> HttpResult:
         idempotency_key = headers.get("idempotency-key", "")
-        payload = _json_body(event)
-        request = CreateCampaignRequest.model_validate(payload)
+        request = CreateCampaignRequest.model_validate(_json_body(event))
         return self._campaigns.create_campaign(
             identity,
             request,
             idempotency_key=idempotency_key,
-            correlation_id=correlation_id,
-        )
-
-    def _get_session(
-        self,
-        event: Mapping[str, Any],
-        identity: AuthenticatedIdentity,
-        correlation_id: str,
-    ) -> HttpResult:
-        session_id = _path_parameter(event, "sessionId", SESSION_ID_ADAPTER)
-        return self._handlers.get_session(
-            identity,
-            session_id,
-            correlation_id=correlation_id,
-        )
-
-    def _list_campaigns(
-        self,
-        event: Mapping[str, Any],
-        identity: AuthenticatedIdentity,
-        correlation_id: str,
-    ) -> HttpResult:
-        return self._campaigns.list_campaigns(
-            identity,
-            status=_campaign_status_filter(event),
-            correlation_id=correlation_id,
-        )
-
-    def _get_campaign(
-        self,
-        event: Mapping[str, Any],
-        identity: AuthenticatedIdentity,
-        correlation_id: str,
-    ) -> HttpResult:
-        campaign_id = _path_parameter(event, "campaignId", CAMPAIGN_ID_ADAPTER)
-        return self._campaigns.get_campaign(
-            identity,
-            campaign_id,
-            correlation_id=correlation_id,
-        )
-
-    def _get_campaign_opening(
-        self,
-        event: Mapping[str, Any],
-        identity: AuthenticatedIdentity,
-        correlation_id: str,
-    ) -> HttpResult:
-        campaign_id = _path_parameter(event, "campaignId", CAMPAIGN_ID_ADAPTER)
-        return self._campaigns.get_campaign_opening(
-            identity,
-            campaign_id,
             correlation_id=correlation_id,
         )
 
@@ -197,7 +175,7 @@ class ApiGatewayHttpAdapter:
         identity: AuthenticatedIdentity,
         correlation_id: str,
     ) -> HttpResult:
-        session_id = _path_parameter(event, "sessionId", SESSION_ID_ADAPTER)
+        session_id = _session_id(event)
         idempotency_key = headers.get("idempotency-key", "")
         request = SubmitActionRequest.model_validate(_json_body(event))
         return self._handlers.submit_action(
@@ -208,24 +186,10 @@ class ApiGatewayHttpAdapter:
             correlation_id=correlation_id,
         )
 
-    def _list_events(
-        self,
-        event: Mapping[str, Any],
-        identity: AuthenticatedIdentity,
-        correlation_id: str,
-    ) -> HttpResult:
-        session_id = _path_parameter(event, "sessionId", SESSION_ID_ADAPTER)
-        after = _replay_after(event)
-        return self._handlers.list_events(
-            identity,
-            session_id,
-            after=after,
-            correlation_id=correlation_id,
-        )
-
     def _list_active_sessions(
         self,
         event: Mapping[str, Any],
+        _headers: Mapping[str, str],
         identity: AuthenticatedIdentity,
         correlation_id: str,
     ) -> HttpResult:
@@ -235,48 +199,15 @@ class ApiGatewayHttpAdapter:
             correlation_id=correlation_id,
         )
 
-    def _abandon_session(
-        self,
-        event: Mapping[str, Any],
-        identity: AuthenticatedIdentity,
-        correlation_id: str,
-    ) -> HttpResult:
-        session_id = _path_parameter(event, "sessionId", SESSION_ID_ADAPTER)
-        return self._handlers.abandon_session(
-            identity,
-            session_id,
-            correlation_id=correlation_id,
-        )
-
-    def _list_campaign_events(
-        self,
-        event: Mapping[str, Any],
-        identity: AuthenticatedIdentity,
-        correlation_id: str,
-    ) -> HttpResult:
-        campaign_id = _path_parameter(event, "campaignId", CAMPAIGN_ID_ADAPTER)
-        after = _replay_after(event)
-        return self._campaigns.list_events(
-            identity,
-            campaign_id,
-            after=after,
-            correlation_id=correlation_id,
-        )
-
     def _synthesize_speech(
         self,
         event: Mapping[str, Any],
+        _headers: Mapping[str, str],
         identity: AuthenticatedIdentity,
         correlation_id: str,
     ) -> HttpResult:
         if self._speech is None:
-            return self._handlers.error(
-                status_code=503,
-                code=ErrorCode.DEPENDENCY_UNAVAILABLE,
-                message="Speech synthesis is temporarily unavailable.",
-                retryable=True,
-                correlation_id=correlation_id,
-            )
+            return dependency_error("Speech synthesis is temporarily unavailable.", correlation_id)
         request = SpeechRequest.model_validate(_json_body(event))
         return self._speech.synthesize_speech(
             identity,
@@ -362,6 +293,14 @@ def _path_parameter[T](event: Mapping[str, Any], name: str, adapter: TypeAdapter
     if not isinstance(parameters, Mapping):
         raise ValueError("pathParameters must be an object")
     return adapter.validate_python(parameters.get(name))
+
+
+def _session_id(event: Mapping[str, Any]) -> SessionId:
+    return _path_parameter(event, "sessionId", SESSION_ID_ADAPTER)
+
+
+def _campaign_id(event: Mapping[str, Any]) -> CampaignId:
+    return _path_parameter(event, "campaignId", CAMPAIGN_ID_ADAPTER)
 
 
 def _replay_after(event: Mapping[str, Any]) -> int:

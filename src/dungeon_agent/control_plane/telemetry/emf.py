@@ -1,5 +1,3 @@
-"""Emit JSON logs that CloudWatch can also extract as EMF metrics."""
-
 import json
 from collections.abc import Callable
 from datetime import UTC, datetime
@@ -8,8 +6,6 @@ Metric = tuple[str, str, int | float]
 
 
 class EmfTelemetry:
-    """Write low-cardinality EMF records without an AWS SDK dependency."""
-
     def __init__(
         self,
         service: str,
@@ -30,8 +26,6 @@ class EmfTelemetry:
         latency_ms: int | float,
         **context: str | None,
     ) -> dict[str, object]:
-        """Record one Step Functions phase or control-plane operation."""
-
         return self._emit(
             operation,
             outcome,
@@ -49,8 +43,6 @@ class EmfTelemetry:
         output_tokens: int,
         **context: str | None,
     ) -> dict[str, object]:
-        """Record one model call while keeping prompt and output text out of logs."""
-
         return self._emit(
             operation,
             outcome,
@@ -69,8 +61,6 @@ class EmfTelemetry:
         latency_ms: int | float,
         **context: str | None,
     ) -> dict[str, object]:
-        """Record launch, readiness, initialization, or termination timing."""
-
         return self._emit(
             operation,
             outcome,

@@ -1,5 +1,3 @@
-"""Durable event append followed by best-effort delivery."""
-
 from collections.abc import Callable
 from datetime import UTC, datetime
 from typing import Any
@@ -33,7 +31,6 @@ def append_session_event(
     *,
     attempts: int = 3,
 ) -> SessionEvent:
-    """Store one sequenced event, then fan it out without failing the caller."""
     return _append_event(
         store,
         delivery,
@@ -65,7 +62,6 @@ def append_campaign_event(
     *,
     attempts: int = 3,
 ) -> CampaignEvent:
-    """Store one sequenced campaign event, then fan it out without failing the caller."""
     return _append_event(
         store,
         delivery,

@@ -1,5 +1,3 @@
-"""Connect, subscribe, disconnect, and replay use cases."""
-
 from collections.abc import Callable
 from datetime import UTC, datetime, timedelta
 from typing import Any, cast

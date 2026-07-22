@@ -1,5 +1,3 @@
-"""Session HTTP use cases for the lab control plane."""
-
 from collections.abc import Callable
 from datetime import datetime
 from typing import Any
@@ -22,7 +20,13 @@ from dungeon_agent.control_plane.domain.models import (
     TurnStartedPayload,
 )
 from dungeon_agent.control_plane.events import append_session_event
-from dungeon_agent.control_plane.http.errors import Clock, error_result, utc_now
+from dungeon_agent.control_plane.http.errors import (
+    Clock,
+    dependency_error,
+    error_result,
+    owner_access_error,
+    utc_now,
+)
 from dungeon_agent.control_plane.http.models import (
     AuthenticatedIdentity,
     CreateSessionRequest,
@@ -38,8 +42,6 @@ from dungeon_agent.control_plane.persistence.errors import SessionRevisionConfli
 
 
 class SessionHttpHandlers:
-    """Short control operations; MicroVM work remains in the async workflow."""
-
     def __init__(
         self,
         store: Any,
@@ -73,7 +75,6 @@ class SessionHttpHandlers:
         idempotency_key: str,
         correlation_id: str,
     ) -> HttpResult:
-        """Persist intent against a ready campaign and start the play workflow."""
         now = self._clock()
         try:
             existing = self._store.find_by_idempotency_key(identity.owner_id, idempotency_key)
@@ -138,7 +139,7 @@ class SessionHttpHandlers:
         correlation_id: str,
     ) -> HttpResult | None:
         if campaign is None:
-            return self.error(
+            return error_result(
                 status_code=404,
                 code=ErrorCode.CAMPAIGN_NOT_FOUND,
                 message="Campaign not found.",
@@ -146,7 +147,7 @@ class SessionHttpHandlers:
                 correlation_id=correlation_id,
             )
         if campaign.owner_id != identity.owner_id:
-            return self.error(
+            return error_result(
                 status_code=403,
                 code=ErrorCode.NOT_AUTHORIZED,
                 message="You do not have access to this campaign.",
@@ -154,7 +155,7 @@ class SessionHttpHandlers:
                 correlation_id=correlation_id,
             )
         if campaign.status is not CampaignStatus.READY:
-            return self.error(
+            return error_result(
                 status_code=409,
                 code=ErrorCode.CAMPAIGN_CONFLICT,
                 message="The campaign is not ready for play.",
@@ -175,7 +176,7 @@ class SessionHttpHandlers:
         except Exception:
             return self._dependency_error(correlation_id)
         if active >= self._max_active_sessions_per_owner:
-            return self.error(
+            return error_result(
                 status_code=429,
                 code=ErrorCode.QUOTA_EXCEEDED,
                 message="Too many active sessions; complete one before starting another.",
@@ -183,7 +184,7 @@ class SessionHttpHandlers:
                 correlation_id=correlation_id,
             )
         if replays >= self._max_sessions_per_campaign:
-            return self.error(
+            return error_result(
                 status_code=429,
                 code=ErrorCode.QUOTA_EXCEEDED,
                 message="This campaign reached its session limit.",
@@ -201,7 +202,6 @@ class SessionHttpHandlers:
         idempotency_key: str,
         correlation_id: str,
     ) -> HttpResult:
-        """Check out one action, emit ``turn.started``, and hand it to the turn worker."""
         if self._turns is None:
             return self._dependency_error(correlation_id)
         try:
@@ -324,7 +324,7 @@ class SessionHttpHandlers:
             print(f"checkout rollback failed: {session_id}")
 
     def _conflict(self, message: str, correlation_id: str) -> HttpResult:
-        return self.error(
+        return error_result(
             status_code=409,
             code=ErrorCode.SESSION_CONFLICT,
             message=message,
@@ -339,7 +339,6 @@ class SessionHttpHandlers:
         *,
         correlation_id: str,
     ) -> HttpResult:
-        """Return a session only to its authenticated owner."""
         try:
             session = self._store.get(session_id)
         except Exception:
@@ -362,7 +361,6 @@ class SessionHttpHandlers:
         after: int,
         correlation_id: str,
     ) -> HttpResult:
-        """Replay durable events after a client-owned sequence number."""
         try:
             session = self._store.get(session_id)
         except Exception:
@@ -391,7 +389,6 @@ class SessionHttpHandlers:
         *,
         correlation_id: str,
     ) -> HttpResult:
-        """List an owner's live sessions for the Continuar picker."""
         try:
             sessions = self._store.list_active_by_owner(identity.owner_id)
         except Exception:
@@ -409,7 +406,6 @@ class SessionHttpHandlers:
         *,
         correlation_id: str,
     ) -> HttpResult:
-        """Free the owner's active slot and stop MicroVM cost for a live session."""
         try:
             session = self._store.get(session_id)
         except Exception:
@@ -426,7 +422,7 @@ class SessionHttpHandlers:
                 correlation_id=correlation_id,
             )
         if session.status in (SessionStatus.REQUESTED, SessionStatus.CREATING):
-            return self.error(
+            return error_result(
                 status_code=409,
                 code=ErrorCode.SESSION_CONFLICT,
                 message="The session is still being created; retry once it settles.",
@@ -476,24 +472,6 @@ class SessionHttpHandlers:
             correlation_id=correlation_id,
         )
 
-    def error(
-        self,
-        *,
-        status_code: int,
-        code: ErrorCode,
-        message: str,
-        retryable: bool,
-        correlation_id: str,
-    ) -> HttpResult:
-        """Build the one error representation shared by all HTTP adapters."""
-        return error_result(
-            status_code=status_code,
-            code=code,
-            message=message,
-            retryable=retryable,
-            correlation_id=correlation_id,
-        )
-
     def _ensure_workflow(
         self,
         session: SessionRecord,
@@ -540,29 +518,13 @@ class SessionHttpHandlers:
         session: SessionRecord | None,
         correlation_id: str,
     ) -> HttpResult | None:
-        if session is None:
-            return self.error(
-                status_code=404,
-                code=ErrorCode.SESSION_NOT_FOUND,
-                message="Session not found.",
-                retryable=False,
-                correlation_id=correlation_id,
-            )
-        if session.owner_id != identity.owner_id:
-            return self.error(
-                status_code=403,
-                code=ErrorCode.NOT_AUTHORIZED,
-                message="You do not have access to this session.",
-                retryable=False,
-                correlation_id=correlation_id,
-            )
-        return None
-
-    def _dependency_error(self, correlation_id: str) -> HttpResult:
-        return self.error(
-            status_code=503,
-            code=ErrorCode.DEPENDENCY_UNAVAILABLE,
-            message="A session dependency is temporarily unavailable.",
-            retryable=True,
+        return owner_access_error(
+            identity,
+            session,
+            resource_name="session",
+            not_found_code=ErrorCode.SESSION_NOT_FOUND,
             correlation_id=correlation_id,
         )
+
+    def _dependency_error(self, correlation_id: str) -> HttpResult:
+        return dependency_error("A session dependency is temporarily unavailable.", correlation_id)

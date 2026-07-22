@@ -1,5 +1,3 @@
-"""AWS Lambda entry points for the sandbox control plane."""
-
 import os
 from collections.abc import Mapping
 from importlib import import_module
@@ -119,8 +117,6 @@ class _LambdaClient(Protocol):
 
 
 class LambdaTurnWorkerInvoker:
-    """Hand one accepted action to the turn worker without blocking the HTTP call."""
-
     def __init__(self, client: _LambdaClient, function_name: str) -> None:
         self._client = client
         self._function_name = function_name
@@ -197,7 +193,6 @@ def _build_speech_handlers() -> SpeechHttpHandlers | None:
 
 
 def _build_portrait_store() -> S3PortraitStore | None:
-    """Best-effort portrait persistence and presigning; absent bucket disables it."""
     bucket = os.environ.get("SPEECH_CACHE_BUCKET")
     if bucket is None:
         return None
@@ -206,7 +201,6 @@ def _build_portrait_store() -> S3PortraitStore | None:
 
 
 def _build_portrait_generator() -> BedrockPortraitGenerator | None:
-    """Best-effort Bedrock text-to-image; absent bucket disables generation too."""
     if "SPEECH_CACHE_BUCKET" not in os.environ:
         return None
     model_id = os.environ.get("BEDROCK_IMAGE_MODEL_ID", DEFAULT_IMAGE_MODEL_ID)

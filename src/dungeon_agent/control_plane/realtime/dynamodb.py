@@ -1,5 +1,3 @@
-"""DynamoDB connection records with TTL and aggregate subscriptions."""
-
 from collections.abc import Mapping
 from typing import Protocol
 

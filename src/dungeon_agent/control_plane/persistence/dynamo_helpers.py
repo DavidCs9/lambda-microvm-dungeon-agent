@@ -1,5 +1,3 @@
-"""Shared DynamoDB mechanics for the control-plane repositories."""
-
 from collections.abc import Callable, Mapping
 from datetime import datetime, timedelta
 from importlib import import_module
@@ -14,8 +12,6 @@ EventT = TypeVar("EventT")
 
 
 class DynamoDbAggregateStore:
-    """Common single-table operations for one aggregate prefix."""
-
     def __init__(self, client: DynamoDbClient, table_name: str, aggregate: str) -> None:
         if not table_name:
             raise ValueError("table_name must not be empty")

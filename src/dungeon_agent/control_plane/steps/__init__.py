@@ -1,5 +1,3 @@
-"""Framework-neutral control-plane workflow steps."""
-
 from dungeon_agent.control_plane.steps.adventure import (
     AdventureStep,
     AdventureStepResult,

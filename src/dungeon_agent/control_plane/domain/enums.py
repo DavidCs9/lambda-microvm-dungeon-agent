@@ -1,5 +1,3 @@
-"""Lifecycle values shared by workflows, adapters, and clients."""
-
 from enum import StrEnum
 
 

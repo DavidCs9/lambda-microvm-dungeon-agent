@@ -1,5 +1,3 @@
-"""Versioned session, event, opening, workflow, and error schemas."""
-
 from datetime import datetime
 from typing import Annotated, Literal
 
@@ -117,8 +115,6 @@ class SessionRecord(ContractModel):
 
 
 class RoleGenerationMetrics(ContractModel):
-    """Recorded once per model role during campaign generation."""
-
     model_id: str = Field(min_length=1, max_length=200)
     calls: int = Field(ge=0)
     input_tokens: int = Field(ge=0)
@@ -133,8 +129,6 @@ class CampaignGenerationMetrics(ContractModel):
 
 
 class CampaignRecord(ContractModel):
-    """An immutable, owner-scoped, reusable game template."""
-
     schema_version: Literal[1] = 1
     campaign_id: CampaignId
     owner_id: OwnerId

@@ -1,5 +1,3 @@
-"""Generate and persist an adventure without growing workflow state."""
-
 import time
 from collections.abc import Callable, Mapping
 from typing import Any, Literal
@@ -17,8 +15,6 @@ from dungeon_agent.domain.game import AdventurePlan, LanguageCode
 
 
 class AdventureStepResult(ContractModel):
-    """Small state passed to the next campaign-creation step."""
-
     schema_version: Literal[1] = 1
     campaign_id: CampaignId
     language: LanguageCode
@@ -28,8 +24,6 @@ class AdventureStepResult(ContractModel):
 
 
 class AdventureStep:
-    """Run the Adventure Architect and keep its full output out of workflow state."""
-
     def __init__(
         self,
         architect: Any,
@@ -56,7 +50,5 @@ class AdventureStep:
         )
 
     def handle(self, raw_input: Mapping[str, object]) -> dict[str, object]:
-        """Validate wire input and return an alias-serialized workflow payload."""
-
         workflow_input = CreateCampaignWorkflowInput.model_validate(raw_input)
         return self.execute(workflow_input).model_dump(mode="json", by_alias=True)

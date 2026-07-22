@@ -1,5 +1,3 @@
-"""Generate a protagonist and a presentation-neutral opening document."""
-
 import logging
 import time
 from collections.abc import Callable, Mapping
@@ -22,8 +20,6 @@ LOGGER = logging.getLogger(__name__)
 
 
 class CharacterStepInput(ContractModel):
-    """Small hand-off from the Adventure Architect step."""
-
     schema_version: Literal[1] = 1
     campaign_id: CampaignId
     language: LanguageCode
@@ -33,8 +29,6 @@ class CharacterStepInput(ContractModel):
 
 
 class CharacterStepResult(ContractModel):
-    """Small state passed to the campaign readiness steps."""
-
     schema_version: Literal[1] = 1
     campaign_id: CampaignId
     language: LanguageCode
@@ -45,8 +39,6 @@ class CharacterStepResult(ContractModel):
 
 
 class CharacterStep:
-    """Run the Character Architect and persist its reusable opening artifact."""
-
     def __init__(
         self,
         architect: Any,
@@ -86,8 +78,6 @@ class CharacterStep:
         )
 
     def handle(self, raw_input: Mapping[str, object]) -> dict[str, object]:
-        """Validate wire input and return an alias-serialized workflow payload."""
-
         step_input = CharacterStepInput.model_validate(raw_input)
         return self.execute(step_input).model_dump(mode="json", by_alias=True)
 

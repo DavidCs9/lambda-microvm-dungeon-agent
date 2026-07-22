@@ -1,5 +1,3 @@
-"""Campaign HTTP use cases for the lab control plane."""
-
 import logging
 from collections.abc import Callable
 from datetime import datetime
@@ -15,7 +13,13 @@ from dungeon_agent.control_plane.domain.models import (
     CampaignRecord,
     CreateCampaignWorkflowInput,
 )
-from dungeon_agent.control_plane.http.errors import Clock, error_result, utc_now
+from dungeon_agent.control_plane.http.errors import (
+    Clock,
+    dependency_error,
+    error_result,
+    owner_access_error,
+    utc_now,
+)
 from dungeon_agent.control_plane.http.models import (
     AuthenticatedIdentity,
     CampaignEnvelope,
@@ -31,8 +35,6 @@ LOGGER = logging.getLogger(__name__)
 
 
 class CampaignHttpHandlers:
-    """Short campaign control operations; generation remains in the async workflow."""
-
     def __init__(
         self,
         store: Any,
@@ -60,7 +62,6 @@ class CampaignHttpHandlers:
         idempotency_key: str,
         correlation_id: str,
     ) -> HttpResult:
-        """Persist intent and start paid generation once per idempotency key."""
         now = self._clock()
         try:
             existing = self._store.find_by_idempotency_key(identity.owner_id, idempotency_key)
@@ -77,7 +78,7 @@ class CampaignHttpHandlers:
             return self._dependency_error(correlation_id)
 
         if campaign_count >= self._max_campaigns_per_owner:
-            return self.error(
+            return error_result(
                 status_code=429,
                 code=ErrorCode.QUOTA_EXCEEDED,
                 message="Campaign limit reached for this player.",
@@ -115,7 +116,6 @@ class CampaignHttpHandlers:
         status: str | None = None,
         correlation_id: str,
     ) -> HttpResult:
-        """List an owner's campaigns for resume discovery, optionally filtered by status."""
         try:
             campaigns = self._store.list_by_owner(identity.owner_id, status=status)
         except Exception:
@@ -133,7 +133,6 @@ class CampaignHttpHandlers:
         *,
         correlation_id: str,
     ) -> HttpResult:
-        """Return a campaign only to its authenticated owner."""
         try:
             campaign = self._store.get(campaign_id)
         except Exception:
@@ -155,7 +154,6 @@ class CampaignHttpHandlers:
         *,
         correlation_id: str,
     ) -> HttpResult:
-        """Return the opening for a ready campaign without replaying event history."""
         try:
             campaign = self._store.get(campaign_id)
         except Exception:
@@ -165,7 +163,7 @@ class CampaignHttpHandlers:
             return access_error
         assert campaign is not None
         if campaign.status is not CampaignStatus.READY:
-            return self.error(
+            return error_result(
                 status_code=409,
                 code=ErrorCode.CAMPAIGN_CONFLICT,
                 message="The campaign is not ready for play.",
@@ -209,7 +207,6 @@ class CampaignHttpHandlers:
         after: int,
         correlation_id: str,
     ) -> HttpResult:
-        """Replay durable campaign events after a client-owned sequence number."""
         try:
             campaign = self._store.get(campaign_id)
         except Exception:
@@ -229,24 +226,6 @@ class CampaignHttpHandlers:
                 events=events,
                 next_sequence=next_sequence,
             ),
-            correlation_id=correlation_id,
-        )
-
-    def error(
-        self,
-        *,
-        status_code: int,
-        code: ErrorCode,
-        message: str,
-        retryable: bool,
-        correlation_id: str,
-    ) -> HttpResult:
-        """Build the one error representation shared by all HTTP adapters."""
-        return error_result(
-            status_code=status_code,
-            code=code,
-            message=message,
-            retryable=retryable,
             correlation_id=correlation_id,
         )
 
@@ -300,29 +279,13 @@ class CampaignHttpHandlers:
         campaign: CampaignRecord | None,
         correlation_id: str,
     ) -> HttpResult | None:
-        if campaign is None:
-            return self.error(
-                status_code=404,
-                code=ErrorCode.CAMPAIGN_NOT_FOUND,
-                message="Campaign not found.",
-                retryable=False,
-                correlation_id=correlation_id,
-            )
-        if campaign.owner_id != identity.owner_id:
-            return self.error(
-                status_code=403,
-                code=ErrorCode.NOT_AUTHORIZED,
-                message="You do not have access to this campaign.",
-                retryable=False,
-                correlation_id=correlation_id,
-            )
-        return None
-
-    def _dependency_error(self, correlation_id: str) -> HttpResult:
-        return self.error(
-            status_code=503,
-            code=ErrorCode.DEPENDENCY_UNAVAILABLE,
-            message="A campaign dependency is temporarily unavailable.",
-            retryable=True,
+        return owner_access_error(
+            identity,
+            campaign,
+            resource_name="campaign",
+            not_found_code=ErrorCode.CAMPAIGN_NOT_FOUND,
             correlation_id=correlation_id,
         )
+
+    def _dependency_error(self, correlation_id: str) -> HttpResult:
+        return dependency_error("A campaign dependency is temporarily unavailable.", correlation_id)

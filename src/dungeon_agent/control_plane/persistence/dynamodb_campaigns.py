@@ -1,5 +1,3 @@
-"""DynamoDB single-table adapter for campaigns and their ordered events."""
-
 from collections.abc import Mapping
 
 from dungeon_agent.control_plane.domain.models import (
@@ -26,8 +24,6 @@ from dungeon_agent.control_plane.persistence.errors import (
 
 
 class DynamoDbCampaignRepository:
-    """Implement campaign and campaign-event ports with a single-table layout."""
-
     def __init__(
         self,
         client: DynamoDbClient,
@@ -41,7 +37,6 @@ class DynamoDbCampaignRepository:
         self._idempotency_ttl_seconds = idempotency_ttl_seconds
 
     def create(self, campaign: CampaignRecord, idempotency_key: str) -> CampaignRecord:
-        """Atomically persist a campaign and its owner-scoped idempotency record."""
         existing = self.find_by_idempotency_key(campaign.owner_id, idempotency_key)
         if existing is not None:
             return existing
@@ -66,21 +61,18 @@ class DynamoDbCampaignRepository:
         return campaign
 
     def get(self, campaign_id: CampaignId) -> CampaignRecord | None:
-        """Read a campaign consistently so revision checks see recent writes."""
         raw_item = self._table.get_metadata_item(campaign_id)
         if raw_item is None:
             return None
         return self._campaign_from_item(raw_item)
 
     def find_by_idempotency_key(self, owner_id: str, idempotency_key: str) -> CampaignRecord | None:
-        """Resolve an owner-scoped idempotency key to its original campaign."""
         campaign_id = self._table.get_idempotency_id(owner_id, idempotency_key, "campaignId")
         if campaign_id is None:
             return None
         return self.get(campaign_id)
 
     def save(self, campaign: CampaignRecord, *, expected_revision: int) -> CampaignRecord:
-        """Save one state revision without overwriting the independent event counter."""
         if campaign.revision != expected_revision + 1:
             raise CampaignRevisionConflictError(
                 "saved campaign revision must be exactly one greater than expected revision"
@@ -101,7 +93,6 @@ class DynamoDbCampaignRepository:
         return self._campaign_from_item(attributes)
 
     def append(self, event: CampaignEvent, *, expected_previous_sequence: int) -> None:
-        """Atomically advance the campaign counter and store exactly one event."""
         if event.sequence != expected_previous_sequence + 1:
             raise CampaignEventSequenceConflictError(
                 "event sequence must be exactly one greater than expected previous sequence"
@@ -125,7 +116,6 @@ class DynamoDbCampaignRepository:
             ) from error
 
     def list_after(self, campaign_id: CampaignId, sequence: int) -> tuple[CampaignEvent, ...]:
-        """Query all events after a sequence in ascending order."""
         return self._table.list_events_after(
             campaign_id,
             sequence,
@@ -133,7 +123,6 @@ class DynamoDbCampaignRepository:
         )
 
     def count_by_owner(self, owner_id: str) -> int:
-        """Count every campaign one owner has created through the ``ByOwner`` index."""
         return self._table.count_index_items(
             index_name="ByOwner",
             key_condition="ownerId = :owner",
@@ -143,7 +132,6 @@ class DynamoDbCampaignRepository:
     def list_by_owner(
         self, owner_id: str, *, status: str | None = None
     ) -> tuple[CampaignRecord, ...]:
-        """List one owner's campaigns via ``ByOwner``, newest ``createdAt`` first."""
         values: dict[str, AttributeValue] = {":owner": string(owner_id)}
         filter_expression = None
         names = None
@@ -196,7 +184,6 @@ def create_dynamodb_campaign_repository(
     region_name: str | None = None,
     idempotency_ttl_seconds: int = 86_400,
 ) -> DynamoDbCampaignRepository:
-    """Create one reusable DynamoDB client and its campaign repository adapter."""
     client = create_dynamodb_client(region_name)
     return DynamoDbCampaignRepository(
         client,

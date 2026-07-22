@@ -1,5 +1,3 @@
-"""Thin API Gateway WebSocket transport adapter for the sandbox realtime channel."""
-
 import json
 from collections.abc import Mapping
 from typing import Any, Protocol
@@ -15,14 +13,10 @@ _CAMPAIGN_ID = TypeAdapter(CampaignId)
 
 
 class ConnectionSender(Protocol):
-    """Push bytes to one live API Gateway connection."""
-
     def send(self, connection_id: str, data: bytes) -> None: ...
 
 
 class ApiGatewayWebSocketAdapter:
-    """Map connection routes onto the framework-neutral realtime service."""
-
     def __init__(self, service: RealtimeSessionService, sender: ConnectionSender) -> None:
         self._service = service
         self._sender = sender

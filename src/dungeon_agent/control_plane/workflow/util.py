@@ -1,5 +1,3 @@
-"""Wire-format helpers shared by workflow task adapters."""
-
 from collections.abc import Mapping
 from datetime import datetime
 

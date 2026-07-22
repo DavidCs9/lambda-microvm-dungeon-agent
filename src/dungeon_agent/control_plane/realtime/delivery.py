@@ -1,5 +1,3 @@
-"""Best-effort WebSocket delivery after durable event storage."""
-
 from typing import Any, Protocol
 
 from dungeon_agent.control_plane.domain.models import CampaignEvent, SessionEvent

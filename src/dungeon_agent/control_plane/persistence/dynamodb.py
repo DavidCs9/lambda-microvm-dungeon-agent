@@ -1,5 +1,3 @@
-"""DynamoDB single-table adapter for sessions, idempotency, and ordered events."""
-
 from collections.abc import Mapping
 
 from dungeon_agent.control_plane.domain.enums import SessionStatus
@@ -62,7 +60,6 @@ class DynamoDbControlPlaneRepository:
         self._idempotency_ttl_seconds = idempotency_ttl_seconds
 
     def create(self, session: SessionRecord, idempotency_key: str) -> SessionRecord:
-        """Atomically persist a session and its owner-scoped idempotency record."""
         existing = self.find_by_idempotency_key(session.owner_id, idempotency_key)
         if existing is not None:
             return existing
@@ -89,21 +86,18 @@ class DynamoDbControlPlaneRepository:
         return session
 
     def get(self, session_id: SessionId) -> SessionRecord | None:
-        """Read a session consistently so revision checks see recent writes."""
         raw_item = self._table.get_metadata_item(session_id)
         if raw_item is None:
             return None
         return self._session_from_item(raw_item)
 
     def find_by_idempotency_key(self, owner_id: str, idempotency_key: str) -> SessionRecord | None:
-        """Resolve an owner-scoped idempotency key to its original session."""
         session_id = self._table.get_idempotency_id(owner_id, idempotency_key, "sessionId")
         if session_id is None:
             return None
         return self.get(session_id)
 
     def save(self, session: SessionRecord, *, expected_revision: int) -> SessionRecord:
-        """Save one state revision without overwriting the independent event counter."""
         if session.revision != expected_revision + 1:
             raise SessionRevisionConflictError(
                 "saved session revision must be exactly one greater than expected revision"
@@ -124,7 +118,6 @@ class DynamoDbControlPlaneRepository:
         return self._session_from_item(attributes)
 
     def append(self, event: SessionEvent, *, expected_previous_sequence: int) -> None:
-        """Atomically advance the session counter and store exactly one event."""
         if event.sequence != expected_previous_sequence + 1:
             raise EventSequenceConflictError(
                 "event sequence must be exactly one greater than expected previous sequence"
@@ -148,7 +141,6 @@ class DynamoDbControlPlaneRepository:
             ) from error
 
     def list_after(self, session_id: SessionId, sequence: int) -> tuple[SessionEvent, ...]:
-        """Query all events after a sequence in ascending order."""
         return self._table.list_events_after(
             session_id,
             sequence,
@@ -156,7 +148,6 @@ class DynamoDbControlPlaneRepository:
         )
 
     def count_active_by_owner(self, owner_id: str) -> int:
-        """Count one owner's unfinished sessions through the ``ByOwner`` index."""
         values: dict[str, AttributeValue] = {
             ":owner": string(owner_id),
             **{
@@ -204,7 +195,6 @@ class DynamoDbControlPlaneRepository:
         return tuple(sessions[:10])
 
     def count_by_campaign(self, campaign_id: CampaignId) -> int:
-        """Count every session forked from one campaign through the ``ByCampaign`` index."""
         return self._table.count_index_items(
             index_name="ByCampaign",
             key_condition="campaignId = :campaign",
@@ -247,7 +237,6 @@ def create_dynamodb_repository(
     region_name: str | None = None,
     idempotency_ttl_seconds: int = 86_400,
 ) -> DynamoDbControlPlaneRepository:
-    """Create one reusable DynamoDB client and its repository adapter."""
     client = create_dynamodb_client(region_name)
     return DynamoDbControlPlaneRepository(
         client,

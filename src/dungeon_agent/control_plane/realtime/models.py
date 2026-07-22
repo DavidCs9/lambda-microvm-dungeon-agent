@@ -1,5 +1,3 @@
-"""Small connection records stored outside the game domain."""
-
 from datetime import datetime
 
 from pydantic import Field, model_validator

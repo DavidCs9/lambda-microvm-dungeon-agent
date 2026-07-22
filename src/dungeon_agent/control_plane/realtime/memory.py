@@ -1,5 +1,3 @@
-"""In-memory connection repository for tests and local clients."""
-
 from threading import RLock
 
 from dungeon_agent.control_plane.domain.models import CampaignId, SessionId
