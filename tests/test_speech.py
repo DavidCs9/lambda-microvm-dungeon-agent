@@ -11,16 +11,19 @@ from dungeon_agent.control_plane.http.api_gateway import ApiGatewayHttpAdapter
 from dungeon_agent.control_plane.http.campaigns import CampaignHttpHandlers
 from dungeon_agent.control_plane.http.sessions import SessionHttpHandlers
 from dungeon_agent.control_plane.http.speech import SpeechHttpHandlers
+from dungeon_agent.control_plane.persistence.memory import (
+    InMemoryCampaignRepository,
+    InMemoryControlPlaneRepository,
+)
 from tests.test_control_plane_http import (
     CAMPAIGN_ID,
     NOW,
-    FakeCampaignRepository,
     FakeMicrovmManager,
     FakeOpeningLoader,
-    FakeSessionRepository,
     FakeWorkflowStarter,
     _body,
     _event,
+    _put_campaign,
     ready_campaign,
 )
 
@@ -69,10 +72,10 @@ class FakeS3Client:
 
 
 def _speech_adapter() -> tuple[ApiGatewayHttpAdapter, FakePollyClient, FakeS3Client]:
-    sessions = FakeSessionRepository()
+    sessions = InMemoryControlPlaneRepository()
     workflows = FakeWorkflowStarter()
-    campaigns = FakeCampaignRepository()
-    campaigns.records[CAMPAIGN_ID] = ready_campaign()
+    campaigns = InMemoryCampaignRepository()
+    _put_campaign(campaigns, ready_campaign())
     polly = FakePollyClient()
     s3 = FakeS3Client()
     synthesizer = S3PollySpeechSynthesizer(

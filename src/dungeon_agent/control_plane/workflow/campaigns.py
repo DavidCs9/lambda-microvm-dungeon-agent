@@ -26,6 +26,7 @@ from dungeon_agent.control_plane.events import append_campaign_event
 from dungeon_agent.control_plane.steps.adventure import AdventureStep
 from dungeon_agent.control_plane.steps.character import CharacterStep, CharacterStepInput
 from dungeon_agent.control_plane.workflow.sandbox import sandbox_opening
+from dungeon_agent.control_plane.workflow.util import parse_time, required_string, wire_time
 
 Clock = Callable[[], datetime]
 
@@ -57,7 +58,7 @@ class DurableCampaignWorkflowStub:
         self._clock = clock or (lambda: datetime.now(UTC))
 
     def handle(self, event: Mapping[str, object]) -> dict[str, object]:
-        operation = _required_string(event, "operation")
+        operation = required_string(event, "operation")
         raw_state = event.get("state")
         if not isinstance(raw_state, Mapping):
             raise ValueError("workflow state must be an object")
@@ -65,15 +66,15 @@ class DurableCampaignWorkflowStub:
             CreateCampaignWorkflowInput.model_validate(raw_state)
         state = dict(raw_state)
         now = self._clock()
-        workflow_arn = _required_string(event, "workflowExecutionArn")
-        entered_at = _parse_time(_required_string(event, "stateEnteredAt"))
+        workflow_arn = required_string(event, "workflowExecutionArn")
+        entered_at = parse_time(required_string(event, "stateEnteredAt"))
 
         state["workflowExecutionArn"] = workflow_arn
-        state["updatedAt"] = _wire_time(now)
+        state["updatedAt"] = wire_time(now)
         timestamps = dict(state.get("taskTimestamps", {}))
         timestamps[operation] = {
-            "startedAt": _wire_time(entered_at),
-            "completedAt": _wire_time(now),
+            "startedAt": wire_time(entered_at),
+            "completedAt": wire_time(now),
         }
         state["taskTimestamps"] = timestamps
 
@@ -93,7 +94,7 @@ class DurableCampaignWorkflowStub:
                 campaign.campaign_id,
                 EventType.CAMPAIGN_CREATION_STARTED,
                 CampaignCreationStartedPayload(language=campaign.language),
-                _required_string(state, "correlationId"),
+                required_string(state, "correlationId"),
                 now,
             )
 
@@ -102,7 +103,7 @@ class DurableCampaignWorkflowStub:
             phase = CampaignPhase(raw_phase)
             campaign = self._update_campaign(state, phase=phase, workflow_arn=workflow_arn)
             phase_timestamps = dict(state.get("phaseTimestamps", {}))
-            phase_timestamps[phase.value] = _wire_time(entered_at)
+            phase_timestamps[phase.value] = wire_time(entered_at)
             state["phaseTimestamps"] = phase_timestamps
             state["phase"] = phase.value
             append_campaign_event(
@@ -114,7 +115,7 @@ class DurableCampaignWorkflowStub:
                     phase=phase,
                     elapsed_ms=max(0, int((now - entered_at).total_seconds() * 1_000)),
                 ),
-                _required_string(state, "correlationId"),
+                required_string(state, "correlationId"),
                 now,
             )
 
@@ -131,10 +132,10 @@ class DurableCampaignWorkflowStub:
             else:
                 character_result = self._character_step.execute(
                     CharacterStepInput(
-                        campaign_id=_required_string(state, "campaignId"),
-                        language=_required_string(state, "language"),
-                        correlation_id=_required_string(state, "correlationId"),
-                        adventure_ref=_required_string(state, "adventureRef"),
+                        campaign_id=required_string(state, "campaignId"),
+                        language=required_string(state, "language"),
+                        correlation_id=required_string(state, "correlationId"),
+                        adventure_ref=required_string(state, "adventureRef"),
                         adventure_latency_ms=_required_int(state, "adventureLatencyMs"),
                     )
                 )
@@ -145,15 +146,15 @@ class DurableCampaignWorkflowStub:
             opening = (
                 sandbox_opening(current.language)
                 if self._openings is None
-                else self._openings.load_opening(_required_string(state, "characterRef"))
+                else self._openings.load_opening(required_string(state, "characterRef"))
             )
             campaign = self._update_campaign(
                 state,
                 status=CampaignStatus.READY,
                 phase=CampaignPhase.READY,
                 workflow_arn=workflow_arn,
-                adventure_ref=_required_string(state, "adventureRef"),
-                character_ref=_required_string(state, "characterRef"),
+                adventure_ref=required_string(state, "adventureRef"),
+                character_ref=required_string(state, "characterRef"),
                 generation=self._generation_metrics(),
                 opening_title=opening.title,
             )
@@ -169,7 +170,7 @@ class DurableCampaignWorkflowStub:
                 else (
                     sandbox_opening(campaign.language)
                     if self._openings is None
-                    else self._openings.load_opening(_required_string(state, "characterRef"))
+                    else self._openings.load_opening(required_string(state, "characterRef"))
                 )
             )
             append_campaign_event(
@@ -181,7 +182,7 @@ class DurableCampaignWorkflowStub:
                     revision=campaign.revision,
                     opening=opening,
                 ),
-                _required_string(state, "correlationId"),
+                required_string(state, "correlationId"),
                 now,
             )
         elif operation == "MarkCampaignFailed":
@@ -204,7 +205,7 @@ class DurableCampaignWorkflowStub:
                     code=ErrorCode.CAMPAIGN_CREATION_FAILED,
                     retryable=False,
                 ),
-                _required_string(state, "correlationId"),
+                required_string(state, "correlationId"),
                 now,
             )
         return state
@@ -222,7 +223,7 @@ class DurableCampaignWorkflowStub:
         )
 
     def _required_campaign(self, state: Mapping[str, object]) -> CampaignRecord:
-        campaign_id: CampaignId = _required_string(state, "campaignId")
+        campaign_id: CampaignId = required_string(state, "campaignId")
         campaign = self._store.get(campaign_id)
         if campaign is None:
             raise ValueError(f"campaign does not exist: {campaign_id}")
@@ -275,26 +276,8 @@ def _workflow_input(state: Mapping[str, object]) -> CreateCampaignWorkflowInput:
     )
 
 
-def _required_string(value: Mapping[str, object], key: str) -> str:
-    result = value.get(key)
-    if not isinstance(result, str) or not result:
-        raise ValueError(f"{key} must be a non-empty string")
-    return result
-
-
 def _required_int(value: Mapping[str, object], key: str) -> int:
     result = value.get(key)
     if not isinstance(result, int) or isinstance(result, bool) or result < 0:
         raise ValueError(f"{key} must be a non-negative integer")
     return result
-
-
-def _parse_time(value: str) -> datetime:
-    parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
-    if parsed.tzinfo is None:
-        raise ValueError("workflow timestamps must include a timezone")
-    return parsed
-
-
-def _wire_time(value: datetime) -> str:
-    return value.isoformat().replace("+00:00", "Z")

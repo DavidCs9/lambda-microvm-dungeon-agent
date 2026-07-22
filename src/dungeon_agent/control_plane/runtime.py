@@ -41,8 +41,6 @@ from dungeon_agent.control_plane.steps import (
     AdventureStep,
     CharacterStep,
     DynamoDbAdventurePlans,
-    DynamoDbCampaignAdventurePlans,
-    DynamoDbCampaignCharacterBundles,
     DynamoDbCharacterBundles,
     DynamoDbWorldSnapshots,
 )
@@ -87,12 +85,8 @@ _CAMPAIGN_OPERATIONS = frozenset(
     {
         "ValidateCampaign",
         "CreateCampaignRecord",
-        "EmitCreatingAdventure",
         "GenerateAdventure",
-        "PersistAdventure",
-        "EmitCreatingCharacter",
         "GenerateCharacter",
-        "PersistCharacter",
         "MarkCampaignReady",
         "EmitCampaignReady",
         "MarkCampaignFailed",
@@ -247,7 +241,9 @@ def _build_http_adapter() -> ApiGatewayHttpAdapter:
     campaigns = CampaignHttpHandlers(
         _CAMPAIGN_REPOSITORY,
         starter,
-        openings=DynamoDbCampaignCharacterBundles(artifact_client, _CAMPAIGN_TABLE_NAME),
+        openings=DynamoDbCharacterBundles(
+            artifact_client, _CAMPAIGN_TABLE_NAME, aggregate="CAMPAIGN"
+        ),
         portrait_presigner=_build_portrait_store(),
     )
     return ApiGatewayHttpAdapter(
@@ -292,8 +288,12 @@ def _build_workflow() -> DurableSessionWorkflowStub:
     return DurableSessionWorkflowStub(
         _REPOSITORY,
         campaigns=_CAMPAIGN_REPOSITORY,
-        campaign_adventures=DynamoDbCampaignAdventurePlans(artifact_client, _CAMPAIGN_TABLE_NAME),
-        campaign_characters=DynamoDbCampaignCharacterBundles(artifact_client, _CAMPAIGN_TABLE_NAME),
+        campaign_adventures=DynamoDbAdventurePlans(
+            artifact_client, _CAMPAIGN_TABLE_NAME, aggregate="CAMPAIGN"
+        ),
+        campaign_characters=DynamoDbCharacterBundles(
+            artifact_client, _CAMPAIGN_TABLE_NAME, aggregate="CAMPAIGN"
+        ),
         adventures=DynamoDbAdventurePlans(artifact_client, _TABLE_NAME),
         characters=DynamoDbCharacterBundles(artifact_client, _TABLE_NAME),
         microvms=_microvm_manager(),
@@ -314,8 +314,10 @@ def _build_campaign_workflow() -> DurableCampaignWorkflowStub:
         )
 
     artifact_client = cast(DynamoDbArtifactClient, _boto3().client("dynamodb", config=_CONFIG))
-    adventures = DynamoDbCampaignAdventurePlans(artifact_client, _CAMPAIGN_TABLE_NAME)
-    characters = DynamoDbCampaignCharacterBundles(artifact_client, _CAMPAIGN_TABLE_NAME)
+    adventures = DynamoDbAdventurePlans(artifact_client, _CAMPAIGN_TABLE_NAME, aggregate="CAMPAIGN")
+    characters = DynamoDbCharacterBundles(
+        artifact_client, _CAMPAIGN_TABLE_NAME, aggregate="CAMPAIGN"
+    )
     adventure_metrics = RoleMetricsCollector(_AgentMetrics("AdventureArchitect"))
     character_metrics = RoleMetricsCollector(_AgentMetrics("CharacterArchitect"))
     return DurableCampaignWorkflowStub(

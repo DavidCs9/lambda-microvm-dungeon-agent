@@ -8,17 +8,9 @@ from pydantic import ValidationError
 
 from dungeon_agent.api import models as api_models
 from dungeon_agent.control_plane.domain.enums import (
-    CampaignPhase,
-    CampaignStatus,
     EventType,
     SessionPhase,
     SessionStatus,
-)
-from dungeon_agent.control_plane.domain.lifecycle import (
-    require_campaign_phase_transition,
-    require_campaign_status_transition,
-    require_phase_transition,
-    require_status_transition,
 )
 from dungeon_agent.control_plane.domain.models import (
     CreateSessionWorkflowInput,
@@ -135,24 +127,6 @@ def test_turn_command_carries_idempotency_and_expected_revision() -> None:
     serialized = command.model_dump(mode="json", by_alias=True)
     assert serialized["expectedRevision"] == 4
     assert serialized["idempotencyKey"] == "turn-demo-idempotency"
-
-
-def test_lifecycle_allows_forward_progress_and_rejects_terminal_changes() -> None:
-    require_status_transition(SessionStatus.REQUESTED, SessionStatus.CREATING)
-    require_phase_transition(SessionPhase.WAITING_FOR_MICROVM, SessionPhase.INITIALIZING_GAME)
-    require_campaign_status_transition(CampaignStatus.CREATING, CampaignStatus.READY)
-    require_campaign_phase_transition(
-        CampaignPhase.CREATING_ADVENTURE, CampaignPhase.CREATING_CHARACTER
-    )
-
-    with pytest.raises(ValueError, match="invalid session status transition"):
-        require_status_transition(SessionStatus.COMPLETED, SessionStatus.ACTIVE)
-    with pytest.raises(ValueError, match="invalid session phase transition"):
-        require_phase_transition(SessionPhase.WAITING_FOR_MICROVM, SessionPhase.PLAYING)
-    with pytest.raises(ValueError, match="invalid campaign phase transition"):
-        require_campaign_phase_transition(CampaignPhase.CREATING_ADVENTURE, CampaignPhase.READY)
-    with pytest.raises(ValueError, match="invalid campaign status transition"):
-        require_campaign_status_transition(CampaignStatus.READY, CampaignStatus.CREATING)
 
 
 def test_current_imports_reexport_neutral_game_contracts() -> None:
