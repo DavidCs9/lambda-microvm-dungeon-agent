@@ -79,8 +79,6 @@ class _InMemoryAggregateRepository:
                 raise self._revision_conflict_error(
                     f"{self._aggregate_name} revision conflict: {aggregate_id}"
                 )
-            # Event sequencing is independent of state revision. Preserve event progress
-            # if an append raced with the caller while it prepared this state change.
             stored = record.model_copy(update={"last_event_sequence": current.last_event_sequence})
             self._records[aggregate_id] = stored
             return stored

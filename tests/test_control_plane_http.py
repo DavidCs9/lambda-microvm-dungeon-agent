@@ -6,6 +6,7 @@ from dungeon_agent.control_plane.domain.enums import (
     CampaignPhase,
     CampaignStatus,
     EventType,
+    OpeningBlockKind,
     SessionPhase,
     SessionStatus,
 )
@@ -14,6 +15,7 @@ from dungeon_agent.control_plane.domain.models import (
     CampaignRecord,
     CreateCampaignWorkflowInput,
     CreateSessionWorkflowInput,
+    OpeningBlock,
     OpeningDocument,
     PhaseChangedPayload,
     SessionCompletedPayload,
@@ -71,10 +73,8 @@ class FakeMicrovmManager:
 
 class FakeOpeningLoader:
     def load_opening(self, character_ref: str) -> OpeningDocument:
-        from dungeon_agent.control_plane.workflow.sandbox import sandbox_opening
-
         assert character_ref
-        return sandbox_opening("es")
+        return _opening()
 
     def load_portrait_key(self, character_ref: str) -> str | None:
         assert character_ref
@@ -222,6 +222,27 @@ def _event(
 def _body(response: dict[str, Any]) -> dict[str, Any]:
     decoded = json.loads(str(response["body"]))
     return cast(dict[str, Any], decoded)
+
+
+def _opening() -> OpeningDocument:
+    blocks = (
+        ("identity", OpeningBlockKind.IDENTITY, "Eres Elia.", True),
+        ("motivation", OpeningBlockKind.MOTIVATION, "Buscas a tu hermano.", True),
+        ("knowledge_1", OpeningBlockKind.KNOWLEDGE, "La campana desapareció.", True),
+        ("knowledge_2", OpeningBlockKind.KNOWLEDGE, "Mara vio luces.", True),
+        ("situation", OpeningBlockKind.SITUATION, "La torre está en silencio.", True),
+        ("action_1", OpeningBlockKind.POSSIBLE_ACTION, "Investigar la torre.", False),
+        ("action_2", OpeningBlockKind.POSSIBLE_ACTION, "Hablar con Mara.", False),
+        ("action_3", OpeningBlockKind.POSSIBLE_ACTION, "Cruzar al molino.", False),
+    )
+    return OpeningDocument(
+        language="es",
+        title="La torre silenciosa",
+        blocks=tuple(
+            OpeningBlock(id=block_id, position=index, kind=kind, text=text, narratable=narratable)
+            for index, (block_id, kind, text, narratable) in enumerate(blocks)
+        ),
+    )
 
 
 def test_create_returns_202_and_starts_workflow_without_waiting() -> None:

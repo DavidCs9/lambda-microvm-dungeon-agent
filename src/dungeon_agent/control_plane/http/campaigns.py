@@ -17,7 +17,9 @@ from dungeon_agent.control_plane.http.errors import (
     Clock,
     dependency_error,
     error_result,
+    load_owned,
     owner_access_error,
+    replay_events,
     utc_now,
 )
 from dungeon_agent.control_plane.http.models import (
@@ -134,13 +136,9 @@ class CampaignHttpHandlers:
         *,
         correlation_id: str,
     ) -> HttpResult:
-        try:
-            campaign = self._store.get(campaign_id)
-        except Exception:
-            return self._dependency_error(correlation_id)
-        access_error = self._access_error(identity, campaign, correlation_id)
-        if access_error is not None:
-            return access_error
+        campaign, error = self._load(identity, campaign_id, correlation_id)
+        if error is not None:
+            return error
         assert campaign is not None
         return HttpResult(
             status_code=200,
@@ -155,13 +153,9 @@ class CampaignHttpHandlers:
         *,
         correlation_id: str,
     ) -> HttpResult:
-        try:
-            campaign = self._store.get(campaign_id)
-        except Exception:
-            return self._dependency_error(correlation_id)
-        access_error = self._access_error(identity, campaign, correlation_id)
-        if access_error is not None:
-            return access_error
+        campaign, error = self._load(identity, campaign_id, correlation_id)
+        if error is not None:
+            return error
         assert campaign is not None
         if campaign.status is not CampaignStatus.READY:
             return error_result(
@@ -208,26 +202,20 @@ class CampaignHttpHandlers:
         after: int,
         correlation_id: str,
     ) -> HttpResult:
-        try:
-            campaign = self._store.get(campaign_id)
-        except Exception:
-            return self._dependency_error(correlation_id)
-        access_error = self._access_error(identity, campaign, correlation_id)
-        if access_error is not None:
-            return access_error
-        try:
-            events = self._store.list_after(campaign_id, after)
-        except Exception:
-            return self._dependency_error(correlation_id)
-        next_sequence = events[-1].sequence if events else after
-        return HttpResult(
-            status_code=200,
-            body=CampaignEventListEnvelope(
+        _campaign, error = self._load(identity, campaign_id, correlation_id)
+        if error is not None:
+            return error
+        return replay_events(
+            self._store,
+            campaign_id,
+            after=after,
+            correlation_id=correlation_id,
+            dependency_message="A campaign dependency is temporarily unavailable.",
+            envelope=lambda events, next_sequence: CampaignEventListEnvelope(
                 campaign_id=campaign_id,
                 events=events,
                 next_sequence=next_sequence,
             ),
-            correlation_id=correlation_id,
         )
 
     def _accepted(self, campaign: CampaignRecord, correlation_id: str) -> HttpResult:
@@ -278,6 +266,23 @@ class CampaignHttpHandlers:
             not_found_code=ErrorCode.CAMPAIGN_NOT_FOUND,
             correlation_id=correlation_id,
         )
+
+    def _load(
+        self,
+        identity: AuthenticatedIdentity,
+        campaign_id: CampaignId,
+        correlation_id: str,
+    ) -> tuple[CampaignRecord | None, HttpResult | None]:
+        campaign, error = load_owned(
+            self._store,
+            identity,
+            campaign_id,
+            resource_name="campaign",
+            not_found_code=ErrorCode.CAMPAIGN_NOT_FOUND,
+            dependency_message="A campaign dependency is temporarily unavailable.",
+            correlation_id=correlation_id,
+        )
+        return CampaignRecord.model_validate(campaign) if campaign is not None else None, error
 
     def _dependency_error(self, correlation_id: str) -> HttpResult:
         return dependency_error("A campaign dependency is temporarily unavailable.", correlation_id)

@@ -4,17 +4,18 @@ from datetime import UTC, datetime, timedelta
 import pytest
 from pydantic import ValidationError
 
-from dungeon_agent.control_plane.agents.metrics import RoleMetricsCollector
 from dungeon_agent.control_plane.domain.enums import (
     CampaignPhase,
     CampaignStatus,
     EventType,
+    OpeningBlockKind,
 )
 from dungeon_agent.control_plane.domain.models import (
     CampaignCreationStartedPayload,
     CampaignEvent,
     CampaignId,
     CampaignRecord,
+    OpeningBlock,
     OpeningDocument,
 )
 from dungeon_agent.control_plane.identifiers import new_campaign_id
@@ -25,7 +26,6 @@ from dungeon_agent.control_plane.persistence.errors import (
 )
 from dungeon_agent.control_plane.persistence.memory import InMemoryCampaignRepository
 from dungeon_agent.control_plane.workflow.campaigns import DurableCampaignWorkflowStub
-from dungeon_agent.control_plane.workflow.sandbox import sandbox_opening
 
 NOW = datetime(2026, 7, 18, 21, 0, tzinfo=UTC)
 CAMPAIGN_ID: CampaignId = "cam_01J00000000000000000000000"
@@ -106,34 +106,6 @@ def test_campaign_event_validates_payload_and_round_trips() -> None:
             correlation_id="corr-campaign-test",
             payload=CampaignCreationStartedPayload(language="en"),
         )
-
-
-class _Sink:
-    def __init__(self) -> None:
-        self.records: list[tuple[int, int, float]] = []
-
-    def record(self, *, input_tokens: int, output_tokens: int, latency_ms: float) -> None:
-        self.records.append((input_tokens, output_tokens, latency_ms))
-
-
-def test_metrics_collector_aggregates_usage_and_counts_repairs() -> None:
-    sink = _Sink()
-    collector = RoleMetricsCollector(sink=sink)
-
-    collector.record(input_tokens=100, output_tokens=50, latency_ms=10.0)
-    collector.record(input_tokens=80, output_tokens=40, latency_ms=5.0)
-
-    snapshot = collector.snapshot("model-x")
-    assert snapshot.model_id == "model-x"
-    assert snapshot.calls == 2
-    assert snapshot.input_tokens == 180
-    assert snapshot.output_tokens == 90
-    assert snapshot.latency_ms == 15
-    assert snapshot.repairs == 1
-    assert sink.records == [(100, 50, 10.0), (80, 40, 5.0)]
-
-    collector.reset()
-    assert collector.snapshot("model-x").calls == 0
 
 
 def test_in_memory_campaign_create_is_owner_scoped_and_idempotent() -> None:
@@ -268,8 +240,8 @@ def test_mark_campaign_ready_persists_opening_title() -> None:
     repository = InMemoryCampaignRepository()
     campaign = make_campaign()
     repository.create(campaign, "create-request-001")
-    stub = DurableCampaignWorkflowStub(repository)
-    opening = sandbox_opening(campaign.language)
+    opening = _opening(campaign.language)
+    stub = DurableCampaignWorkflowStub(repository, openings=_OpeningLoader(opening))
 
     result = stub.handle(
         {
@@ -317,11 +289,11 @@ def test_emit_campaign_ready_reuses_stashed_opening() -> None:
 
         def load_opening(self, character_ref: str) -> OpeningDocument:
             self.calls += 1
-            return sandbox_opening("en")
+            return _opening("en")
 
     loader = CountingLoader()
     stub = DurableCampaignWorkflowStub(repository, openings=loader)
-    opening = sandbox_opening("en").model_copy(update={"title": "Stashed title"})
+    opening = _opening("en").model_copy(update={"title": "Stashed title"})
 
     stub.handle(
         {
@@ -340,6 +312,36 @@ def test_emit_campaign_ready_reuses_stashed_opening() -> None:
     assert loader.calls == 0
     events = repository.list_after(CAMPAIGN_ID, 0)
     assert events[-1].payload.opening.title == "Stashed title"  # type: ignore[union-attr]
+
+
+class _OpeningLoader:
+    def __init__(self, opening: OpeningDocument) -> None:
+        self._opening = opening
+
+    def load_opening(self, character_ref: str) -> OpeningDocument:
+        assert character_ref
+        return self._opening
+
+
+def _opening(language: str) -> OpeningDocument:
+    blocks = (
+        ("identity", OpeningBlockKind.IDENTITY, "You are Elia.", True),
+        ("motivation", OpeningBlockKind.MOTIVATION, "You seek your brother.", True),
+        ("knowledge_1", OpeningBlockKind.KNOWLEDGE, "The bell vanished.", True),
+        ("knowledge_2", OpeningBlockKind.KNOWLEDGE, "Mara saw lights.", True),
+        ("situation", OpeningBlockKind.SITUATION, "The tower is silent.", True),
+        ("action_1", OpeningBlockKind.POSSIBLE_ACTION, "Inspect the tower.", False),
+        ("action_2", OpeningBlockKind.POSSIBLE_ACTION, "Question Mara.", False),
+        ("action_3", OpeningBlockKind.POSSIBLE_ACTION, "Cross to the mill.", False),
+    )
+    return OpeningDocument(
+        language=language,  # type: ignore[arg-type]
+        title="The silent tower",
+        blocks=tuple(
+            OpeningBlock(id=block_id, position=index, kind=kind, text=text, narratable=narratable)
+            for index, (block_id, kind, text, narratable) in enumerate(blocks)
+        ),
+    )
 
 
 def _campaign_event(sequence: int, *, suffix: str) -> CampaignEvent:

@@ -114,20 +114,6 @@ class SessionRecord(ContractModel):
         return self
 
 
-class RoleGenerationMetrics(ContractModel):
-    model_id: str = Field(min_length=1, max_length=200)
-    calls: int = Field(ge=0)
-    input_tokens: int = Field(ge=0)
-    output_tokens: int = Field(ge=0)
-    latency_ms: int = Field(ge=0)
-    repairs: int = Field(ge=0)
-
-
-class CampaignGenerationMetrics(ContractModel):
-    adventure_architect: RoleGenerationMetrics | None = None
-    character_architect: RoleGenerationMetrics | None = None
-
-
 class CampaignRecord(ContractModel):
     schema_version: Literal[1] = 1
     campaign_id: CampaignId
@@ -142,7 +128,6 @@ class CampaignRecord(ContractModel):
     adventure_ref: ArtifactRef | None = None
     character_ref: ArtifactRef | None = None
     opening_title: str | None = None
-    generation: CampaignGenerationMetrics | None = None
     workflow_execution_arn: str | None = Field(default=None, min_length=20, max_length=2_048)
 
     @model_validator(mode="after")

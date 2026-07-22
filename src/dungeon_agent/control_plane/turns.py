@@ -1,6 +1,3 @@
-"""Authoritative player turns: Dungeon Master proposal, MicroVM ruling, durable events."""
-
-import time
 from collections.abc import Callable, Mapping
 from datetime import datetime
 from typing import Any, Literal, cast
@@ -17,7 +14,6 @@ from dungeon_agent.control_plane.domain.models import (
 )
 from dungeon_agent.control_plane.events import append_session_event, utc_now
 from dungeon_agent.control_plane.microvms.manager import TurnRejectedError
-from dungeon_agent.control_plane.telemetry.emf import EmfTelemetry
 
 Clock = Callable[[], datetime]
 
@@ -33,36 +29,22 @@ class TurnWorker:
         microvms: Any,
         *,
         delivery: Any | None = None,
-        telemetry: EmfTelemetry | None = None,
         clock: Clock | None = None,
-        monotonic: Callable[[], float] = time.monotonic,
     ) -> None:
         self._store = store
         self._snapshots = snapshots
         self._agent = agent
         self._microvms = microvms
         self._delivery = delivery
-        self._telemetry = telemetry
         self._clock = clock or utc_now
-        self._monotonic = monotonic
 
     def handle(self, raw_command: Mapping[str, object]) -> dict[str, object]:
         command = SubmitTurnCommand.model_validate(raw_command)
-        started = self._monotonic()
         try:
             outcome = self._run(command)
         except Exception as error:
             self._fail(command, error)
             return {"turnId": command.turn_id, "status": "failed"}
-        latency_ms = (self._monotonic() - started) * 1_000
-        if self._telemetry is not None and outcome != "skipped":
-            self._telemetry.phase(
-                "turn",
-                outcome,
-                latency_ms,
-                session_id=command.session_id,
-                correlation_id=command.correlation_id,
-            )
         return {"turnId": command.turn_id, "status": outcome}
 
     def _run(self, command: SubmitTurnCommand) -> str:
@@ -76,7 +58,7 @@ class TurnWorker:
             # The worker is invoked asynchronously; a duplicate delivery must not replay.
             return "skipped"
 
-        snapshot = self._snapshots.load(command.session_id)
+        snapshot = self._snapshots.load_snapshot(command.session_id)
         microvm_id = session.active_microvm_id
         if microvm_id is None:
             raise RuntimeError("active session has no MicroVM")
@@ -106,7 +88,7 @@ class TurnWorker:
             proposal = dungeon_master.adjudicate(command.action, world_prompt, str(error)[:500])
             world = self._microvms.apply_turn(microvm_id, command.action, proposal)
 
-        self._snapshots.save(command.session_id, world)
+        self._snapshots.save_snapshot(command.session_id, world)
         result = world.last_result
         if result is None:
             raise RuntimeError("MicroVM returned no turn result")

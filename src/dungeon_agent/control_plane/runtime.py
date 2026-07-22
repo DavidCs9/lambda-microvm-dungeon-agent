@@ -4,28 +4,27 @@ from importlib import import_module
 from typing import Any, cast
 
 from dungeon_agent.audio.polly import DEFAULT_VOICES, S3PollySpeechSynthesizer
-from dungeon_agent.control_plane.agents import (
+from dungeon_agent.control_plane.agents.bedrock import StructuredBedrockAgent
+from dungeon_agent.control_plane.agents.portrait import (
     DEFAULT_IMAGE_MODEL_ID,
     DEFAULT_IMAGE_REGION,
-    AdventureArchitect,
     BedrockPortraitGenerator,
+)
+from dungeon_agent.control_plane.agents.roles import (
+    AdventureArchitect,
     CharacterArchitect,
-    StructuredBedrockAgent,
 )
-from dungeon_agent.control_plane.agents.metrics import RoleMetricsCollector
 from dungeon_agent.control_plane.domain.models import SubmitTurnCommand
-from dungeon_agent.control_plane.http import (
-    ApiGatewayHttpAdapter,
-    CampaignHttpHandlers,
-    SessionHttpHandlers,
-    SpeechHttpHandlers,
-)
+from dungeon_agent.control_plane.http.api_gateway import ApiGatewayHttpAdapter
+from dungeon_agent.control_plane.http.campaigns import CampaignHttpHandlers
+from dungeon_agent.control_plane.http.sessions import SessionHttpHandlers
+from dungeon_agent.control_plane.http.speech import SpeechHttpHandlers
 from dungeon_agent.control_plane.microvms.manager import (
     LambdaMicrovmManager,
 )
-from dungeon_agent.control_plane.persistence.dynamodb import create_dynamodb_repository
-from dungeon_agent.control_plane.persistence.dynamodb_campaigns import (
+from dungeon_agent.control_plane.persistence.dynamodb import (
     create_dynamodb_campaign_repository,
+    create_dynamodb_repository,
 )
 from dungeon_agent.control_plane.realtime.api_gateway import ApiGatewayWebSocketAdapter
 from dungeon_agent.control_plane.realtime.delivery import BestEffortEventDelivery
@@ -33,25 +32,25 @@ from dungeon_agent.control_plane.realtime.dynamodb import (
     DynamoDbConnectionRepository,
 )
 from dungeon_agent.control_plane.realtime.service import RealtimeSessionService
-from dungeon_agent.control_plane.steps import (
-    AdventureStep,
-    CharacterStep,
-    DynamoDbAdventurePlans,
-    DynamoDbCharacterBundles,
-    DynamoDbWorldSnapshots,
-)
+from dungeon_agent.control_plane.steps.artifacts import ArtifactAggregate, DynamoDbArtifactStore
 from dungeon_agent.control_plane.steps.portraits import S3PortraitStore
-from dungeon_agent.control_plane.telemetry import EmfTelemetry
 from dungeon_agent.control_plane.turns import TurnWorker
-from dungeon_agent.control_plane.workflow import (
-    DurableCampaignWorkflowStub,
-    DurableSessionWorkflowStub,
-    StepFunctionsWorkflowStarter,
-)
+from dungeon_agent.control_plane.workflow.campaigns import DurableCampaignWorkflowStub
+from dungeon_agent.control_plane.workflow.step_functions import StepFunctionsWorkflowStarter
+from dungeon_agent.control_plane.workflow.stub import DurableSessionWorkflowStub
 
 
 def _boto3() -> Any:
     return import_module("boto3")
+
+
+def _client(service: str, **kwargs: Any) -> Any:
+    kwargs.setdefault("config", _CONFIG)
+    return _boto3().client(service, **kwargs)
+
+
+def _artifacts(table_name: str, aggregate: ArtifactAggregate = "SESSION") -> DynamoDbArtifactStore:
+    return DynamoDbArtifactStore(_client("dynamodb"), table_name, aggregate=aggregate)
 
 
 def _aws_config(**kwargs: Any) -> Any:
@@ -72,40 +71,18 @@ _TABLE_NAME = os.environ["TABLE_NAME"]
 _REPOSITORY = create_dynamodb_repository(_TABLE_NAME)
 _CAMPAIGN_TABLE_NAME = os.environ["CAMPAIGN_TABLE_NAME"]
 _CAMPAIGN_REPOSITORY = create_dynamodb_campaign_repository(_CAMPAIGN_TABLE_NAME)
-_TELEMETRY = EmfTelemetry("session-creation")
 _REGION = os.environ.get("AWS_REGION", "us-east-2")
 
-_CAMPAIGN_OPERATIONS = frozenset(
-    {
-        "ValidateCampaign",
-        "CreateCampaignRecord",
-        "GenerateAdventure",
-        "GenerateCharacter",
-        "MarkCampaignReady",
-        "EmitCampaignReady",
-        "MarkCampaignFailed",
-        "EmitCampaignCreationFailed",
-    }
-)
-
-
-class _AgentMetrics:
-    def __init__(self, operation: str) -> None:
-        self._operation = operation
-
-    def record(self, *, input_tokens: int, output_tokens: int, latency_ms: float) -> None:
-        _TELEMETRY.model(
-            self._operation,
-            "success",
-            latency_ms=latency_ms,
-            input_tokens=input_tokens,
-            output_tokens=output_tokens,
-        )
-
-
-class _MicrovmMetrics:
-    def record(self, operation: str, latency_ms: float) -> None:
-        _TELEMETRY.microvm(operation, "success", latency_ms)
+_CAMPAIGN_OPERATIONS = {
+    "ValidateCampaign",
+    "CreateCampaignRecord",
+    "GenerateAdventure",
+    "GenerateCharacter",
+    "MarkCampaignReady",
+    "EmitCampaignReady",
+    "MarkCampaignFailed",
+    "EmitCampaignCreationFailed",
+}
 
 
 class LambdaTurnWorkerInvoker:
@@ -125,7 +102,7 @@ def _management_client() -> Any:
     endpoint = os.environ.get("WS_MANAGEMENT_ENDPOINT")
     if endpoint is None:
         return None
-    return _boto3().client("apigatewaymanagementapi", endpoint_url=endpoint, config=_CONFIG)
+    return _client("apigatewaymanagementapi", endpoint_url=endpoint)
 
 
 def _connection_repository() -> DynamoDbConnectionRepository:
@@ -154,10 +131,9 @@ class _ApiGatewaySender:
 
 def _microvm_manager() -> LambdaMicrovmManager:
     return LambdaMicrovmManager(
-        _boto3().client("lambda-microvms", config=_CONFIG),
+        _client("lambda-microvms"),
         os.environ["MICROVM_IMAGE_NAME"],
         _REGION,
-        metrics=_MicrovmMetrics(),
     )
 
 
@@ -166,29 +142,22 @@ def _build_speech_handlers() -> SpeechHttpHandlers | None:
     if bucket is None:
         return None
     polly_region = os.environ.get("POLLY_REGION", "us-east-1")
-    polly = _boto3().client("polly", region_name=polly_region, config=_CONFIG)
+    polly = _client("polly", region_name=polly_region)
     # Regional endpoint so presigned URLs hit s3.<region>.amazonaws.com directly.
     # Global s3.amazonaws.com returns TemporaryRedirect (307), which breaks <audio> playback.
-    s3 = _boto3().client(
+    s3 = _client(
         "s3",
         region_name=_REGION,
         endpoint_url=f"https://s3.{_REGION}.amazonaws.com",
-        config=_CONFIG,
     )
-    synthesizer = S3PollySpeechSynthesizer(
-        polly,
-        s3,
-        bucket,
-        DEFAULT_VOICES,
-    )
-    return SpeechHttpHandlers(synthesizer)
+    return SpeechHttpHandlers(S3PollySpeechSynthesizer(polly, s3, bucket, DEFAULT_VOICES))
 
 
 def _build_portrait_store() -> S3PortraitStore | None:
     bucket = os.environ.get("SPEECH_CACHE_BUCKET")
     if bucket is None:
         return None
-    s3 = _boto3().client("s3", region_name=_REGION, config=_CONFIG)
+    s3 = _client("s3", region_name=_REGION)
     return S3PortraitStore(s3, bucket)
 
 
@@ -202,16 +171,13 @@ def _build_portrait_generator() -> BedrockPortraitGenerator | None:
         connect_timeout=10,
         read_timeout=300,
     )
-    bedrock_image = cast(
-        Any, _boto3().client("bedrock-runtime", region_name=image_region, config=image_config)
-    )
-    return BedrockPortraitGenerator(bedrock_image, model_id)
+    bedrock_image = _client("bedrock-runtime", region_name=image_region, config=image_config)
+    return BedrockPortraitGenerator(cast(Any, bedrock_image), model_id)
 
 
 def _build_http_adapter() -> ApiGatewayHttpAdapter:
-    client = _boto3().client("stepfunctions", config=_CONFIG)
     starter = StepFunctionsWorkflowStarter(
-        client,
+        _client("stepfunctions"),
         os.environ["STATE_MACHINE_ARN"],
         campaign_state_machine_arn=os.environ["CAMPAIGN_STATE_MACHINE_ARN"],
     )
@@ -223,13 +189,10 @@ def _build_http_adapter() -> ApiGatewayHttpAdapter:
         delivery=_build_delivery(),
         microvms=_microvm_manager() if "MICROVM_IMAGE_NAME" in os.environ else None,
     )
-    artifact_client = _boto3().client("dynamodb", config=_CONFIG)
     campaigns = CampaignHttpHandlers(
         _CAMPAIGN_REPOSITORY,
         starter,
-        openings=DynamoDbCharacterBundles(
-            artifact_client, _CAMPAIGN_TABLE_NAME, aggregate="CAMPAIGN"
-        ),
+        openings=_artifacts(_CAMPAIGN_TABLE_NAME, "CAMPAIGN"),
         portrait_presigner=_build_portrait_store(),
     )
     return ApiGatewayHttpAdapter(
@@ -244,7 +207,7 @@ def _build_turn_invoker() -> LambdaTurnWorkerInvoker | None:
     function_name = os.environ.get("TURN_WORKER_FUNCTION_NAME")
     if function_name is None:
         return None
-    return LambdaTurnWorkerInvoker(_boto3().client("lambda", config=_CONFIG), function_name)
+    return LambdaTurnWorkerInvoker(_client("lambda"), function_name)
 
 
 _HTTP_ADAPTER = (
@@ -254,33 +217,28 @@ _HTTP_ADAPTER = (
 )
 
 
-def _structured_agent(operation: str, metrics: Any | None = None) -> StructuredBedrockAgent:
+def _structured_agent() -> StructuredBedrockAgent:
     return StructuredBedrockAgent(
-        cast(Any, _boto3().client("bedrock-runtime", config=_BEDROCK_CONFIG)),
+        cast(Any, _client("bedrock-runtime", config=_BEDROCK_CONFIG)),
         os.environ["BEDROCK_MODEL_ID"],
-        metrics if metrics is not None else _AgentMetrics(operation),
     )
 
 
 def _build_workflow() -> DurableSessionWorkflowStub:
-    image_name = os.environ.get("MICROVM_IMAGE_NAME")
-    if image_name is None:
+    if "MICROVM_IMAGE_NAME" not in os.environ:
         return DurableSessionWorkflowStub(_REPOSITORY, delivery=_build_delivery())
 
-    artifact_client = _boto3().client("dynamodb", config=_CONFIG)
+    session_artifacts = _artifacts(_TABLE_NAME)
+    campaign_artifacts = _artifacts(_CAMPAIGN_TABLE_NAME, "CAMPAIGN")
     return DurableSessionWorkflowStub(
         _REPOSITORY,
         campaigns=_CAMPAIGN_REPOSITORY,
-        campaign_adventures=DynamoDbAdventurePlans(
-            artifact_client, _CAMPAIGN_TABLE_NAME, aggregate="CAMPAIGN"
-        ),
-        campaign_characters=DynamoDbCharacterBundles(
-            artifact_client, _CAMPAIGN_TABLE_NAME, aggregate="CAMPAIGN"
-        ),
-        adventures=DynamoDbAdventurePlans(artifact_client, _TABLE_NAME),
-        characters=DynamoDbCharacterBundles(artifact_client, _TABLE_NAME),
+        campaign_adventures=campaign_artifacts,
+        campaign_characters=campaign_artifacts,
+        adventures=session_artifacts,
+        characters=session_artifacts,
         microvms=_microvm_manager(),
-        snapshots=DynamoDbWorldSnapshots(artifact_client, _TABLE_NAME),
+        snapshots=session_artifacts,
         delivery=_build_delivery(),
     )
 
@@ -296,30 +254,16 @@ def _build_campaign_workflow() -> DurableCampaignWorkflowStub:
             delivery=_build_delivery(),
         )
 
-    artifact_client = _boto3().client("dynamodb", config=_CONFIG)
-    adventures = DynamoDbAdventurePlans(artifact_client, _CAMPAIGN_TABLE_NAME, aggregate="CAMPAIGN")
-    characters = DynamoDbCharacterBundles(
-        artifact_client, _CAMPAIGN_TABLE_NAME, aggregate="CAMPAIGN"
-    )
-    adventure_metrics = RoleMetricsCollector(_AgentMetrics("AdventureArchitect"))
-    character_metrics = RoleMetricsCollector(_AgentMetrics("CharacterArchitect"))
+    artifacts = _artifacts(_CAMPAIGN_TABLE_NAME, "CAMPAIGN")
     return DurableCampaignWorkflowStub(
         _CAMPAIGN_REPOSITORY,
-        adventure_step=AdventureStep(
-            AdventureArchitect(_structured_agent("AdventureArchitect", adventure_metrics)),
-            adventures,
-        ),
-        character_step=CharacterStep(
-            CharacterArchitect(_structured_agent("CharacterArchitect", character_metrics)),
-            adventures,
-            characters,
-            portrait_generator=_build_portrait_generator(),
-            portrait_store=_build_portrait_store(),
-        ),
-        openings=characters,
-        adventure_metrics=adventure_metrics,
-        character_metrics=character_metrics,
-        model_id=model_id,
+        adventure_architect=AdventureArchitect(_structured_agent()),
+        character_architect=CharacterArchitect(_structured_agent()),
+        adventures=artifacts,
+        characters=artifacts,
+        openings=artifacts,
+        portrait_generator=_build_portrait_generator(),
+        portrait_store=_build_portrait_store(),
         delivery=_build_delivery(),
     )
 
@@ -328,14 +272,12 @@ _CAMPAIGN_WORKFLOW = _build_campaign_workflow()
 
 
 def _build_turn_worker() -> TurnWorker:
-    artifact_client = _boto3().client("dynamodb", config=_CONFIG)
     return TurnWorker(
         _REPOSITORY,
-        DynamoDbWorldSnapshots(artifact_client, _TABLE_NAME),
-        _structured_agent("DungeonMaster"),
+        _artifacts(_TABLE_NAME),
+        _structured_agent(),
         _microvm_manager(),
         delivery=_build_delivery(),
-        telemetry=_TELEMETRY,
     )
 
 
@@ -343,7 +285,7 @@ _TURN_WORKER = _build_turn_worker() if "BEDROCK_MODEL_ID" in os.environ else Non
 
 
 def _build_websocket_adapter(endpoint: str) -> ApiGatewayWebSocketAdapter:
-    client = _boto3().client("apigatewaymanagementapi", endpoint_url=endpoint, config=_CONFIG)
+    client = _client("apigatewaymanagementapi", endpoint_url=endpoint)
     connections = _connection_repository()
     service = RealtimeSessionService(
         connections,

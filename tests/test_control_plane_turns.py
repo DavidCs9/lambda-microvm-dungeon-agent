@@ -95,10 +95,10 @@ class FakeSnapshots:
         self.world = world
         self.saved: list[WorldState] = []
 
-    def save(self, session_id: SessionId, world: WorldState) -> None:
+    def save_snapshot(self, session_id: SessionId, world: WorldState) -> None:
         self.saved.append(world)
 
-    def load(self, session_id: SessionId) -> WorldState:
+    def load_snapshot(self, session_id: SessionId) -> WorldState:
         return self.world
 
 
@@ -293,7 +293,7 @@ def test_worker_failure_returns_the_session_to_ready() -> None:
     )
 
     class BrokenSnapshots(FakeSnapshots):
-        def load(self, session_id: SessionId) -> WorldState:
+        def load_snapshot(self, session_id: SessionId) -> WorldState:
             raise LookupError("missing snapshot")
 
     worker = TurnWorker(

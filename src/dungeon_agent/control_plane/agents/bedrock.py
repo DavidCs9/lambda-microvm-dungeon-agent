@@ -1,5 +1,3 @@
-"""Schema-validated Amazon Bedrock Converse adapter."""
-
 from __future__ import annotations
 
 import time
@@ -17,7 +15,7 @@ class StructuredBedrockAgent:
         self,
         client: Any,
         model_id: str,
-        metrics: Any,
+        metrics: Any | None = None,
     ) -> None:
         self.client = client
         self.model_id = model_id
@@ -92,12 +90,13 @@ class StructuredBedrockAgent:
                 "agent_role": tool_name,
             },
         )
-        usage = response["usage"]
-        self.metrics.record(
-            input_tokens=usage["inputTokens"],
-            output_tokens=usage["outputTokens"],
-            latency_ms=(time.perf_counter() - started) * 1_000,
-        )
+        if self.metrics is not None:
+            usage = response["usage"]
+            self.metrics.record(
+                input_tokens=usage["inputTokens"],
+                output_tokens=usage["outputTokens"],
+                latency_ms=(time.perf_counter() - started) * 1_000,
+            )
         content = response["output"]["message"]["content"]
         for block in content:
             tool_use = block.get("toolUse")

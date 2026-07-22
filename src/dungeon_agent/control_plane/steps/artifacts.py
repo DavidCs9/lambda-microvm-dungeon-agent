@@ -8,7 +8,7 @@ AttributeValue = dict[str, str]
 ArtifactAggregate = Literal["SESSION", "CAMPAIGN"]
 
 
-class DynamoDbAdventurePlans:
+class DynamoDbArtifactStore:
     def __init__(
         self,
         client: Any,
@@ -20,25 +20,82 @@ class DynamoDbAdventurePlans:
         self._table_name = table_name
         self._aggregate = aggregate
 
-    def save(self, aggregate_id: str, adventure: AdventurePlan) -> str:
-        kind = "ADVENTURE"
-        self._put(_partition_key(self._aggregate, aggregate_id), kind, adventure.model_dump_json())
-        return _reference(self._aggregate, aggregate_id, kind)
+    def save_adventure(self, aggregate_id: str, adventure: AdventurePlan) -> str:
+        self._put(
+            _partition_key(self._aggregate, aggregate_id),
+            "ADVENTURE",
+            {"document": _string(adventure.model_dump_json())},
+        )
+        return _reference(self._aggregate, aggregate_id, "ADVENTURE")
 
-    def load(self, adventure_ref: str) -> AdventurePlan:
-        partition_key, kind = _parse_reference(adventure_ref)
-        if kind != "ADVENTURE":
-            raise ValueError("reference does not point to an adventure")
-        return AdventurePlan.model_validate_json(self._get(partition_key, kind, "document"))
+    def load_adventure(self, adventure_ref: str) -> AdventurePlan:
+        partition_key = self._partition_key_for(adventure_ref, "ADVENTURE")
+        return AdventurePlan.model_validate_json(self._get(partition_key, "ADVENTURE", "document"))
 
-    def _put(self, partition_key: str, kind: str, document: str) -> None:
+    def save_character(
+        self,
+        aggregate_id: str,
+        character: PlayerCharacter,
+        opening: OpeningDocument,
+        portrait_key: str | None = None,
+    ) -> str:
+        item: dict[str, AttributeValue] = {
+            "document": _string(character.model_dump_json()),
+            "opening": _string(opening.model_dump_json(by_alias=True)),
+        }
+        if self._aggregate == "CAMPAIGN" and portrait_key is not None:
+            item["portraitKey"] = _string(portrait_key)
+        self._put(_partition_key(self._aggregate, aggregate_id), "CHARACTER", item)
+        return _reference(self._aggregate, aggregate_id, "CHARACTER")
+
+    def load_character(self, character_ref: str) -> PlayerCharacter:
+        partition_key = self._partition_key_for(character_ref, "CHARACTER")
+        return PlayerCharacter.model_validate_json(
+            self._get(partition_key, "CHARACTER", "document")
+        )
+
+    def load_opening(self, character_ref: str) -> OpeningDocument:
+        partition_key = self._partition_key_for(character_ref, "CHARACTER")
+        return OpeningDocument.model_validate_json(self._get(partition_key, "CHARACTER", "opening"))
+
+    def load_portrait_key(self, character_ref: str) -> str | None:
+        try:
+            partition_key = self._partition_key_for(character_ref, "CHARACTER")
+            return self._get(partition_key, "CHARACTER", "portraitKey")
+        except LookupError, RuntimeError:
+            return None
+
+    def save_snapshot(self, session_id: SessionId, world: WorldState) -> None:
+        self._client.put_item(
+            TableName=self._table_name,
+            Item={
+                "PK": _string(f"SESSION#{session_id}"),
+                "SK": _string("ARTIFACT#SNAPSHOT"),
+                "entityType": _string("SNAPSHOT"),
+                "revision": {"N": str(world.revision)},
+                "document": _string(world.model_dump_json()),
+            },
+        )
+
+    def load_snapshot(self, session_id: SessionId) -> WorldState:
+        return WorldState.model_validate_json(
+            self._get(f"SESSION#{session_id}", "SNAPSHOT", "document")
+        )
+
+    def _partition_key_for(self, reference: str, expected_kind: str) -> str:
+        partition_key, kind = _parse_reference(reference)
+        if kind != expected_kind:
+            raise ValueError(f"reference does not point to a {expected_kind.lower()}")
+        return partition_key
+
+    def _put(self, partition_key: str, kind: str, item: dict[str, AttributeValue]) -> None:
         self._client.put_item(
             TableName=self._table_name,
             Item={
                 "PK": _string(partition_key),
                 "SK": _string(f"ARTIFACT#{kind}"),
                 "entityType": _string(kind),
-                "document": _string(document),
+                **item,
             },
         )
 
@@ -52,94 +109,6 @@ class DynamoDbAdventurePlans:
             ConsistentRead=True,
         )
         return _read_string(response, field)
-
-
-class DynamoDbCharacterBundles:
-    def __init__(
-        self,
-        client: Any,
-        table_name: str,
-        *,
-        aggregate: ArtifactAggregate = "SESSION",
-    ) -> None:
-        self._client = client
-        self._table_name = table_name
-        self._aggregate = aggregate
-
-    def save(
-        self,
-        aggregate_id: str,
-        character: PlayerCharacter,
-        opening: OpeningDocument,
-        portrait_key: str | None = None,
-    ) -> str:
-        kind = "CHARACTER"
-        item: dict[str, AttributeValue] = {
-            "PK": _string(_partition_key(self._aggregate, aggregate_id)),
-            "SK": _string(f"ARTIFACT#{kind}"),
-            "entityType": _string(kind),
-            "document": _string(character.model_dump_json()),
-            "opening": _string(opening.model_dump_json(by_alias=True)),
-        }
-        if self._aggregate == "CAMPAIGN" and portrait_key is not None:
-            item["portraitKey"] = _string(portrait_key)
-        self._client.put_item(TableName=self._table_name, Item=item)
-        return _reference(self._aggregate, aggregate_id, kind)
-
-    def load_character(self, character_ref: str) -> PlayerCharacter:
-        return PlayerCharacter.model_validate_json(self._get(character_ref, "document"))
-
-    def load_opening(self, character_ref: str) -> OpeningDocument:
-        return OpeningDocument.model_validate_json(self._get(character_ref, "opening"))
-
-    def load_portrait_key(self, character_ref: str) -> str | None:
-        try:
-            return self._get(character_ref, "portraitKey")
-        except LookupError, RuntimeError:
-            return None
-
-    def _get(self, reference: str, field: str) -> str:
-        partition_key, kind = _parse_reference(reference)
-        if kind != "CHARACTER":
-            raise ValueError("reference does not point to a character")
-        response = self._client.get_item(
-            TableName=self._table_name,
-            Key={
-                "PK": _string(partition_key),
-                "SK": _string(f"ARTIFACT#{kind}"),
-            },
-            ConsistentRead=True,
-        )
-        return _read_string(response, field)
-
-
-class DynamoDbWorldSnapshots:
-    def __init__(self, client: Any, table_name: str) -> None:
-        self._client = client
-        self._table_name = table_name
-
-    def save(self, session_id: SessionId, world: WorldState) -> None:
-        self._client.put_item(
-            TableName=self._table_name,
-            Item={
-                "PK": _string(f"SESSION#{session_id}"),
-                "SK": _string("ARTIFACT#SNAPSHOT"),
-                "entityType": _string("SNAPSHOT"),
-                "revision": {"N": str(world.revision)},
-                "document": _string(world.model_dump_json()),
-            },
-        )
-
-    def load(self, session_id: SessionId) -> WorldState:
-        response = self._client.get_item(
-            TableName=self._table_name,
-            Key={
-                "PK": _string(f"SESSION#{session_id}"),
-                "SK": _string("ARTIFACT#SNAPSHOT"),
-            },
-            ConsistentRead=True,
-        )
-        return WorldState.model_validate_json(_read_string(response, "document"))
 
 
 def _partition_key(aggregate: ArtifactAggregate, aggregate_id: str) -> str:

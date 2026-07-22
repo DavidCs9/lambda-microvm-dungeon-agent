@@ -1,6 +1,6 @@
 from collections.abc import Callable, Mapping
 from datetime import UTC, datetime
-from typing import Any, cast
+from typing import Any, NoReturn, cast
 
 from dungeon_agent.control_plane.domain.enums import (
     CampaignStatus,
@@ -20,8 +20,8 @@ from dungeon_agent.control_plane.domain.models import (
     SessionRecord,
 )
 from dungeon_agent.control_plane.events import append_session_event
-from dungeon_agent.control_plane.workflow.sandbox import sandbox_opening
-from dungeon_agent.control_plane.workflow.util import parse_time, required_string, wire_time
+from dungeon_agent.control_plane.workflow.runner import prepare_run
+from dungeon_agent.control_plane.workflow.util import required_string, wire_time
 from dungeon_agent.domain.game import LanguageCode
 
 Clock = Callable[[], datetime]
@@ -54,25 +54,22 @@ class DurableSessionWorkflowStub:
         self._clock = clock or (lambda: datetime.now(UTC))
 
     def handle(self, event: Mapping[str, object]) -> dict[str, object]:
-        operation = required_string(event, "operation")
-        raw_state = event.get("state")
-        if not isinstance(raw_state, Mapping):
-            raise ValueError("workflow state must be an object")
-        if operation == "ValidateSession":
-            CreateSessionWorkflowInput.model_validate(raw_state)
-        state = dict(raw_state)
-        now = self._clock()
-        workflow_arn = required_string(event, "workflowExecutionArn")
-        entered_at = parse_time(required_string(event, "stateEnteredAt"))
-
-        state["workflowExecutionArn"] = workflow_arn
-        state["updatedAt"] = wire_time(now)
-        timestamps = dict(state.get("taskTimestamps", {}))
-        timestamps[operation] = {
-            "startedAt": wire_time(entered_at),
-            "completedAt": wire_time(now),
-        }
-        state["taskTimestamps"] = timestamps
+        run = prepare_run(
+            event,
+            self._clock,
+            validate=(
+                CreateSessionWorkflowInput.model_validate
+                if event.get("operation") == "ValidateSession"
+                else None
+            ),
+        )
+        operation, state, now, workflow_arn, entered_at = (
+            run.operation,
+            run.state,
+            run.now,
+            run.workflow_arn,
+            run.entered_at,
+        )
 
         if operation == "CreateSessionRecord":
             session = self._update_session(
@@ -94,7 +91,7 @@ class DurableSessionWorkflowStub:
         if isinstance(raw_phase, str):
             phase = SessionPhase(raw_phase)
             session = self._update_session(state, phase=phase, workflow_arn=workflow_arn)
-            phase_timestamps = dict(state.get("phaseTimestamps", {}))
+            phase_timestamps = dict(cast(Mapping[str, object], state.get("phaseTimestamps", {})))
             phase_timestamps[phase.value] = wire_time(entered_at)
             state["phaseTimestamps"] = phase_timestamps
             state["phase"] = phase.value
@@ -113,11 +110,9 @@ class DurableSessionWorkflowStub:
 
         if operation == "LaunchMicrovm":
             if self._microvms is None:
-                state["microvmRef"] = "sandbox-microvm"
-            else:
-                session_id: SessionId = required_string(state, "sessionId")
-                launched = self._microvms.launch(session_id)
-                state["microvmRef"] = launched.microvm_id
+                _missing("MicroVM manager")
+            session_id: SessionId = required_string(state, "sessionId")
+            state["microvmRef"] = self._microvms.launch(session_id).microvm_id
         elif operation == "ForkCampaignIntoSession":
             if (
                 self._campaigns is None
@@ -126,23 +121,20 @@ class DurableSessionWorkflowStub:
                 or self._adventures is None
                 or self._characters is None
             ):
-                state["adventureRef"] = "sandbox://adventure"
-                state["characterRef"] = "sandbox://character"
-            else:
-                self._fork_campaign(state)
+                _missing("campaign/session artifact stores")
+            self._fork_campaign(state)
         elif operation == "InitializeMicrovmGame":
             if self._microvms is None or self._adventures is None or self._characters is None:
-                state["stateRevision"] = 0
-            else:
-                world = self._microvms.initialize(
-                    required_string(state, "microvmRef"),
-                    cast(LanguageCode, required_string(state, "language")),
-                    self._adventures.load(required_string(state, "adventureRef")),
-                    self._characters.load_character(required_string(state, "characterRef")),
-                )
-                state["stateRevision"] = world.revision
-                if self._snapshots is not None:
-                    self._snapshots.save(required_string(state, "sessionId"), world)
+                _missing("MicroVM manager and artifact stores")
+            world = self._microvms.initialize(
+                required_string(state, "microvmRef"),
+                cast(LanguageCode, required_string(state, "language")),
+                self._adventures.load_adventure(required_string(state, "adventureRef")),
+                self._characters.load_character(required_string(state, "characterRef")),
+            )
+            state["stateRevision"] = world.revision
+            if self._snapshots is not None:
+                self._snapshots.save_snapshot(required_string(state, "sessionId"), world)
         elif operation == "MarkSessionReady":
             session = self._update_session(
                 state,
@@ -155,11 +147,9 @@ class DurableSessionWorkflowStub:
             state["phase"] = session.phase.value
         elif operation == "EmitSessionReady":
             session = self._required_session(state)
-            opening = (
-                sandbox_opening(session.language)
-                if self._characters is None
-                else self._characters.load_opening(required_string(state, "characterRef"))
-            )
+            if self._characters is None:
+                _missing("session character store")
+            opening = self._characters.load_opening(required_string(state, "characterRef"))
             append_session_event(
                 self._store,
                 self._delivery,
@@ -221,11 +211,11 @@ class DurableSessionWorkflowStub:
         if campaign.adventure_ref is None or campaign.character_ref is None:
             raise ValueError(f"campaign is missing artifacts: {campaign_id}")
         session_id: SessionId = required_string(state, "sessionId")
-        adventure = self._campaign_adventures.load(campaign.adventure_ref)
+        adventure = self._campaign_adventures.load_adventure(campaign.adventure_ref)
         character = self._campaign_characters.load_character(campaign.character_ref)
         opening = self._campaign_characters.load_opening(campaign.character_ref)
-        state["adventureRef"] = self._adventures.save(session_id, adventure)
-        state["characterRef"] = self._characters.save(session_id, character, opening)
+        state["adventureRef"] = self._adventures.save_adventure(session_id, adventure)
+        state["characterRef"] = self._characters.save_character(session_id, character, opening)
         state["campaignRevision"] = campaign.revision
 
     def _required_session(self, state: Mapping[str, object]) -> SessionRecord:
@@ -258,3 +248,7 @@ class DurableSessionWorkflowStub:
         validated = SessionRecord.model_validate(updated)
         saved = self._store.save(validated, expected_revision=current.revision)
         return SessionRecord.model_validate(saved)
+
+
+def _missing(dependency: str) -> NoReturn:
+    raise RuntimeError(f"{dependency} is not configured for this workflow operation")

@@ -1,12 +1,9 @@
-"""Framework-neutral agent roles backed by a structured model adapter."""
-
 import json
 import secrets
 from typing import Any, cast
 
 from dungeon_agent.domain.game import AdventurePlan, LanguageCode, PlayerCharacter, TurnProposal
 
-# Injected into each adventure prompt so campaigns do not collapse to one premise.
 ADVENTURE_THEME_SEEDS: tuple[str, ...] = (
     "a floating market that drifts overnight",
     "a glass greenhouse trapped in perpetual dusk",
@@ -15,23 +12,9 @@ ADVENTURE_THEME_SEEDS: tuple[str, ...] = (
     "a lighthouse that points inland instead of to sea",
     "a traveling theater missing its lead mask",
     "a bridge toll that demands memories, not coin",
-    "a bakery whose bread reveals stolen secrets",
-    "an orchard where the fruit ripens backward",
-    "a ferry stuck between two dawns",
-    "a clockmaker's attic full of unfinished hours",
-    "a desert caravan guarding a single wet stone",
-    "a flooded archive of banned lullabies",
-    "a mountain pass gated by a polite golem",
-    "a harbor where ships arrive before they leave",
-    "a school of mirrors that refuse reflections",
-    "a vineyard cursed to ferment fear",
-    "a hot-air balloon race sabotaged midair",
     "a river that bargains for names",
-    "an abandoned observatory aimed at the wrong sky",
 )
 
-# Injected into each character prompt so protagonists do not collapse to one gender.
-# (es, en) pairs; weights keep masculine and feminine common, with occasional neutral.
 CHARACTER_PRONOUN_SEEDS: tuple[tuple[str, str], ...] = (
     ("él / lo", "he/him"),
     ("él / lo", "he/him"),
@@ -46,8 +29,6 @@ def _language_name(language: LanguageCode) -> str:
 
 
 class AdventureArchitect:
-    """Create one small, replayable adventure for a new session."""
-
     def __init__(self, agent: Any) -> None:
         self.agent = agent
 
@@ -56,26 +37,14 @@ class AdventureArchitect:
         theme = theme_seed if theme_seed is not None else secrets.choice(ADVENTURE_THEME_SEEDS)
         result = self.agent.invoke(
             system=(
-                "You design compact tabletop fantasy one-shots. Create coherent, playful "
-                "adventures that support improvisation and at least three meaningfully different "
-                "solutions. Keep the lore simple enough to understand immediately. IDs must be "
-                "lowercase ASCII snake_case. Every exit must reference a declared location. Do not "
-                "copy commercial settings, characters, or stories. Vary premise, setting, and "
-                "conflict widely across requests; never default to a silenced village bell, quiet "
-                "tower, or missing clapper. Players read this on a small screen: every location, "
-                "character, and item description must be one short sentence, 120 characters or "
-                "fewer. The opening must be at most two sentences and 180 characters."
+                "Design a compact fantasy one-shot with simple lore, declared exits, lowercase "
+                "snake_case IDs, and at least three real solution paths. Do not copy commercial "
+                "fiction or default to a silent bell/tower. Keep descriptions one short sentence."
             ),
             prompt=(
-                f"Create a brand-new 10 to 15 minute adventure entirely in {language_name}. "
-                f"Anchor the premise around this seed (reinterpret freely, do not quote it "
-                f"literally): {theme}. "
-                "Give it one clear objective, 3 to 5 connected locations, 1 or 2 characters with "
-                "useful motivations, a few usable items, and secrets that permit clever solutions. "
-                "The opening must state the immediate situation and objective without solving it, "
-                "in at most two sentences and 180 characters. Populate every field in the tool, "
-                "including secrets and max_turns. Keep every location, character, and item "
-                "description to one short sentence of 120 characters or fewer."
+                f"Create a new 10-15 minute adventure in {language_name}, inspired by: {theme}. "
+                "Include one objective, 3-5 connected locations, 1-2 motivated NPCs, useful "
+                "items, secrets, max_turns, and a two-sentence opening under 180 characters."
             ),
             tool_name="create_adventure",
             tool_description="Return the complete validated adventure plan.",
@@ -87,45 +56,25 @@ class AdventureArchitect:
 
 
 class CharacterArchitect:
-    """Create a protagonist with strong reasons to inhabit the generated world."""
-
     def __init__(self, agent: Any) -> None:
         self.agent = agent
 
     def create(
-        self,
-        language: LanguageCode,
-        adventure: AdventurePlan,
-        *,
-        pronoun_seed: str | None = None,
+        self, language: LanguageCode, adventure: AdventurePlan, *, pronoun_seed: str | None = None
     ) -> PlayerCharacter:
         language_name = _language_name(language)
         pronouns = pronoun_seed if pronoun_seed is not None else _pronoun_seed(language)
         result = self.agent.invoke(
             system=(
-                "You design memorable player characters for short tabletop role-playing games. "
-                "Create a person the player can inhabit, not a generic class or a long biography. "
-                "Every detail must create a playable decision, emotional stake, relationship, or "
-                "useful approach. Connect the protagonist tightly to the supplied adventure "
-                "without revealing its secrets. Give the player room to choose their personality "
-                "and actions. The three opening choices must represent investigation, social "
-                "interaction, and a risky direct approach; they are examples, never restrictions. "
-                "Players read this on a small screen: every prose field is exactly one short "
-                "sentence, never a list of clauses. appearance is 120 characters or fewer; "
-                "background is 200 characters or fewer; every other prose field is 160 characters "
-                "or fewer. Each known_facts entry is a single fact of 80 characters or fewer. Each "
-                "opening_choices entry is a short verb phrase of 40 characters or fewer, such as "
-                "'Question Mara' or 'Inspect the tower'. "
-                "Vary gender and presentation across requests; never default to feminine. "
-                "Do not copy characters or settings from commercial fiction."
+                "Design one playable protagonist tightly tied to the adventure without revealing "
+                "secrets. Keep prose short, vary gender/presentation, avoid commercial fiction, "
+                "and make the three opening choices investigative, social, and risky."
             ),
             prompt=json.dumps(
                 {
                     "instruction": (
-                        f"Create one protagonist entirely in {language_name}. The player must "
-                        "immediately understand who they are, what they want, why this objective "
-                        "matters personally, what they already know, and three different ways to "
-                        "begin. Keep the complete character briefing concise and playable. "
+                        f"Create one concise protagonist in {language_name}: identity, desire, "
+                        "personal stake, known facts, and three ways to begin. "
                         f"Put exactly these pronouns in the pronouns field: {pronouns}. "
                         "Align name, appearance, and grammar with that identity."
                     ),
@@ -149,8 +98,6 @@ def _pronoun_seed(language: LanguageCode) -> str:
 
 
 class DungeonMaster:
-    """Interpret a free-form player action into two validated outcome branches."""
-
     def __init__(self, agent: Any, language: LanguageCode) -> None:
         self.agent = agent
         self.language = language
@@ -164,16 +111,9 @@ class DungeonMaster:
         language_name = _language_name(self.language)
         result = self.agent.invoke(
             system=(
-                "You are a fair, energetic tabletop dungeon master. Reward creative ideas and "
-                "allow plausible approaches that were not anticipated by the adventure author. "
-                "Use a d20 roll only when an action is risky or uncertain; obvious actions succeed "
-                "automatically. A difficulty of 8 is easy, 12 moderate, 15 hard, and 18 extreme. "
-                "Never claim state changes only in narration: encode every location, item, fact, "
-                "health, or victory change in the matching changes object. Only use declared IDs. "
-                "Summarize intent in fewer than 200 characters. Set objective_complete only when "
-                "the stated objective is genuinely accomplished. Failures should move the story "
-                "forward with a consequence, not simply reject the idea. Keep each narration to "
-                "1 to 3 vivid sentences and never act for the player."
+                "Be a fair, energetic dungeon master. Roll only for risky actions, encode every "
+                "state change in changes using declared IDs, move failures forward, set victory "
+                "only when earned, and keep narration to 1-3 vivid sentences."
             ),
             prompt=json.dumps(
                 {

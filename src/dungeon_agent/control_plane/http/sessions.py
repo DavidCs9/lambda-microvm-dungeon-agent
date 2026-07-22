@@ -24,7 +24,9 @@ from dungeon_agent.control_plane.http.errors import (
     Clock,
     dependency_error,
     error_result,
+    load_owned,
     owner_access_error,
+    replay_events,
     utc_now,
 )
 from dungeon_agent.control_plane.http.models import (
@@ -340,13 +342,9 @@ class SessionHttpHandlers:
         *,
         correlation_id: str,
     ) -> HttpResult:
-        try:
-            session = self._store.get(session_id)
-        except Exception:
-            return self._dependency_error(correlation_id)
-        access_error = self._access_error(identity, session, correlation_id)
-        if access_error is not None:
-            return access_error
+        session, error = self._load(identity, session_id, correlation_id)
+        if error is not None:
+            return error
         assert session is not None
         return HttpResult(
             status_code=200,
@@ -362,26 +360,20 @@ class SessionHttpHandlers:
         after: int,
         correlation_id: str,
     ) -> HttpResult:
-        try:
-            session = self._store.get(session_id)
-        except Exception:
-            return self._dependency_error(correlation_id)
-        access_error = self._access_error(identity, session, correlation_id)
-        if access_error is not None:
-            return access_error
-        try:
-            events = self._store.list_after(session_id, after)
-        except Exception:
-            return self._dependency_error(correlation_id)
-        next_sequence = events[-1].sequence if events else after
-        return HttpResult(
-            status_code=200,
-            body=EventListEnvelope(
+        _session, error = self._load(identity, session_id, correlation_id)
+        if error is not None:
+            return error
+        return replay_events(
+            self._store,
+            session_id,
+            after=after,
+            correlation_id=correlation_id,
+            dependency_message="A session dependency is temporarily unavailable.",
+            envelope=lambda events, next_sequence: EventListEnvelope(
                 session_id=session_id,
                 events=events,
                 next_sequence=next_sequence,
             ),
-            correlation_id=correlation_id,
         )
 
     def list_active_sessions(
@@ -519,6 +511,23 @@ class SessionHttpHandlers:
             not_found_code=ErrorCode.SESSION_NOT_FOUND,
             correlation_id=correlation_id,
         )
+
+    def _load(
+        self,
+        identity: AuthenticatedIdentity,
+        session_id: SessionId,
+        correlation_id: str,
+    ) -> tuple[SessionRecord | None, HttpResult | None]:
+        session, error = load_owned(
+            self._store,
+            identity,
+            session_id,
+            resource_name="session",
+            not_found_code=ErrorCode.SESSION_NOT_FOUND,
+            dependency_message="A session dependency is temporarily unavailable.",
+            correlation_id=correlation_id,
+        )
+        return SessionRecord.model_validate(session) if session is not None else None, error
 
     def _dependency_error(self, correlation_id: str) -> HttpResult:
         return dependency_error("A session dependency is temporarily unavailable.", correlation_id)

@@ -2,25 +2,12 @@ class PersistenceConflictError(RuntimeError):
     pass
 
 
-class SessionAlreadyExistsError(PersistenceConflictError):
-    pass
+AlreadyExistsError = PersistenceConflictError
+RevisionConflictError = PersistenceConflictError
+EventSequenceConflictError = PersistenceConflictError
 
-
-class SessionRevisionConflictError(PersistenceConflictError):
-    pass
-
-
-class EventSequenceConflictError(PersistenceConflictError):
-    pass
-
-
-class CampaignAlreadyExistsError(PersistenceConflictError):
-    pass
-
-
-class CampaignRevisionConflictError(PersistenceConflictError):
-    pass
-
-
-class CampaignEventSequenceConflictError(PersistenceConflictError):
-    pass
+SessionAlreadyExistsError = AlreadyExistsError
+CampaignAlreadyExistsError = AlreadyExistsError
+SessionRevisionConflictError = RevisionConflictError
+CampaignRevisionConflictError = RevisionConflictError
+CampaignEventSequenceConflictError = EventSequenceConflictError

@@ -1,6 +1,6 @@
 from collections.abc import Callable
 from datetime import UTC, datetime
-from typing import Protocol
+from typing import Any, Protocol
 
 from dungeon_agent.control_plane.domain.enums import ErrorCode
 from dungeon_agent.control_plane.domain.models import ErrorDetail, ErrorEnvelope
@@ -70,6 +70,50 @@ def owner_access_error(
             correlation_id=correlation_id,
         )
     return None
+
+
+def load_owned(
+    store: Any,
+    identity: AuthenticatedIdentity,
+    resource_id: str,
+    *,
+    resource_name: str,
+    not_found_code: ErrorCode,
+    dependency_message: str,
+    correlation_id: str,
+) -> tuple[Any | None, HttpResult | None]:
+    try:
+        resource = store.get(resource_id)
+    except Exception:
+        return None, dependency_error(dependency_message, correlation_id)
+    access_error = owner_access_error(
+        identity,
+        resource,
+        resource_name=resource_name,
+        not_found_code=not_found_code,
+        correlation_id=correlation_id,
+    )
+    return resource, access_error
+
+
+def replay_events(
+    store: Any,
+    aggregate_id: str,
+    *,
+    after: int,
+    correlation_id: str,
+    dependency_message: str,
+    envelope: Callable[[tuple[Any, ...], int], Any],
+) -> HttpResult:
+    try:
+        events = store.list_after(aggregate_id, after)
+    except Exception:
+        return dependency_error(dependency_message, correlation_id)
+    return HttpResult(
+        status_code=200,
+        body=envelope(events, events[-1].sequence if events else after),
+        correlation_id=correlation_id,
+    )
 
 
 def utc_now() -> datetime:
