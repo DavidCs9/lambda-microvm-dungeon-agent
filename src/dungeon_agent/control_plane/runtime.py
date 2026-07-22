@@ -5,6 +5,11 @@ from typing import Any, cast
 
 from dungeon_agent.audio.polly import DEFAULT_VOICES, S3PollySpeechSynthesizer
 from dungeon_agent.control_plane.agents.bedrock import StructuredBedrockAgent
+from dungeon_agent.control_plane.agents.portrait import (
+    DEFAULT_IMAGE_MODEL_ID,
+    DEFAULT_IMAGE_REGION,
+    BedrockPortraitGenerator,
+)
 from dungeon_agent.control_plane.agents.roles import AdventureArchitect, CharacterArchitect
 from dungeon_agent.control_plane.domain.models import SubmitTurnCommand
 from dungeon_agent.control_plane.http.api_gateway import ApiGatewayHttpAdapter
@@ -20,6 +25,7 @@ from dungeon_agent.control_plane.persistence.dynamodb import (
     create_dynamodb_campaign_repository,
     create_dynamodb_repository,
 )
+from dungeon_agent.control_plane.persistence.portraits import S3PortraitStore
 from dungeon_agent.control_plane.realtime.api_gateway import ApiGatewayWebSocketAdapter
 from dungeon_agent.control_plane.realtime.delivery import BestEffortEventDelivery
 from dungeon_agent.control_plane.realtime.dynamodb import DynamoDbConnectionRepository
@@ -44,6 +50,8 @@ def _artifacts(table_name: str, aggregate: ArtifactAggregate = "SESSION") -> Dyn
 
 def _aws_config(**kwargs: Any) -> Any:
     return cast(Any, import_module("botocore.config")).Config(**kwargs)
+
+
 _CONFIG = _aws_config(
     retries={"total_max_attempts": 3, "mode": "adaptive"}, connect_timeout=3, read_timeout=10
 )
@@ -128,6 +136,31 @@ def _build_speech_handlers() -> SpeechHttpHandlers | None:
     return SpeechHttpHandlers(S3PollySpeechSynthesizer(polly, s3, bucket, DEFAULT_VOICES))
 
 
+def _build_portrait_store() -> S3PortraitStore | None:
+    bucket = os.environ.get("SPEECH_CACHE_BUCKET")
+    return None if bucket is None else S3PortraitStore(_client("s3", region_name=_REGION), bucket)
+
+
+def _build_portrait_generator() -> BedrockPortraitGenerator | None:
+    if "SPEECH_CACHE_BUCKET" not in os.environ:
+        return None
+    model_id = os.environ.get("BEDROCK_IMAGE_MODEL_ID", DEFAULT_IMAGE_MODEL_ID)
+    image_region = os.environ.get("BEDROCK_IMAGE_REGION", DEFAULT_IMAGE_REGION)
+    bedrock_image = cast(
+        Any,
+        _client(
+            "bedrock-runtime",
+            region_name=image_region,
+            config=_aws_config(
+                retries={"total_max_attempts": 2, "mode": "adaptive"},
+                connect_timeout=10,
+                read_timeout=300,
+            ),
+        ),
+    )
+    return BedrockPortraitGenerator(bedrock_image, model_id)
+
+
 def _build_http_adapter() -> ApiGatewayHttpAdapter:
     starter = StepFunctionsWorkflowStarter(
         _client("stepfunctions"),
@@ -148,6 +181,7 @@ def _build_http_adapter() -> ApiGatewayHttpAdapter:
             _CAMPAIGN_REPOSITORY,
             starter,
             openings=_artifacts(_CAMPAIGN_TABLE_NAME, "CAMPAIGN"),
+            portrait_presigner=_build_portrait_store(),
         ),
         speech=_build_speech_handlers(),
         allow_sandbox_identity=True,
@@ -159,6 +193,8 @@ def _build_turn_invoker() -> LambdaTurnWorkerInvoker | None:
     return (
         None if function_name is None else LambdaTurnWorkerInvoker(_client("lambda"), function_name)
     )
+
+
 _HTTP_ADAPTER = (
     _build_http_adapter()
     if "STATE_MACHINE_ARN" in os.environ and "CAMPAIGN_STATE_MACHINE_ARN" in os.environ
@@ -187,6 +223,8 @@ def _build_workflow() -> DurableSessionWorkflowStub:
         snapshots=session_artifacts,
         delivery=_build_delivery(),
     )
+
+
 _WORKFLOW = _build_workflow()
 
 
@@ -202,8 +240,12 @@ def _build_campaign_workflow() -> DurableCampaignWorkflowStub:
         adventures=artifacts,
         characters=artifacts,
         openings=artifacts,
+        portrait_generator=_build_portrait_generator(),
+        portrait_store=_build_portrait_store(),
         delivery=_build_delivery(),
     )
+
+
 _CAMPAIGN_WORKFLOW = _build_campaign_workflow()
 
 
@@ -215,6 +257,8 @@ def _build_turn_worker() -> TurnWorker:
         _microvm_manager(),
         delivery=_build_delivery(),
     )
+
+
 _TURN_WORKER = _build_turn_worker() if "BEDROCK_MODEL_ID" in os.environ else None
 
 
