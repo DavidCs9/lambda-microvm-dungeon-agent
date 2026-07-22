@@ -32,9 +32,10 @@ class S3PortraitStore:
         return key
 
     def presigned_url(self, key: str) -> str:
-        url = self._s3.generate_presigned_url(
-            "get_object",
-            Params={"Bucket": self._bucket, "Key": key},
-            ExpiresIn=self._expires_in_seconds,
+        return str(
+            self._s3.generate_presigned_url(
+                "get_object",
+                Params={"Bucket": self._bucket, "Key": key},
+                ExpiresIn=self._expires_in_seconds,
+            )
         )
-        return str(url)

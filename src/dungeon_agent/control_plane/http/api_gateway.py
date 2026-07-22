@@ -43,55 +43,32 @@ class ApiGatewayHttpAdapter:
         self._campaigns = campaigns
         self._speech = speech
         self._allow_sandbox_identity = allow_sandbox_identity
+        sessions, campaigns = self._handlers, self._campaigns
         self._routes: dict[str, RouteHandler] = {
             "POST /sessions": self._create,
             "POST /sessions/{sessionId}/actions": self._submit_action,
-            "GET /sessions/{sessionId}": (
-                lambda event, _headers, identity, correlation_id: self._handlers.get_session(
-                    identity, _session_id(event), correlation_id=correlation_id
-                )
+            "GET /sessions/{sessionId}": lambda e, _h, i, c: sessions.get_session(
+                i, _session_id(e), correlation_id=c
             ),
-            "GET /sessions/{sessionId}/events": (
-                lambda event, _headers, identity, correlation_id: self._handlers.list_events(
-                    identity,
-                    _session_id(event),
-                    after=_replay_after(event),
-                    correlation_id=correlation_id,
-                )
+            "GET /sessions/{sessionId}/events": lambda e, _h, i, c: sessions.list_events(
+                i, _session_id(e), after=_replay_after(e), correlation_id=c
             ),
             "GET /sessions": self._list_active_sessions,
-            "POST /sessions/{sessionId}/abandon": (
-                lambda event, _headers, identity, correlation_id: self._handlers.abandon_session(
-                    identity, _session_id(event), correlation_id=correlation_id
-                )
+            "POST /sessions/{sessionId}/abandon": lambda e, _h, i, c: sessions.abandon_session(
+                i, _session_id(e), correlation_id=c
             ),
             "POST /campaigns": self._create_campaign,
-            "GET /campaigns": (
-                lambda event, _headers, identity, correlation_id: self._campaigns.list_campaigns(
-                    identity,
-                    status=_campaign_status_filter(event),
-                    correlation_id=correlation_id,
-                )
+            "GET /campaigns": lambda e, _h, i, c: campaigns.list_campaigns(
+                i, status=_campaign_status_filter(e), correlation_id=c
             ),
-            "GET /campaigns/{campaignId}": (
-                lambda event, _headers, identity, correlation_id: self._campaigns.get_campaign(
-                    identity, _campaign_id(event), correlation_id=correlation_id
-                )
+            "GET /campaigns/{campaignId}": lambda e, _h, i, c: campaigns.get_campaign(
+                i, _campaign_id(e), correlation_id=c
             ),
-            "GET /campaigns/{campaignId}/events": (
-                lambda event, _headers, identity, correlation_id: self._campaigns.list_events(
-                    identity,
-                    _campaign_id(event),
-                    after=_replay_after(event),
-                    correlation_id=correlation_id,
-                )
+            "GET /campaigns/{campaignId}/events": lambda e, _h, i, c: campaigns.list_events(
+                i, _campaign_id(e), after=_replay_after(e), correlation_id=c
             ),
-            "GET /campaigns/{campaignId}/opening": (
-                lambda event, _headers, identity, correlation_id: (
-                    self._campaigns.get_campaign_opening(
-                        identity, _campaign_id(event), correlation_id=correlation_id
-                    )
-                )
+            "GET /campaigns/{campaignId}/opening": lambda e, _h, i, c: (
+                campaigns.get_campaign_opening(i, _campaign_id(e), correlation_id=c)
             ),
             "POST /speech": self._synthesize_speech,
         }
@@ -105,11 +82,11 @@ class ApiGatewayHttpAdapter:
         if identity is None:
             return self._serialize(
                 error_result(
-                    status_code=401,
-                    code=ErrorCode.NOT_AUTHENTICATED,
-                    message="Authentication is required.",
-                    retryable=False,
-                    correlation_id=correlation_id,
+                    401,
+                    ErrorCode.NOT_AUTHENTICATED,
+                    "Authentication is required.",
+                    False,
+                    correlation_id,
                 )
             )
 
@@ -118,21 +95,13 @@ class ApiGatewayHttpAdapter:
         try:
             if route is None:
                 result = error_result(
-                    status_code=404,
-                    code=ErrorCode.SESSION_NOT_FOUND,
-                    message="Route not found.",
-                    retryable=False,
-                    correlation_id=correlation_id,
+                    404, ErrorCode.SESSION_NOT_FOUND, "Route not found.", False, correlation_id
                 )
             else:
                 result = route(event, headers, identity, correlation_id)
         except TypeError, ValueError, ValidationError, json.JSONDecodeError:
             result = error_result(
-                status_code=400,
-                code=ErrorCode.VALIDATION_FAILED,
-                message="The request is invalid.",
-                retryable=False,
-                correlation_id=correlation_id,
+                400, ErrorCode.VALIDATION_FAILED, "The request is invalid.", False, correlation_id
             )
         return self._serialize(result)
 

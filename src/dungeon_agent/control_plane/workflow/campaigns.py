@@ -22,8 +22,14 @@ from dungeon_agent.control_plane.domain.models import (
     OpeningDocument,
 )
 from dungeon_agent.control_plane.events import append_campaign_event
-from dungeon_agent.control_plane.workflow.runner import prepare_run
-from dungeon_agent.control_plane.workflow.util import required_string, wire_time
+from dungeon_agent.control_plane.workflow.runner import (
+    elapsed_ms,
+    mark_phase,
+    prepare_run,
+    required_record,
+    update_record,
+)
+from dungeon_agent.control_plane.workflow.util import required_string
 from dungeon_agent.domain.game import AdventurePlan, LanguageCode, PlayerCharacter
 
 Clock = Callable[[], datetime]
@@ -47,13 +53,12 @@ class DurableCampaignWorkflowStub:
         monotonic: Callable[[], float] = time.perf_counter,
     ) -> None:
         self._store = store
-        self._adventure_architect = adventure_architect
-        self._character_architect = character_architect
-        self._adventures = adventures
-        self._characters = characters
-        self._openings = openings
-        self._portrait_generator = portrait_generator
-        self._portrait_store = portrait_store
+        self._adventure_architect, self._character_architect = (
+            adventure_architect,
+            character_architect,
+        )
+        self._adventures, self._characters, self._openings = adventures, characters, openings
+        self._portrait_generator, self._portrait_store = portrait_generator, portrait_store
         self._delivery = delivery
         self._clock = clock or (lambda: datetime.now(UTC))
         self._monotonic = monotonic
@@ -82,13 +87,11 @@ class DurableCampaignWorkflowStub:
                 status=CampaignStatus.CREATING,
                 workflow_arn=workflow_arn,
             )
-            append_campaign_event(
-                self._store,
-                self._delivery,
+            self._emit(
                 campaign.campaign_id,
                 EventType.CAMPAIGN_CREATION_STARTED,
                 CampaignCreationStartedPayload(language=campaign.language),
-                required_string(state, "correlationId"),
+                state,
                 now,
             )
 
@@ -96,20 +99,12 @@ class DurableCampaignWorkflowStub:
         if isinstance(raw_phase, str):
             phase = CampaignPhase(raw_phase)
             campaign = self._update_campaign(state, phase=phase, workflow_arn=workflow_arn)
-            phase_timestamps = dict(cast(Mapping[str, object], state.get("phaseTimestamps", {})))
-            phase_timestamps[phase.value] = wire_time(entered_at)
-            state["phaseTimestamps"] = phase_timestamps
-            state["phase"] = phase.value
-            append_campaign_event(
-                self._store,
-                self._delivery,
+            mark_phase(state, phase, entered_at)
+            self._emit(
                 campaign.campaign_id,
                 EventType.CAMPAIGN_PHASE_CHANGED,
-                CampaignPhaseChangedPayload(
-                    phase=phase,
-                    elapsed_ms=max(0, int((now - entered_at).total_seconds() * 1_000)),
-                ),
-                required_string(state, "correlationId"),
+                CampaignPhaseChangedPayload(phase=phase, elapsed_ms=elapsed_ms(now, entered_at)),
+                state,
                 now,
             )
 
@@ -147,16 +142,11 @@ class DurableCampaignWorkflowStub:
                 if opening_payload is not None
                 else self._load_opening(required_string(state, "characterRef"))
             )
-            append_campaign_event(
-                self._store,
-                self._delivery,
+            self._emit(
                 campaign.campaign_id,
                 EventType.CAMPAIGN_READY,
-                CampaignReadyPayload(
-                    revision=campaign.revision,
-                    opening=opening,
-                ),
-                required_string(state, "correlationId"),
+                CampaignReadyPayload(revision=campaign.revision, opening=opening),
+                state,
                 now,
             )
         elif operation == "MarkCampaignFailed":
@@ -170,16 +160,14 @@ class DurableCampaignWorkflowStub:
             state["phase"] = campaign.phase.value
         elif operation == "EmitCampaignCreationFailed":
             campaign = self._required_campaign(state)
-            append_campaign_event(
-                self._store,
-                self._delivery,
+            self._emit(
                 campaign.campaign_id,
                 EventType.CAMPAIGN_CREATION_FAILED,
                 CampaignCreationFailedPayload(
                     code=ErrorCode.CAMPAIGN_CREATION_FAILED,
                     retryable=False,
                 ),
-                required_string(state, "correlationId"),
+                state,
                 now,
             )
         return state
@@ -242,11 +230,25 @@ class DurableCampaignWorkflowStub:
         return OpeningDocument.model_validate(self._openings.load_opening(character_ref))
 
     def _required_campaign(self, state: Mapping[str, object]) -> CampaignRecord:
-        campaign_id: CampaignId = required_string(state, "campaignId")
-        campaign = self._store.get(campaign_id)
-        if campaign is None:
-            raise ValueError(f"campaign does not exist: {campaign_id}")
-        return CampaignRecord.model_validate(campaign)
+        return required_record(self._store, state, CampaignRecord, "campaignId", "campaign")
+
+    def _emit(
+        self,
+        campaign_id: CampaignId,
+        event_type: EventType,
+        payload: Any,
+        state: Mapping[str, object],
+        now: datetime,
+    ) -> None:
+        append_campaign_event(
+            self._store,
+            self._delivery,
+            campaign_id,
+            event_type,
+            payload,
+            required_string(state, "correlationId"),
+            now,
+        )
 
     def _update_campaign(
         self,
@@ -259,24 +261,20 @@ class DurableCampaignWorkflowStub:
         character_ref: str | None = None,
         opening_title: str | None = None,
     ) -> CampaignRecord:
-        current = self._required_campaign(state)
-        updated = current.model_copy(
-            update={
-                "status": status or current.status,
-                "phase": phase or current.phase,
-                "workflow_execution_arn": workflow_arn,
-                "adventure_ref": adventure_ref or current.adventure_ref,
-                "character_ref": character_ref or current.character_ref,
-                "opening_title": (
-                    opening_title if opening_title is not None else current.opening_title
-                ),
-                "revision": current.revision + 1,
-                "updated_at": self._clock(),
-            }
+        return update_record(
+            self._store,
+            state,
+            CampaignRecord,
+            "campaignId",
+            "campaign",
+            self._clock,
+            workflow_arn,
+            status=status,
+            phase=phase,
+            adventure_ref=adventure_ref,
+            character_ref=character_ref,
+            opening_title=opening_title,
         )
-        validated = CampaignRecord.model_validate(updated)
-        saved = self._store.save(validated, expected_revision=current.revision)
-        return CampaignRecord.model_validate(saved)
 
 
 def _workflow_input(state: Mapping[str, object]) -> CreateCampaignWorkflowInput:

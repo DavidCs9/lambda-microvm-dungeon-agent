@@ -30,6 +30,13 @@ def _require_aware(value: datetime, field_name: str) -> None:
         raise ValueError(f"{field_name} must include a timezone")
 
 
+def _validate_timestamps(created_at: datetime, updated_at: datetime) -> None:
+    _require_aware(created_at, "created_at")
+    _require_aware(updated_at, "updated_at")
+    if updated_at < created_at:
+        raise ValueError("updated_at cannot precede created_at")
+
+
 class CreateSessionWorkflowInput(ContractModel):
     schema_version: Literal[1] = 1
     session_id: SessionId
@@ -93,10 +100,7 @@ class SessionRecord(ContractModel):
 
     @model_validator(mode="after")
     def validate_lifecycle(self) -> SessionRecord:
-        _require_aware(self.created_at, "created_at")
-        _require_aware(self.updated_at, "updated_at")
-        if self.updated_at < self.created_at:
-            raise ValueError("updated_at cannot precede created_at")
+        _validate_timestamps(self.created_at, self.updated_at)
         expected_phase = {
             SessionStatus.REQUESTED: SessionPhase.REQUESTED,
             SessionStatus.READY: SessionPhase.READY,
@@ -132,10 +136,7 @@ class CampaignRecord(ContractModel):
 
     @model_validator(mode="after")
     def validate_lifecycle(self) -> CampaignRecord:
-        _require_aware(self.created_at, "created_at")
-        _require_aware(self.updated_at, "updated_at")
-        if self.updated_at < self.created_at:
-            raise ValueError("updated_at cannot precede created_at")
+        _validate_timestamps(self.created_at, self.updated_at)
         expected_phase = {
             CampaignStatus.REQUESTED: CampaignPhase.REQUESTED,
             CampaignStatus.READY: CampaignPhase.READY,
@@ -166,18 +167,18 @@ class OpeningDocument(ContractModel):
 
     @model_validator(mode="after")
     def validate_blocks(self) -> OpeningDocument:
-        positions = [block.position for block in self.blocks]
-        if positions != list(range(len(self.blocks))):
+        if [block.position for block in self.blocks] != list(range(len(self.blocks))):
             raise ValueError("opening block positions must be contiguous and ordered")
         if len({block.id for block in self.blocks}) != len(self.blocks):
             raise ValueError("opening block ids must be unique")
         kinds = [block.kind for block in self.blocks]
-        if kinds.count(OpeningBlockKind.IDENTITY) != 1:
-            raise ValueError("opening requires exactly one identity block")
-        if kinds.count(OpeningBlockKind.MOTIVATION) != 1:
-            raise ValueError("opening requires exactly one motivation block")
-        if kinds.count(OpeningBlockKind.SITUATION) != 1:
-            raise ValueError("opening requires exactly one situation block")
+        for kind, label in (
+            (OpeningBlockKind.IDENTITY, "identity"),
+            (OpeningBlockKind.MOTIVATION, "motivation"),
+            (OpeningBlockKind.SITUATION, "situation"),
+        ):
+            if kinds.count(kind) != 1:
+                raise ValueError(f"opening requires exactly one {label} block")
         if kinds.count(OpeningBlockKind.KNOWLEDGE) < 2:
             raise ValueError("opening requires at least two knowledge blocks")
         if kinds.count(OpeningBlockKind.POSSIBLE_ACTION) != 3:
@@ -192,7 +193,7 @@ class CreationStartedPayload(ContractModel):
 
 
 class PhaseChangedPayload(ContractModel):
-    phase: SessionPhase
+    phase: SessionPhase | CampaignPhase
     elapsed_ms: int = Field(ge=0)
     revision: int | None = Field(default=None, ge=0)
 
@@ -202,9 +203,12 @@ class CreationFailedPayload(ContractModel):
     retryable: bool
 
 
-class SessionReadyPayload(ContractModel):
+class ReadyPayload(ContractModel):
     revision: int = Field(ge=0)
     opening: OpeningDocument
+
+
+SessionReadyPayload = ReadyPayload
 
 
 class TurnStartedPayload(ContractModel):
@@ -240,30 +244,14 @@ class SessionCompletedPayload(ContractModel):
     revision: int = Field(ge=0)
 
 
-class CampaignCreationStartedPayload(ContractModel):
-    language: LanguageCode
-
-
-class CampaignPhaseChangedPayload(ContractModel):
-    phase: CampaignPhase
-    elapsed_ms: int = Field(ge=0)
-
-
-class CampaignCreationFailedPayload(ContractModel):
-    code: ErrorCode
-    retryable: bool
-
-
-class CampaignReadyPayload(ContractModel):
-    revision: int = Field(ge=0)
-    opening: OpeningDocument
+CampaignCreationStartedPayload = CreationStartedPayload
+CampaignPhaseChangedPayload = PhaseChangedPayload
+CampaignCreationFailedPayload = CreationFailedPayload
+CampaignReadyPayload = ReadyPayload
 
 
 CampaignEventPayload = (
-    CampaignCreationStartedPayload
-    | CampaignPhaseChangedPayload
-    | CampaignCreationFailedPayload
-    | CampaignReadyPayload
+    CreationStartedPayload | PhaseChangedPayload | CreationFailedPayload | ReadyPayload
 )
 
 _PAYLOAD_BY_CAMPAIGN_EVENT: dict[EventType, type[ContractModel]] = {
@@ -299,7 +287,7 @@ EventPayload = (
     CreationStartedPayload
     | PhaseChangedPayload
     | CreationFailedPayload
-    | SessionReadyPayload
+    | ReadyPayload
     | TurnStartedPayload
     | DiceRolledPayload
     | NarrationDeltaPayload

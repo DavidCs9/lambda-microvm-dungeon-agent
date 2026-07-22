@@ -29,8 +29,9 @@ class DynamoDbArtifactStore:
         return _reference(self._aggregate, aggregate_id, "ADVENTURE")
 
     def load_adventure(self, adventure_ref: str) -> AdventurePlan:
-        partition_key = self._partition_key_for(adventure_ref, "ADVENTURE")
-        return AdventurePlan.model_validate_json(self._get(partition_key, "ADVENTURE", "document"))
+        return AdventurePlan.model_validate_json(
+            self._get(self._partition_key_for(adventure_ref, "ADVENTURE"), "ADVENTURE", "document")
+        )
 
     def save_character(
         self,
@@ -49,19 +50,20 @@ class DynamoDbArtifactStore:
         return _reference(self._aggregate, aggregate_id, "CHARACTER")
 
     def load_character(self, character_ref: str) -> PlayerCharacter:
-        partition_key = self._partition_key_for(character_ref, "CHARACTER")
         return PlayerCharacter.model_validate_json(
-            self._get(partition_key, "CHARACTER", "document")
+            self._get(self._partition_key_for(character_ref, "CHARACTER"), "CHARACTER", "document")
         )
 
     def load_opening(self, character_ref: str) -> OpeningDocument:
-        partition_key = self._partition_key_for(character_ref, "CHARACTER")
-        return OpeningDocument.model_validate_json(self._get(partition_key, "CHARACTER", "opening"))
+        return OpeningDocument.model_validate_json(
+            self._get(self._partition_key_for(character_ref, "CHARACTER"), "CHARACTER", "opening")
+        )
 
     def load_portrait_key(self, character_ref: str) -> str | None:
         try:
-            partition_key = self._partition_key_for(character_ref, "CHARACTER")
-            return self._get(partition_key, "CHARACTER", "portraitKey")
+            return self._get(
+                self._partition_key_for(character_ref, "CHARACTER"), "CHARACTER", "portraitKey"
+            )
         except LookupError, RuntimeError:
             return None
 
@@ -100,15 +102,17 @@ class DynamoDbArtifactStore:
         )
 
     def _get(self, partition_key: str, kind: str, field: str) -> str:
-        response = self._client.get_item(
-            TableName=self._table_name,
-            Key={
-                "PK": _string(partition_key),
-                "SK": _string(f"ARTIFACT#{kind}"),
-            },
-            ConsistentRead=True,
+        return _read_string(
+            self._client.get_item(
+                TableName=self._table_name,
+                Key={
+                    "PK": _string(partition_key),
+                    "SK": _string(f"ARTIFACT#{kind}"),
+                },
+                ConsistentRead=True,
+            ),
+            field,
         )
-        return _read_string(response, field)
 
 
 def _partition_key(aggregate: ArtifactAggregate, aggregate_id: str) -> str:

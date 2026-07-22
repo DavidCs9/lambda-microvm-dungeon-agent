@@ -14,7 +14,6 @@ class OwnedResource(Protocol):
 
 
 def error_result(
-    *,
     status_code: int,
     code: ErrorCode,
     message: str,
@@ -25,10 +24,7 @@ def error_result(
         status_code=status_code,
         body=ErrorEnvelope(
             error=ErrorDetail(
-                code=code,
-                message=message,
-                retryable=retryable,
-                correlation_id=correlation_id,
+                code=code, message=message, retryable=retryable, correlation_id=correlation_id
             )
         ),
         correlation_id=correlation_id,
@@ -36,38 +32,27 @@ def error_result(
 
 
 def dependency_error(message: str, correlation_id: str) -> HttpResult:
-    return error_result(
-        status_code=503,
-        code=ErrorCode.DEPENDENCY_UNAVAILABLE,
-        message=message,
-        retryable=True,
-        correlation_id=correlation_id,
-    )
+    return error_result(503, ErrorCode.DEPENDENCY_UNAVAILABLE, message, True, correlation_id)
 
 
 def owner_access_error(
     identity: AuthenticatedIdentity,
     resource: OwnedResource | None,
-    *,
     resource_name: str,
     not_found_code: ErrorCode,
     correlation_id: str,
 ) -> HttpResult | None:
     if resource is None:
         return error_result(
-            status_code=404,
-            code=not_found_code,
-            message=f"{resource_name.capitalize()} not found.",
-            retryable=False,
-            correlation_id=correlation_id,
+            404, not_found_code, f"{resource_name.capitalize()} not found.", False, correlation_id
         )
     if resource.owner_id != identity.owner_id:
         return error_result(
-            status_code=403,
-            code=ErrorCode.NOT_AUTHORIZED,
-            message=f"You do not have access to this {resource_name}.",
-            retryable=False,
-            correlation_id=correlation_id,
+            403,
+            ErrorCode.NOT_AUTHORIZED,
+            f"You do not have access to this {resource_name}.",
+            False,
+            correlation_id,
         )
     return None
 

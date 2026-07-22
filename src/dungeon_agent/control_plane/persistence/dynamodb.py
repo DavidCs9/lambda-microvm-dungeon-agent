@@ -1,5 +1,14 @@
 from collections.abc import Mapping
 
+from dungeon_agent.aws.dynamo_helpers import (
+    AttributeValue,
+    DynamoDbAggregateRepository,
+    attribute_int,
+    attribute_string,
+    create_dynamodb_client,
+    string,
+)
+from dungeon_agent.aws.dynamo_types import DynamoDbClient
 from dungeon_agent.control_plane.domain.enums import ACTIVE_SESSION_STATUSES
 from dungeon_agent.control_plane.domain.models import (
     CampaignEvent,
@@ -8,15 +17,6 @@ from dungeon_agent.control_plane.domain.models import (
     SessionEvent,
     SessionRecord,
 )
-from dungeon_agent.control_plane.persistence.dynamo_helpers import (
-    AttributeValue,
-    DynamoDbAggregateRepository,
-    attribute_int,
-    attribute_string,
-    create_dynamodb_client,
-    string,
-)
-from dungeon_agent.control_plane.persistence.dynamo_types import DynamoDbClient
 from dungeon_agent.control_plane.persistence.errors import (
     CampaignAlreadyExistsError,
     CampaignEventSequenceConflictError,

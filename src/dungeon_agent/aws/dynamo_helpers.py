@@ -1,9 +1,10 @@
+# ruff: noqa: E501
 from collections.abc import Callable, Mapping
 from datetime import timedelta
 from importlib import import_module
 from typing import Any, cast
 
-from dungeon_agent.control_plane.persistence.dynamo_types import DynamoDbClient
+from dungeon_agent.aws.dynamo_types import DynamoDbClient
 
 AttributeValue = dict[str, str]
 Item = dict[str, AttributeValue]
@@ -31,19 +32,19 @@ class DynamoDbAggregateRepository:
             raise ValueError("table_name must not be empty")
         if idempotency_ttl_seconds <= 0:
             raise ValueError("idempotency_ttl_seconds must be positive")
-        self._client = client
-        self._table = self
-        self._table_name = table_name
-        self._aggregate = aggregate
-        self._aggregate_name = aggregate.lower()
-        self._aggregate_id_attr = aggregate_id_attr
-        self._record_id = record_id
-        self._event_record_id = event_record_id
-        self._decode_record = decode_record
-        self._decode_event = decode_event
+        self._client, self._table, self._table_name = client, self, table_name
+        self._aggregate, self._aggregate_name, self._aggregate_id_attr = (
+            aggregate,
+            aggregate.lower(),
+            aggregate_id_attr,
+        )
+        self._record_id, self._event_record_id = record_id, event_record_id
+        self._decode_record, self._decode_event = decode_record, decode_event
         self._already_exists_error = already_exists_error
-        self._revision_conflict_error = revision_conflict_error
-        self._sequence_conflict_error = sequence_conflict_error
+        self._revision_conflict_error, self._sequence_conflict_error = (
+            revision_conflict_error,
+            sequence_conflict_error,
+        )
         self._idempotency_ttl_seconds = idempotency_ttl_seconds
         self._extra_metadata = extra_metadata
 
@@ -100,10 +101,7 @@ class DynamoDbAggregateRepository:
     def find_by_idempotency_key(self, owner_id: str, idempotency_key: str) -> Any | None:
         response = self._client.get_item(
             TableName=self._table_name,
-            Key={
-                "PK": string(f"OWNER#{owner_id}"),
-                "SK": string(f"IDEMPOTENCY#{idempotency_key}"),
-            },
+            Key={"PK": string(f"OWNER#{owner_id}"), "SK": string(f"IDEMPOTENCY#{idempotency_key}")},
             ConsistentRead=True,
         )
         item = response.get("Item")
@@ -122,10 +120,7 @@ class DynamoDbAggregateRepository:
             response = self._client.update_item(
                 TableName=self._table_name,
                 Key={"PK": string(self._pk(aggregate_id)), "SK": string("METADATA")},
-                UpdateExpression=(
-                    "SET #document = :document, #revision = :nextRevision, "
-                    "#updatedAt = :updatedAt, #status = :status"
-                ),
+                UpdateExpression="SET #document = :document, #revision = :nextRevision, #updatedAt = :updatedAt, #status = :status",
                 ConditionExpression="#revision = :expectedRevision",
                 ExpressionAttributeNames={
                     "#document": "document",
@@ -338,11 +333,6 @@ def create_dynamodb_client(region_name: str | None = None) -> DynamoDbClient:
     config_cls = cast(Any, import_module("botocore.config")).Config
     boto3 = cast(Any, import_module("boto3"))
     config = config_cls(
-        retries={"total_max_attempts": 3, "mode": "adaptive"},
-        connect_timeout=3,
-        read_timeout=10,
+        retries={"total_max_attempts": 3, "mode": "adaptive"}, connect_timeout=3, read_timeout=10
     )
-    return cast(
-        DynamoDbClient,
-        boto3.client("dynamodb", region_name=region_name, config=config),
-    )
+    return cast(DynamoDbClient, boto3.client("dynamodb", region_name=region_name, config=config))

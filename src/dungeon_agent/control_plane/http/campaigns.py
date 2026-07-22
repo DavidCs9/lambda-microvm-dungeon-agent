@@ -18,7 +18,6 @@ from dungeon_agent.control_plane.http.errors import (
     dependency_error,
     error_result,
     load_owned,
-    owner_access_error,
     replay_events,
     utc_now,
 )
@@ -35,6 +34,7 @@ from dungeon_agent.control_plane.http.workflows import ensure_workflow
 from dungeon_agent.control_plane.identifiers import new_campaign_id
 
 LOGGER = logging.getLogger(__name__)
+CAMPAIGN_DEPENDENCY = "A campaign dependency is temporarily unavailable."
 
 
 class CampaignHttpHandlers:
@@ -49,10 +49,8 @@ class CampaignHttpHandlers:
         campaign_id_factory: Callable[[], CampaignId] = new_campaign_id,
         max_campaigns_per_owner: int = 10,
     ) -> None:
-        self._store = store
-        self._workflows = workflows
-        self._openings = openings
-        self._portrait_presigner = portrait_presigner
+        self._store, self._workflows = store, workflows
+        self._openings, self._portrait_presigner = openings, portrait_presigner
         self._clock = clock or utc_now
         self._campaign_id_factory = campaign_id_factory
         self._max_campaigns_per_owner = max_campaigns_per_owner
@@ -82,11 +80,11 @@ class CampaignHttpHandlers:
 
         if campaign_count >= self._max_campaigns_per_owner:
             return error_result(
-                status_code=429,
-                code=ErrorCode.QUOTA_EXCEEDED,
-                message="Campaign limit reached for this player.",
-                retryable=False,
-                correlation_id=correlation_id,
+                429,
+                ErrorCode.QUOTA_EXCEEDED,
+                "Campaign limit reached for this player.",
+                False,
+                correlation_id,
             )
 
         try:
@@ -159,11 +157,11 @@ class CampaignHttpHandlers:
         assert campaign is not None
         if campaign.status is not CampaignStatus.READY:
             return error_result(
-                status_code=409,
-                code=ErrorCode.CAMPAIGN_CONFLICT,
-                message="The campaign is not ready for play.",
-                retryable=True,
-                correlation_id=correlation_id,
+                409,
+                ErrorCode.CAMPAIGN_CONFLICT,
+                "The campaign is not ready for play.",
+                True,
+                correlation_id,
             )
         if self._openings is None or campaign.character_ref is None:
             return self._dependency_error(correlation_id)
@@ -210,7 +208,7 @@ class CampaignHttpHandlers:
             campaign_id,
             after=after,
             correlation_id=correlation_id,
-            dependency_message="A campaign dependency is temporarily unavailable.",
+            dependency_message=CAMPAIGN_DEPENDENCY,
             envelope=lambda events, next_sequence: CampaignEventListEnvelope(
                 campaign_id=campaign_id,
                 events=events,
@@ -253,20 +251,6 @@ class CampaignHttpHandlers:
             )
         )
 
-    def _access_error(
-        self,
-        identity: AuthenticatedIdentity,
-        campaign: CampaignRecord | None,
-        correlation_id: str,
-    ) -> HttpResult | None:
-        return owner_access_error(
-            identity,
-            campaign,
-            resource_name="campaign",
-            not_found_code=ErrorCode.CAMPAIGN_NOT_FOUND,
-            correlation_id=correlation_id,
-        )
-
     def _load(
         self,
         identity: AuthenticatedIdentity,
@@ -279,10 +263,10 @@ class CampaignHttpHandlers:
             campaign_id,
             resource_name="campaign",
             not_found_code=ErrorCode.CAMPAIGN_NOT_FOUND,
-            dependency_message="A campaign dependency is temporarily unavailable.",
+            dependency_message=CAMPAIGN_DEPENDENCY,
             correlation_id=correlation_id,
         )
         return CampaignRecord.model_validate(campaign) if campaign is not None else None, error
 
     def _dependency_error(self, correlation_id: str) -> HttpResult:
-        return dependency_error("A campaign dependency is temporarily unavailable.", correlation_id)
+        return dependency_error(CAMPAIGN_DEPENDENCY, correlation_id)

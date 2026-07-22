@@ -20,8 +20,14 @@ from dungeon_agent.control_plane.domain.models import (
     SessionRecord,
 )
 from dungeon_agent.control_plane.events import append_session_event
-from dungeon_agent.control_plane.workflow.runner import prepare_run
-from dungeon_agent.control_plane.workflow.util import required_string, wire_time
+from dungeon_agent.control_plane.workflow.runner import (
+    elapsed_ms,
+    mark_phase,
+    prepare_run,
+    required_record,
+    update_record,
+)
+from dungeon_agent.control_plane.workflow.util import required_string
 from dungeon_agent.domain.game import LanguageCode
 
 Clock = Callable[[], datetime]
@@ -42,15 +48,13 @@ class DurableSessionWorkflowStub:
         delivery: Any | None = None,
         clock: Clock | None = None,
     ) -> None:
-        self._store = store
-        self._campaigns = campaigns
-        self._campaign_adventures = campaign_adventures
-        self._campaign_characters = campaign_characters
-        self._adventures = adventures
-        self._characters = characters
-        self._microvms = microvms
-        self._snapshots = snapshots
-        self._delivery = delivery
+        self._store, self._campaigns = store, campaigns
+        self._campaign_adventures, self._campaign_characters = (
+            campaign_adventures,
+            campaign_characters,
+        )
+        self._adventures, self._characters = adventures, characters
+        self._microvms, self._snapshots, self._delivery = microvms, snapshots, delivery
         self._clock = clock or (lambda: datetime.now(UTC))
 
     def handle(self, event: Mapping[str, object]) -> dict[str, object]:
@@ -77,13 +81,11 @@ class DurableSessionWorkflowStub:
                 status=SessionStatus.CREATING,
                 workflow_arn=workflow_arn,
             )
-            append_session_event(
-                self._store,
-                self._delivery,
+            self._emit(
                 session.session_id,
                 EventType.SESSION_CREATION_STARTED,
                 CreationStartedPayload(language=session.language),
-                required_string(state, "correlationId"),
+                state,
                 now,
             )
 
@@ -91,20 +93,12 @@ class DurableSessionWorkflowStub:
         if isinstance(raw_phase, str):
             phase = SessionPhase(raw_phase)
             session = self._update_session(state, phase=phase, workflow_arn=workflow_arn)
-            phase_timestamps = dict(cast(Mapping[str, object], state.get("phaseTimestamps", {})))
-            phase_timestamps[phase.value] = wire_time(entered_at)
-            state["phaseTimestamps"] = phase_timestamps
-            state["phase"] = phase.value
-            append_session_event(
-                self._store,
-                self._delivery,
+            mark_phase(state, phase, entered_at)
+            self._emit(
                 session.session_id,
                 EventType.SESSION_PHASE_CHANGED,
-                PhaseChangedPayload(
-                    phase=phase,
-                    elapsed_ms=max(0, int((now - entered_at).total_seconds() * 1_000)),
-                ),
-                required_string(state, "correlationId"),
+                PhaseChangedPayload(phase=phase, elapsed_ms=elapsed_ms(now, entered_at)),
+                state,
                 now,
             )
 
@@ -150,16 +144,11 @@ class DurableSessionWorkflowStub:
             if self._characters is None:
                 _missing("session character store")
             opening = self._characters.load_opening(required_string(state, "characterRef"))
-            append_session_event(
-                self._store,
-                self._delivery,
+            self._emit(
                 session.session_id,
                 EventType.SESSION_READY,
-                SessionReadyPayload(
-                    revision=session.revision,
-                    opening=opening,
-                ),
-                required_string(state, "correlationId"),
+                SessionReadyPayload(revision=session.revision, opening=opening),
+                state,
                 now,
             )
         elif operation == "MarkSessionFailed":
@@ -179,16 +168,14 @@ class DurableSessionWorkflowStub:
             state["phase"] = session.phase.value
         elif operation == "EmitSessionCreationFailed":
             session = self._required_session(state)
-            append_session_event(
-                self._store,
-                self._delivery,
+            self._emit(
                 session.session_id,
                 EventType.SESSION_CREATION_FAILED,
                 CreationFailedPayload(
                     code=ErrorCode.SESSION_CREATION_FAILED,
                     retryable=False,
                 ),
-                required_string(state, "correlationId"),
+                state,
                 now,
             )
         return state
@@ -219,11 +206,25 @@ class DurableSessionWorkflowStub:
         state["campaignRevision"] = campaign.revision
 
     def _required_session(self, state: Mapping[str, object]) -> SessionRecord:
-        session_id: SessionId = required_string(state, "sessionId")
-        session = self._store.get(session_id)
-        if session is None:
-            raise ValueError(f"session does not exist: {session_id}")
-        return SessionRecord.model_validate(session)
+        return required_record(self._store, state, SessionRecord, "sessionId", "session")
+
+    def _emit(
+        self,
+        session_id: SessionId,
+        event_type: EventType,
+        payload: Any,
+        state: Mapping[str, object],
+        now: datetime,
+    ) -> None:
+        append_session_event(
+            self._store,
+            self._delivery,
+            session_id,
+            event_type,
+            payload,
+            required_string(state, "correlationId"),
+            now,
+        )
 
     def _update_session(
         self,
@@ -234,20 +235,18 @@ class DurableSessionWorkflowStub:
         workflow_arn: str,
         active_microvm_id: str | None = None,
     ) -> SessionRecord:
-        current = self._required_session(state)
-        updated = current.model_copy(
-            update={
-                "status": status or current.status,
-                "phase": phase or current.phase,
-                "workflow_execution_arn": workflow_arn,
-                "active_microvm_id": active_microvm_id or current.active_microvm_id,
-                "revision": current.revision + 1,
-                "updated_at": self._clock(),
-            }
+        return update_record(
+            self._store,
+            state,
+            SessionRecord,
+            "sessionId",
+            "session",
+            self._clock,
+            workflow_arn,
+            status=status,
+            phase=phase,
+            active_microvm_id=active_microvm_id,
         )
-        validated = SessionRecord.model_validate(updated)
-        saved = self._store.save(validated, expected_revision=current.revision)
-        return SessionRecord.model_validate(saved)
 
 
 def _missing(dependency: str) -> NoReturn:
