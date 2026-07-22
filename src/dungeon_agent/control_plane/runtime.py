@@ -2,10 +2,8 @@
 
 import os
 from collections.abc import Mapping
+from importlib import import_module
 from typing import Any, Protocol, cast
-
-import boto3
-from botocore.config import Config
 
 from dungeon_agent.audio.polly import DEFAULT_VOICES, S3PollySpeechSynthesizer
 from dungeon_agent.control_plane.agents import (
@@ -17,11 +15,6 @@ from dungeon_agent.control_plane.agents import (
     StructuredBedrockAgent,
 )
 from dungeon_agent.control_plane.agents.metrics import AgentMetricsPort, RoleMetricsCollector
-from dungeon_agent.control_plane.application import (
-    DefaultCampaignFactory,
-    DefaultSessionFactory,
-    TurnWorker,
-)
 from dungeon_agent.control_plane.domain.models import SubmitTurnCommand
 from dungeon_agent.control_plane.http import (
     ApiGatewayHttpAdapter,
@@ -56,6 +49,7 @@ from dungeon_agent.control_plane.steps import (
 from dungeon_agent.control_plane.steps.artifacts import DynamoDbArtifactClient
 from dungeon_agent.control_plane.steps.portraits import S3PortraitStore
 from dungeon_agent.control_plane.telemetry import EmfTelemetry
+from dungeon_agent.control_plane.turns import TurnWorker
 from dungeon_agent.control_plane.workflow import (
     DurableCampaignWorkflowStub,
     DurableSessionWorkflowStub,
@@ -63,12 +57,21 @@ from dungeon_agent.control_plane.workflow import (
 )
 from dungeon_agent.control_plane.workflow.step_functions import StepFunctionsClient
 
-_CONFIG = Config(
+
+def _boto3() -> Any:
+    return import_module("boto3")
+
+
+def _aws_config(**kwargs: Any) -> Any:
+    return cast(Any, import_module("botocore.config")).Config(**kwargs)
+
+
+_CONFIG = _aws_config(
     retries={"total_max_attempts": 3, "mode": "adaptive"},
     connect_timeout=3,
     read_timeout=10,
 )
-_BEDROCK_CONFIG = Config(
+_BEDROCK_CONFIG = _aws_config(
     retries={"total_max_attempts": 2, "mode": "adaptive"},
     connect_timeout=3,
     read_timeout=120,
@@ -140,11 +143,11 @@ def _management_client() -> Any:
     endpoint = os.environ.get("WS_MANAGEMENT_ENDPOINT")
     if endpoint is None:
         return None
-    return boto3.client("apigatewaymanagementapi", endpoint_url=endpoint, config=_CONFIG)
+    return _boto3().client("apigatewaymanagementapi", endpoint_url=endpoint, config=_CONFIG)
 
 
 def _connection_repository() -> DynamoDbConnectionRepository:
-    resource = boto3.resource("dynamodb", region_name=_REGION, config=_CONFIG)
+    resource = _boto3().resource("dynamodb", region_name=_REGION, config=_CONFIG)
     return DynamoDbConnectionRepository(cast(DynamoTable, resource.Table(_TABLE_NAME)))
 
 
@@ -169,7 +172,7 @@ class _ApiGatewaySender:
 
 def _microvm_manager() -> LambdaMicrovmManager:
     return LambdaMicrovmManager(
-        cast(LambdaMicrovmsClient, boto3.client("lambda-microvms", config=_CONFIG)),
+        cast(LambdaMicrovmsClient, _boto3().client("lambda-microvms", config=_CONFIG)),
         os.environ["MICROVM_IMAGE_NAME"],
         _REGION,
         metrics=_MicrovmMetrics(),
@@ -181,10 +184,10 @@ def _build_speech_handlers() -> SpeechHttpHandlers | None:
     if bucket is None:
         return None
     polly_region = os.environ.get("POLLY_REGION", "us-east-1")
-    polly = boto3.client("polly", region_name=polly_region, config=_CONFIG)
+    polly = _boto3().client("polly", region_name=polly_region, config=_CONFIG)
     # Regional endpoint so presigned URLs hit s3.<region>.amazonaws.com directly.
     # Global s3.amazonaws.com returns TemporaryRedirect (307), which breaks <audio> playback.
-    s3 = boto3.client(
+    s3 = _boto3().client(
         "s3",
         region_name=_REGION,
         endpoint_url=f"https://s3.{_REGION}.amazonaws.com",
@@ -204,7 +207,7 @@ def _build_portrait_store() -> S3PortraitStore | None:
     bucket = os.environ.get("SPEECH_CACHE_BUCKET")
     if bucket is None:
         return None
-    s3 = boto3.client("s3", region_name=_REGION, config=_CONFIG)
+    s3 = _boto3().client("s3", region_name=_REGION, config=_CONFIG)
     return S3PortraitStore(s3, bucket)
 
 
@@ -214,19 +217,19 @@ def _build_portrait_generator() -> BedrockPortraitGenerator | None:
         return None
     model_id = os.environ.get("BEDROCK_IMAGE_MODEL_ID", DEFAULT_IMAGE_MODEL_ID)
     image_region = os.environ.get("BEDROCK_IMAGE_REGION", DEFAULT_IMAGE_REGION)
-    image_config = Config(
+    image_config = _aws_config(
         retries={"total_max_attempts": 2, "mode": "adaptive"},
         connect_timeout=10,
         read_timeout=300,
     )
     bedrock_image = cast(
-        Any, boto3.client("bedrock-runtime", region_name=image_region, config=image_config)
+        Any, _boto3().client("bedrock-runtime", region_name=image_region, config=image_config)
     )
     return BedrockPortraitGenerator(bedrock_image, model_id)
 
 
 def _build_http_adapter() -> ApiGatewayHttpAdapter:
-    client = cast(StepFunctionsClient, boto3.client("stepfunctions", config=_CONFIG))
+    client = cast(StepFunctionsClient, _boto3().client("stepfunctions", config=_CONFIG))
     starter = StepFunctionsWorkflowStarter(
         client,
         os.environ["STATE_MACHINE_ARN"],
@@ -236,18 +239,16 @@ def _build_http_adapter() -> ApiGatewayHttpAdapter:
         _REPOSITORY,
         _REPOSITORY,
         starter,
-        DefaultSessionFactory(),
         _CAMPAIGN_REPOSITORY,
         turns=_build_turn_invoker(),
         delivery=_build_delivery(),
         microvms=_microvm_manager() if "MICROVM_IMAGE_NAME" in os.environ else None,
     )
-    artifact_client = cast(DynamoDbArtifactClient, boto3.client("dynamodb", config=_CONFIG))
+    artifact_client = cast(DynamoDbArtifactClient, _boto3().client("dynamodb", config=_CONFIG))
     campaigns = CampaignHttpHandlers(
         _CAMPAIGN_REPOSITORY,
         _CAMPAIGN_REPOSITORY,
         starter,
-        DefaultCampaignFactory(),
         openings=DynamoDbCampaignCharacterBundles(artifact_client, _CAMPAIGN_TABLE_NAME),
         portrait_presigner=_build_portrait_store(),
     )
@@ -263,7 +264,7 @@ def _build_turn_invoker() -> LambdaTurnWorkerInvoker | None:
     function_name = os.environ.get("TURN_WORKER_FUNCTION_NAME")
     if function_name is None:
         return None
-    client = cast(_LambdaClient, boto3.client("lambda", config=_CONFIG))
+    client = cast(_LambdaClient, _boto3().client("lambda", config=_CONFIG))
     return LambdaTurnWorkerInvoker(client, function_name)
 
 
@@ -278,7 +279,7 @@ def _structured_agent(
     operation: str, metrics: AgentMetricsPort | None = None
 ) -> StructuredBedrockAgent:
     return StructuredBedrockAgent(
-        cast(Any, boto3.client("bedrock-runtime", config=_BEDROCK_CONFIG)),
+        cast(Any, _boto3().client("bedrock-runtime", config=_BEDROCK_CONFIG)),
         os.environ["BEDROCK_MODEL_ID"],
         metrics if metrics is not None else _AgentMetrics(operation),
     )
@@ -289,7 +290,7 @@ def _build_workflow() -> DurableSessionWorkflowStub:
     if image_name is None:
         return DurableSessionWorkflowStub(_REPOSITORY, _REPOSITORY, delivery=_build_delivery())
 
-    artifact_client = cast(DynamoDbArtifactClient, boto3.client("dynamodb", config=_CONFIG))
+    artifact_client = cast(DynamoDbArtifactClient, _boto3().client("dynamodb", config=_CONFIG))
     return DurableSessionWorkflowStub(
         _REPOSITORY,
         _REPOSITORY,
@@ -316,7 +317,7 @@ def _build_campaign_workflow() -> DurableCampaignWorkflowStub:
             delivery=_build_delivery(),
         )
 
-    artifact_client = cast(DynamoDbArtifactClient, boto3.client("dynamodb", config=_CONFIG))
+    artifact_client = cast(DynamoDbArtifactClient, _boto3().client("dynamodb", config=_CONFIG))
     adventures = DynamoDbCampaignAdventurePlans(artifact_client, _CAMPAIGN_TABLE_NAME)
     characters = DynamoDbCampaignCharacterBundles(artifact_client, _CAMPAIGN_TABLE_NAME)
     adventure_metrics = RoleMetricsCollector(_AgentMetrics("AdventureArchitect"))
@@ -347,7 +348,7 @@ _CAMPAIGN_WORKFLOW = _build_campaign_workflow()
 
 
 def _build_turn_worker() -> TurnWorker:
-    artifact_client = cast(DynamoDbArtifactClient, boto3.client("dynamodb", config=_CONFIG))
+    artifact_client = cast(DynamoDbArtifactClient, _boto3().client("dynamodb", config=_CONFIG))
     return TurnWorker(
         _REPOSITORY,
         _REPOSITORY,
@@ -363,7 +364,7 @@ _TURN_WORKER = _build_turn_worker() if "BEDROCK_MODEL_ID" in os.environ else Non
 
 
 def _build_websocket_adapter(endpoint: str) -> ApiGatewayWebSocketAdapter:
-    client = boto3.client("apigatewaymanagementapi", endpoint_url=endpoint, config=_CONFIG)
+    client = _boto3().client("apigatewaymanagementapi", endpoint_url=endpoint, config=_CONFIG)
     connections = _connection_repository()
     service = RealtimeSessionService(
         connections,

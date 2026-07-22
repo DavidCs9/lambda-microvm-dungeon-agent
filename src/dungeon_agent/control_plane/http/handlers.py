@@ -1,14 +1,13 @@
-"""Session and campaign HTTP use cases expressed only in terms of domain ports."""
+"""Session and campaign HTTP use cases for the lab control plane."""
 
 import logging
 import time
 from collections.abc import Callable
 from datetime import UTC, datetime
-from typing import Protocol
+from typing import Any, cast
 
-from dungeon_agent.control_plane.application.events import append_session_event
-from dungeon_agent.control_plane.application.turns import TurnWorkerInvoker
 from dungeon_agent.control_plane.domain.enums import (
+    CampaignPhase,
     CampaignStatus,
     ErrorCode,
     EventType,
@@ -18,30 +17,17 @@ from dungeon_agent.control_plane.domain.enums import (
 from dungeon_agent.control_plane.domain.models import (
     CampaignId,
     CampaignRecord,
-    CreateCampaignCommand,
     CreateCampaignWorkflowInput,
-    CreateSessionCommand,
     CreateSessionWorkflowInput,
     ErrorDetail,
     ErrorEnvelope,
-    OpeningDocument,
     SessionCompletedPayload,
     SessionId,
     SessionRecord,
     SubmitTurnCommand,
     TurnStartedPayload,
 )
-from dungeon_agent.control_plane.domain.ports import (
-    CampaignEventRepository,
-    CampaignFactoryPort,
-    CampaignRepository,
-    EventDeliveryPort,
-    EventRepository,
-    MicrovmManagerPort,
-    SessionFactoryPort,
-    SessionRepository,
-    WorkflowStarterPort,
-)
+from dungeon_agent.control_plane.events import append_session_event
 from dungeon_agent.control_plane.http.models import (
     AuthenticatedIdentity,
     CampaignEnvelope,
@@ -59,26 +45,11 @@ from dungeon_agent.control_plane.http.models import (
     SubmitActionRequest,
     TurnAcceptedEnvelope,
 )
-from dungeon_agent.control_plane.identifiers import new_turn_id
+from dungeon_agent.control_plane.identifiers import new_campaign_id, new_session_id, new_turn_id
 from dungeon_agent.control_plane.persistence.errors import SessionRevisionConflictError
-from dungeon_agent.domain.game import LanguageCode
 
 Clock = Callable[[], datetime]
 LOGGER = logging.getLogger(__name__)
-
-
-class SpeechSynthesizerPort(Protocol):
-    def synthesize(self, text: str, language: LanguageCode) -> tuple[str, bool]: ...
-
-
-class CampaignOpeningLoader(Protocol):
-    def load_opening(self, character_ref: str) -> OpeningDocument: ...
-
-    def load_portrait_key(self, character_ref: str) -> str | None: ...
-
-
-class PortraitUrlPresigner(Protocol):
-    def presigned_url(self, key: str) -> str: ...
 
 
 class SessionHttpHandlers:
@@ -86,28 +57,28 @@ class SessionHttpHandlers:
 
     def __init__(
         self,
-        sessions: SessionRepository,
-        events: EventRepository,
-        workflows: WorkflowStarterPort,
-        session_factory: SessionFactoryPort,
-        campaigns: CampaignRepository,
+        sessions: Any,
+        events: Any,
+        workflows: Any,
+        campaigns: Any,
         *,
-        turns: TurnWorkerInvoker | None = None,
-        delivery: EventDeliveryPort | None = None,
-        microvms: MicrovmManagerPort | None = None,
+        turns: Any | None = None,
+        delivery: Any | None = None,
+        microvms: Any | None = None,
         clock: Clock | None = None,
+        session_id_factory: Callable[[], SessionId] = new_session_id,
         max_active_sessions_per_owner: int = 3,
         max_sessions_per_campaign: int = 10,
     ) -> None:
         self._sessions = sessions
         self._events = events
         self._workflows = workflows
-        self._session_factory = session_factory
         self._campaigns = campaigns
         self._turns = turns
         self._delivery = delivery
         self._microvms = microvms
         self._clock = clock or _utc_now
+        self._session_id_factory = session_id_factory
         self._max_active_sessions_per_owner = max_active_sessions_per_owner
         self._max_sessions_per_campaign = max_sessions_per_campaign
 
@@ -144,16 +115,20 @@ class SessionHttpHandlers:
         if quota_error is not None:
             return quota_error
 
-        command = CreateSessionCommand(
-            owner_id=identity.owner_id,
-            language=request.language,
-            campaign_id=campaign.campaign_id,
-            campaign_revision=campaign.revision,
-            idempotency_key=idempotency_key,
-            correlation_id=correlation_id,
-        )
         try:
-            candidate = self._session_factory.create(command, now)
+            candidate = SessionRecord(
+                session_id=self._session_id_factory(),
+                owner_id=identity.owner_id,
+                language=request.language,
+                status=SessionStatus.REQUESTED,
+                phase=SessionPhase.REQUESTED,
+                revision=0,
+                last_event_sequence=0,
+                created_at=now,
+                updated_at=now,
+                campaign_id=campaign.campaign_id,
+                campaign_revision=campaign.revision,
+            )
             persisted = self._sessions.create(candidate, idempotency_key)
             session = self._ensure_workflow(
                 persisted,
@@ -574,11 +549,12 @@ class SessionHttpHandlers:
             }
         )
         try:
-            return self._sessions.save(updated, expected_revision=session.revision)
+            saved = self._sessions.save(updated, expected_revision=session.revision)
+            return SessionRecord.model_validate(saved)
         except Exception:
             current = self._sessions.get(session.session_id)
             if current is not None and current.workflow_execution_arn is not None:
-                return current
+                return SessionRecord.model_validate(current)
             raise
 
     def _access_error(
@@ -620,7 +596,7 @@ class SpeechHttpHandlers:
 
     def __init__(
         self,
-        synthesizer: SpeechSynthesizerPort,
+        synthesizer: Any,
         *,
         expires_in_seconds: int = 300,
         max_requests_per_owner_per_minute: int = 60,
@@ -708,23 +684,23 @@ class CampaignHttpHandlers:
 
     def __init__(
         self,
-        campaigns: CampaignRepository,
-        events: CampaignEventRepository,
-        workflows: WorkflowStarterPort,
-        campaign_factory: CampaignFactoryPort,
+        campaigns: Any,
+        events: Any,
+        workflows: Any,
         *,
-        openings: CampaignOpeningLoader | None = None,
-        portrait_presigner: PortraitUrlPresigner | None = None,
+        openings: Any | None = None,
+        portrait_presigner: Any | None = None,
         clock: Clock | None = None,
+        campaign_id_factory: Callable[[], CampaignId] = new_campaign_id,
         max_campaigns_per_owner: int = 10,
     ) -> None:
         self._campaigns = campaigns
         self._events = events
         self._workflows = workflows
-        self._campaign_factory = campaign_factory
         self._openings = openings
         self._portrait_presigner = portrait_presigner
         self._clock = clock or _utc_now
+        self._campaign_id_factory = campaign_id_factory
         self._max_campaigns_per_owner = max_campaigns_per_owner
 
     def create_campaign(
@@ -760,14 +736,18 @@ class CampaignHttpHandlers:
                 correlation_id=correlation_id,
             )
 
-        command = CreateCampaignCommand(
-            owner_id=identity.owner_id,
-            language=request.language,
-            idempotency_key=idempotency_key,
-            correlation_id=correlation_id,
-        )
         try:
-            candidate = self._campaign_factory.create(command, now)
+            candidate = CampaignRecord(
+                campaign_id=self._campaign_id_factory(),
+                owner_id=identity.owner_id,
+                language=request.language,
+                status=CampaignStatus.REQUESTED,
+                phase=CampaignPhase.REQUESTED,
+                revision=0,
+                last_event_sequence=0,
+                created_at=now,
+                updated_at=now,
+            )
             persisted = self._campaigns.create(candidate, idempotency_key)
             campaign = self._ensure_workflow(
                 persisted,
@@ -867,7 +847,7 @@ class CampaignHttpHandlers:
             portrait_key = self._openings.load_portrait_key(character_ref)
             if portrait_key is None:
                 return None
-            return self._portrait_presigner.presigned_url(portrait_key)
+            return cast(str, self._portrait_presigner.presigned_url(portrait_key))
         except Exception:
             LOGGER.exception("portrait_presign_failed", extra={"correlation_id": correlation_id})
             return None
@@ -958,11 +938,12 @@ class CampaignHttpHandlers:
             }
         )
         try:
-            return self._campaigns.save(updated, expected_revision=campaign.revision)
+            saved = self._campaigns.save(updated, expected_revision=campaign.revision)
+            return CampaignRecord.model_validate(saved)
         except Exception:
             current = self._campaigns.get(campaign.campaign_id)
             if current is not None and current.workflow_execution_arn is not None:
-                return current
+                return CampaignRecord.model_validate(current)
             raise
 
     def _access_error(

@@ -12,10 +12,7 @@ from dungeon_agent.control_plane.domain.models import (
     SessionRecord,
 )
 from dungeon_agent.control_plane.persistence.memory import InMemoryControlPlaneRepository
-from dungeon_agent.control_plane.realtime.delivery import (
-    BestEffortEventDelivery,
-    DurableEventPublisher,
-)
+from dungeon_agent.control_plane.realtime.delivery import BestEffortEventDelivery
 from dungeon_agent.control_plane.realtime.dynamodb import DynamoDbConnectionRepository
 from dungeon_agent.control_plane.realtime.memory import InMemoryConnectionRepository
 from dungeon_agent.control_plane.realtime.service import RealtimeSessionService
@@ -113,26 +110,6 @@ def test_delivery_removes_stale_connections() -> None:
     BestEffortEventDelivery(connections, client).deliver("user_demo", make_event())
 
     assert connections.get("connection-1") is None
-
-
-def test_publisher_stores_before_sending() -> None:
-    calls: list[str] = []
-
-    class Events:
-        def append(self, event: SessionEvent, *, expected_previous_sequence: int) -> None:
-            assert expected_previous_sequence == 0
-            calls.append("append")
-
-        def list_after(self, session_id: SessionId, sequence: int) -> tuple[SessionEvent, ...]:
-            return ()
-
-    class Delivery:
-        def deliver(self, owner_id: str, event: SessionEvent) -> None:
-            calls.append("deliver")
-
-    DurableEventPublisher(Events(), Delivery()).publish("user_demo", make_event())
-
-    assert calls == ["append", "deliver"]
 
 
 class FakeTable:

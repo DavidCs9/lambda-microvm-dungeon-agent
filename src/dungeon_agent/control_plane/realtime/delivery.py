@@ -1,11 +1,9 @@
 """Best-effort WebSocket delivery after durable event storage."""
 
-from typing import Protocol
+from typing import Any, Protocol
 
 from dungeon_agent.control_plane.domain.models import CampaignEvent, SessionEvent
-from dungeon_agent.control_plane.domain.ports import EventDeliveryPort, EventRepository
 from dungeon_agent.control_plane.realtime.models import ConnectionRecord
-from dungeon_agent.control_plane.realtime.ports import ConnectionRepository
 
 
 class _ApiGatewayExceptions(Protocol):
@@ -22,7 +20,7 @@ class ApiGatewayManagementClient(Protocol):
 class BestEffortEventDelivery:
     def __init__(
         self,
-        connections: ConnectionRepository,
+        connections: Any,
         client: ApiGatewayManagementClient,
     ) -> None:
         self._connections = connections
@@ -50,13 +48,3 @@ class BestEffortEventDelivery:
             )
         except self._client.exceptions.GoneException:
             self._connections.delete(connection.connection_id)
-
-
-class DurableEventPublisher:
-    def __init__(self, events: EventRepository, delivery: EventDeliveryPort) -> None:
-        self._events = events
-        self._delivery = delivery
-
-    def publish(self, owner_id: str, event: SessionEvent) -> None:
-        self._events.append(event, expected_previous_sequence=event.sequence - 1)
-        self._delivery.deliver(owner_id, event)

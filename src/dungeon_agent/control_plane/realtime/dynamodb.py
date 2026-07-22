@@ -3,8 +3,6 @@
 from collections.abc import Mapping
 from typing import Protocol
 
-from boto3.dynamodb.conditions import Key
-
 from dungeon_agent.control_plane.domain.models import CampaignId, SessionId
 from dungeon_agent.control_plane.realtime.models import ConnectionRecord
 
@@ -75,9 +73,11 @@ class DynamoDbConnectionRepository:
 
     def _subscribers_of(self, aggregate_pk: str) -> tuple[ConnectionRecord, ...]:
         response = self._table.query(
-            KeyConditionExpression=(
-                Key("PK").eq(aggregate_pk) & Key("SK").begins_with("CONNECTION#")
-            ),
+            KeyConditionExpression="PK = :pk AND begins_with(SK, :connectionPrefix)",
+            ExpressionAttributeValues={
+                ":pk": aggregate_pk,
+                ":connectionPrefix": "CONNECTION#",
+            },
             ConsistentRead=True,
         )
         items = response.get("Items", [])

@@ -2,6 +2,7 @@
 
 from collections.abc import Callable
 from datetime import UTC, datetime
+from typing import Any
 
 from dungeon_agent.control_plane.domain.enums import EventType
 from dungeon_agent.control_plane.domain.models import (
@@ -11,14 +12,6 @@ from dungeon_agent.control_plane.domain.models import (
     EventPayload,
     SessionEvent,
     SessionId,
-)
-from dungeon_agent.control_plane.domain.ports import (
-    CampaignEventDeliveryPort,
-    CampaignEventRepository,
-    CampaignRepository,
-    EventDeliveryPort,
-    EventRepository,
-    SessionRepository,
 )
 from dungeon_agent.control_plane.identifiers import new_event_id
 from dungeon_agent.control_plane.persistence.errors import (
@@ -30,9 +23,9 @@ Clock = Callable[[], datetime]
 
 
 def append_session_event(
-    sessions: SessionRepository,
-    events: EventRepository,
-    delivery: EventDeliveryPort | None,
+    sessions: Any,
+    events: Any,
+    delivery: Any | None,
     session_id: SessionId,
     event_type: EventType,
     payload: EventPayload,
@@ -69,9 +62,9 @@ def append_session_event(
 
 
 def append_campaign_event(
-    campaigns: CampaignRepository,
-    events: CampaignEventRepository,
-    delivery: CampaignEventDeliveryPort | None,
+    campaigns: Any,
+    events: Any,
+    delivery: Any | None,
     campaign_id: CampaignId,
     event_type: EventType,
     payload: CampaignEventPayload,

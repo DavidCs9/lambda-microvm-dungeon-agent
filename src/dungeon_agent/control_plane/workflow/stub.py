@@ -2,7 +2,7 @@
 
 from collections.abc import Callable, Mapping
 from datetime import UTC, datetime
-from typing import Protocol, cast
+from typing import Any, cast
 
 from dungeon_agent.control_plane.domain.enums import (
     CampaignStatus,
@@ -16,62 +16,16 @@ from dungeon_agent.control_plane.domain.models import (
     CreateSessionWorkflowInput,
     CreationFailedPayload,
     CreationStartedPayload,
-    OpeningDocument,
     PhaseChangedPayload,
-    SessionEvent,
     SessionId,
     SessionReadyPayload,
     SessionRecord,
 )
-from dungeon_agent.control_plane.domain.ports import (
-    CampaignRepository,
-    EventDeliveryPort,
-    EventRepository,
-    MicrovmManagerPort,
-    SessionRepository,
-)
-from dungeon_agent.control_plane.identifiers import new_event_id
+from dungeon_agent.control_plane.events import append_session_event
 from dungeon_agent.control_plane.workflow.sandbox import sandbox_opening
-from dungeon_agent.domain.game import AdventurePlan, LanguageCode, PlayerCharacter, WorldState
+from dungeon_agent.domain.game import LanguageCode
 
 Clock = Callable[[], datetime]
-
-
-class SessionAdventureStore(Protocol):
-    """Save and load the session's forked adventure copy."""
-
-    def save(self, session_id: SessionId, adventure: AdventurePlan) -> str: ...
-
-    def load(self, adventure_ref: str) -> AdventurePlan: ...
-
-
-class SessionCharacterStore(Protocol):
-    """Save and load the session's forked character and opening copies."""
-
-    def save(
-        self,
-        session_id: SessionId,
-        character: PlayerCharacter,
-        opening: OpeningDocument,
-    ) -> str: ...
-
-    def load_character(self, character_ref: str) -> PlayerCharacter: ...
-
-    def load_opening(self, character_ref: str) -> OpeningDocument: ...
-
-
-class CampaignAdventureLoader(Protocol):
-    def load(self, adventure_ref: str) -> AdventurePlan: ...
-
-
-class CampaignCharacterLoader(Protocol):
-    def load_character(self, character_ref: str) -> PlayerCharacter: ...
-
-    def load_opening(self, character_ref: str) -> OpeningDocument: ...
-
-
-class WorldSnapshotStore(Protocol):
-    def save(self, session_id: SessionId, world: WorldState) -> None: ...
 
 
 class DurableSessionWorkflowStub:
@@ -79,17 +33,17 @@ class DurableSessionWorkflowStub:
 
     def __init__(
         self,
-        sessions: SessionRepository,
-        events: EventRepository,
+        sessions: Any,
+        events: Any,
         *,
-        campaigns: CampaignRepository | None = None,
-        campaign_adventures: CampaignAdventureLoader | None = None,
-        campaign_characters: CampaignCharacterLoader | None = None,
-        adventures: SessionAdventureStore | None = None,
-        characters: SessionCharacterStore | None = None,
-        microvms: MicrovmManagerPort | None = None,
-        snapshots: WorldSnapshotStore | None = None,
-        delivery: EventDeliveryPort | None = None,
+        campaigns: Any | None = None,
+        campaign_adventures: Any | None = None,
+        campaign_characters: Any | None = None,
+        adventures: Any | None = None,
+        characters: Any | None = None,
+        microvms: Any | None = None,
+        snapshots: Any | None = None,
+        delivery: Any | None = None,
         clock: Clock | None = None,
     ) -> None:
         self._sessions = sessions
@@ -131,11 +85,14 @@ class DurableSessionWorkflowStub:
                 status=SessionStatus.CREATING,
                 workflow_arn=workflow_arn,
             )
-            self._append_event(
-                session,
-                state,
+            append_session_event(
+                self._sessions,
+                self._events,
+                self._delivery,
+                session.session_id,
                 EventType.SESSION_CREATION_STARTED,
                 CreationStartedPayload(language=session.language),
+                _required_string(state, "correlationId"),
                 now,
             )
 
@@ -147,14 +104,17 @@ class DurableSessionWorkflowStub:
             phase_timestamps[phase.value] = _wire_time(entered_at)
             state["phaseTimestamps"] = phase_timestamps
             state["phase"] = phase.value
-            self._append_event(
-                session,
-                state,
+            append_session_event(
+                self._sessions,
+                self._events,
+                self._delivery,
+                session.session_id,
                 EventType.SESSION_PHASE_CHANGED,
                 PhaseChangedPayload(
                     phase=phase,
                     elapsed_ms=max(0, int((now - entered_at).total_seconds() * 1_000)),
                 ),
+                _required_string(state, "correlationId"),
                 now,
             )
 
@@ -207,14 +167,17 @@ class DurableSessionWorkflowStub:
                 if self._characters is None
                 else self._characters.load_opening(_required_string(state, "characterRef"))
             )
-            self._append_event(
-                session,
-                state,
+            append_session_event(
+                self._sessions,
+                self._events,
+                self._delivery,
+                session.session_id,
                 EventType.SESSION_READY,
                 SessionReadyPayload(
                     revision=session.revision,
                     opening=opening,
                 ),
+                _required_string(state, "correlationId"),
                 now,
             )
         elif operation == "MarkSessionFailed":
@@ -234,14 +197,17 @@ class DurableSessionWorkflowStub:
             state["phase"] = session.phase.value
         elif operation == "EmitSessionCreationFailed":
             session = self._required_session(state)
-            self._append_event(
-                session,
-                state,
+            append_session_event(
+                self._sessions,
+                self._events,
+                self._delivery,
+                session.session_id,
                 EventType.SESSION_CREATION_FAILED,
                 CreationFailedPayload(
                     code=ErrorCode.SESSION_CREATION_FAILED,
                     retryable=False,
                 ),
+                _required_string(state, "correlationId"),
                 now,
             )
         return state
@@ -276,7 +242,7 @@ class DurableSessionWorkflowStub:
         session = self._sessions.get(session_id)
         if session is None:
             raise ValueError(f"session does not exist: {session_id}")
-        return session
+        return SessionRecord.model_validate(session)
 
     def _update_session(
         self,
@@ -299,37 +265,8 @@ class DurableSessionWorkflowStub:
             }
         )
         validated = SessionRecord.model_validate(updated)
-        return self._sessions.save(validated, expected_revision=current.revision)
-
-    def _append_event(
-        self,
-        session: SessionRecord,
-        state: Mapping[str, object],
-        event_type: EventType,
-        payload: CreationStartedPayload
-        | PhaseChangedPayload
-        | SessionReadyPayload
-        | CreationFailedPayload,
-        now: datetime,
-    ) -> None:
-        current = self._sessions.get(session.session_id)
-        if current is None:
-            raise ValueError(f"session does not exist: {session.session_id}")
-        event = SessionEvent(
-            event_id=new_event_id(),
-            session_id=session.session_id,
-            sequence=current.last_event_sequence + 1,
-            type=event_type,
-            occurred_at=now,
-            correlation_id=_required_string(state, "correlationId"),
-            payload=payload,
-        )
-        self._events.append(event, expected_previous_sequence=current.last_event_sequence)
-        if self._delivery is not None:
-            try:
-                self._delivery.deliver(current.owner_id, event)
-            except Exception as delivery_error:
-                print(f"event delivery failed: {type(delivery_error).__name__}")
+        saved = self._sessions.save(validated, expected_revision=current.revision)
+        return SessionRecord.model_validate(saved)
 
 
 def _required_string(value: Mapping[str, object], key: str) -> str:

@@ -2,6 +2,7 @@
 
 from collections.abc import Callable
 from datetime import UTC, datetime, timedelta
+from typing import Any, cast
 
 from dungeon_agent.control_plane.domain.models import (
     CampaignEvent,
@@ -10,14 +11,7 @@ from dungeon_agent.control_plane.domain.models import (
     SessionEvent,
     SessionId,
 )
-from dungeon_agent.control_plane.domain.ports import (
-    CampaignEventRepository,
-    CampaignRepository,
-    EventRepository,
-    SessionRepository,
-)
 from dungeon_agent.control_plane.realtime.models import ConnectionRecord
-from dungeon_agent.control_plane.realtime.ports import ConnectionRepository
 
 Clock = Callable[[], datetime]
 
@@ -25,12 +19,12 @@ Clock = Callable[[], datetime]
 class RealtimeSessionService:
     def __init__(
         self,
-        connections: ConnectionRepository,
-        sessions: SessionRepository,
-        events: EventRepository,
+        connections: Any,
+        sessions: Any,
+        events: Any,
         *,
-        campaigns: CampaignRepository | None = None,
-        campaign_events: CampaignEventRepository | None = None,
+        campaigns: Any | None = None,
+        campaign_events: Any | None = None,
         clock: Clock | None = None,
         connection_ttl: timedelta = timedelta(hours=2),
     ) -> None:
@@ -71,7 +65,7 @@ class RealtimeSessionService:
             update={"session_id": session_id, "campaign_id": None, "after_sequence": after_sequence}
         )
         self._connections.subscribe(ConnectionRecord.model_validate(subscribed))
-        return self._events.list_after(session_id, after_sequence)
+        return cast(tuple[SessionEvent, ...], self._events.list_after(session_id, after_sequence))
 
     def subscribe_campaign(
         self,
@@ -97,7 +91,10 @@ class RealtimeSessionService:
             }
         )
         self._connections.subscribe(ConnectionRecord.model_validate(subscribed))
-        return self._campaign_events.list_after(campaign_id, after_sequence)
+        return cast(
+            tuple[CampaignEvent, ...],
+            self._campaign_events.list_after(campaign_id, after_sequence),
+        )
 
     def disconnect(self, connection_id: str) -> None:
         self._connections.delete(connection_id)

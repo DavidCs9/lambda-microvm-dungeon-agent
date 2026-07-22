@@ -3,45 +3,23 @@
 import time
 from collections.abc import Callable, Mapping
 from datetime import datetime
-from typing import Literal, Protocol, cast
+from typing import Any, Literal, cast
 
 from dungeon_agent.control_plane.agents.roles import DungeonMaster, StructuredAgentPort
-from dungeon_agent.control_plane.application.events import append_session_event, utc_now
 from dungeon_agent.control_plane.domain.enums import EventType, SessionPhase, SessionStatus
 from dungeon_agent.control_plane.domain.models import (
     DiceRolledPayload,
     PhaseChangedPayload,
     SessionCompletedPayload,
-    SessionId,
     SessionRecord,
     SubmitTurnCommand,
     TurnCompletedPayload,
 )
-from dungeon_agent.control_plane.domain.ports import (
-    EventDeliveryPort,
-    EventRepository,
-    MicrovmManagerPort,
-    SessionRepository,
-)
+from dungeon_agent.control_plane.events import append_session_event, utc_now
 from dungeon_agent.control_plane.microvms.manager import TurnRejectedError
 from dungeon_agent.control_plane.telemetry.emf import EmfTelemetry
-from dungeon_agent.domain.game import WorldState
 
 Clock = Callable[[], datetime]
-
-
-class TurnWorkerInvoker(Protocol):
-    """Start the asynchronous turn worker exactly once per accepted action."""
-
-    def invoke_turn(self, command: SubmitTurnCommand) -> None: ...
-
-
-class WorldSnapshotStore(Protocol):
-    """Persist the latest authoritative world outside the MicroVM."""
-
-    def save(self, session_id: SessionId, world: WorldState) -> None: ...
-
-    def load(self, session_id: SessionId) -> WorldState: ...
 
 
 class TurnWorker:
@@ -49,13 +27,13 @@ class TurnWorker:
 
     def __init__(
         self,
-        sessions: SessionRepository,
-        events: EventRepository,
-        snapshots: WorldSnapshotStore,
+        sessions: Any,
+        events: Any,
+        snapshots: Any,
         agent: StructuredAgentPort,
-        microvms: MicrovmManagerPort,
+        microvms: Any,
         *,
-        delivery: EventDeliveryPort | None = None,
+        delivery: Any | None = None,
         telemetry: EmfTelemetry | None = None,
         clock: Clock | None = None,
         monotonic: Callable[[], float] = time.monotonic,
@@ -214,7 +192,8 @@ class TurnWorker:
 
     def _save(self, session: SessionRecord) -> SessionRecord:
         validated = SessionRecord.model_validate(session)
-        return self._sessions.save(validated, expected_revision=validated.revision - 1)
+        saved = self._sessions.save(validated, expected_revision=validated.revision - 1)
+        return SessionRecord.model_validate(saved)
 
     def _emit(
         self,

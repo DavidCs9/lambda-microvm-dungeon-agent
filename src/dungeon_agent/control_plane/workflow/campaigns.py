@@ -2,7 +2,7 @@
 
 from collections.abc import Callable, Mapping
 from datetime import UTC, datetime
-from typing import Protocol
+from typing import Any
 
 from dungeon_agent.control_plane.agents.metrics import RoleMetricsCollector
 from dungeon_agent.control_plane.domain.enums import (
@@ -14,7 +14,6 @@ from dungeon_agent.control_plane.domain.enums import (
 from dungeon_agent.control_plane.domain.models import (
     CampaignCreationFailedPayload,
     CampaignCreationStartedPayload,
-    CampaignEvent,
     CampaignGenerationMetrics,
     CampaignId,
     CampaignPhaseChangedPayload,
@@ -23,12 +22,7 @@ from dungeon_agent.control_plane.domain.models import (
     CreateCampaignWorkflowInput,
     OpeningDocument,
 )
-from dungeon_agent.control_plane.domain.ports import (
-    CampaignEventDeliveryPort,
-    CampaignEventRepository,
-    CampaignRepository,
-)
-from dungeon_agent.control_plane.identifiers import new_event_id
+from dungeon_agent.control_plane.events import append_campaign_event
 from dungeon_agent.control_plane.steps.adventure import AdventureStep
 from dungeon_agent.control_plane.steps.character import CharacterStep, CharacterStepInput
 from dungeon_agent.control_plane.workflow.sandbox import sandbox_opening
@@ -36,25 +30,21 @@ from dungeon_agent.control_plane.workflow.sandbox import sandbox_opening
 Clock = Callable[[], datetime]
 
 
-class CampaignOpeningLoader(Protocol):
-    def load_opening(self, character_ref: str) -> OpeningDocument: ...
-
-
 class DurableCampaignWorkflowStub:
     """Generate a world and protagonist once, with no MicroVM involvement."""
 
     def __init__(
         self,
-        campaigns: CampaignRepository,
-        events: CampaignEventRepository,
+        campaigns: Any,
+        events: Any,
         *,
         adventure_step: AdventureStep | None = None,
         character_step: CharacterStep | None = None,
-        openings: CampaignOpeningLoader | None = None,
+        openings: Any | None = None,
         adventure_metrics: RoleMetricsCollector | None = None,
         character_metrics: RoleMetricsCollector | None = None,
         model_id: str | None = None,
-        delivery: CampaignEventDeliveryPort | None = None,
+        delivery: Any | None = None,
         clock: Clock | None = None,
     ) -> None:
         self._campaigns = campaigns
@@ -99,11 +89,14 @@ class DurableCampaignWorkflowStub:
                 status=CampaignStatus.CREATING,
                 workflow_arn=workflow_arn,
             )
-            self._append_event(
-                campaign,
-                state,
+            append_campaign_event(
+                self._campaigns,
+                self._events,
+                self._delivery,
+                campaign.campaign_id,
                 EventType.CAMPAIGN_CREATION_STARTED,
                 CampaignCreationStartedPayload(language=campaign.language),
+                _required_string(state, "correlationId"),
                 now,
             )
 
@@ -115,14 +108,17 @@ class DurableCampaignWorkflowStub:
             phase_timestamps[phase.value] = _wire_time(entered_at)
             state["phaseTimestamps"] = phase_timestamps
             state["phase"] = phase.value
-            self._append_event(
-                campaign,
-                state,
+            append_campaign_event(
+                self._campaigns,
+                self._events,
+                self._delivery,
+                campaign.campaign_id,
                 EventType.CAMPAIGN_PHASE_CHANGED,
                 CampaignPhaseChangedPayload(
                     phase=phase,
                     elapsed_ms=max(0, int((now - entered_at).total_seconds() * 1_000)),
                 ),
+                _required_string(state, "correlationId"),
                 now,
             )
 
@@ -180,14 +176,17 @@ class DurableCampaignWorkflowStub:
                     else self._openings.load_opening(_required_string(state, "characterRef"))
                 )
             )
-            self._append_event(
-                campaign,
-                state,
+            append_campaign_event(
+                self._campaigns,
+                self._events,
+                self._delivery,
+                campaign.campaign_id,
                 EventType.CAMPAIGN_READY,
                 CampaignReadyPayload(
                     revision=campaign.revision,
                     opening=opening,
                 ),
+                _required_string(state, "correlationId"),
                 now,
             )
         elif operation == "MarkCampaignFailed":
@@ -201,14 +200,17 @@ class DurableCampaignWorkflowStub:
             state["phase"] = campaign.phase.value
         elif operation == "EmitCampaignCreationFailed":
             campaign = self._required_campaign(state)
-            self._append_event(
-                campaign,
-                state,
+            append_campaign_event(
+                self._campaigns,
+                self._events,
+                self._delivery,
+                campaign.campaign_id,
                 EventType.CAMPAIGN_CREATION_FAILED,
                 CampaignCreationFailedPayload(
                     code=ErrorCode.CAMPAIGN_CREATION_FAILED,
                     retryable=False,
                 ),
+                _required_string(state, "correlationId"),
                 now,
             )
         return state
@@ -230,7 +232,7 @@ class DurableCampaignWorkflowStub:
         campaign = self._campaigns.get(campaign_id)
         if campaign is None:
             raise ValueError(f"campaign does not exist: {campaign_id}")
-        return campaign
+        return CampaignRecord.model_validate(campaign)
 
     def _update_campaign(
         self,
@@ -261,37 +263,8 @@ class DurableCampaignWorkflowStub:
             }
         )
         validated = CampaignRecord.model_validate(updated)
-        return self._campaigns.save(validated, expected_revision=current.revision)
-
-    def _append_event(
-        self,
-        campaign: CampaignRecord,
-        state: Mapping[str, object],
-        event_type: EventType,
-        payload: CampaignCreationStartedPayload
-        | CampaignPhaseChangedPayload
-        | CampaignReadyPayload
-        | CampaignCreationFailedPayload,
-        now: datetime,
-    ) -> None:
-        current = self._campaigns.get(campaign.campaign_id)
-        if current is None:
-            raise ValueError(f"campaign does not exist: {campaign.campaign_id}")
-        event = CampaignEvent(
-            event_id=new_event_id(),
-            campaign_id=campaign.campaign_id,
-            sequence=current.last_event_sequence + 1,
-            type=event_type,
-            occurred_at=now,
-            correlation_id=_required_string(state, "correlationId"),
-            payload=payload,
-        )
-        self._events.append(event, expected_previous_sequence=current.last_event_sequence)
-        if self._delivery is not None:
-            try:
-                self._delivery.deliver_campaign(current.owner_id, event)
-            except Exception as delivery_error:
-                print(f"event delivery failed: {type(delivery_error).__name__}")
+        saved = self._campaigns.save(validated, expected_revision=current.revision)
+        return CampaignRecord.model_validate(saved)
 
 
 def _workflow_input(state: Mapping[str, object]) -> CreateCampaignWorkflowInput:

@@ -3,7 +3,7 @@
 import logging
 import time
 from collections.abc import Callable, Mapping
-from typing import Literal, Protocol
+from typing import Any, Literal, cast
 
 from pydantic import Field
 
@@ -16,40 +16,9 @@ from dungeon_agent.control_plane.domain.models import (
     OpeningBlock,
     OpeningDocument,
 )
-from dungeon_agent.control_plane.domain.ports import CharacterArchitectPort
 from dungeon_agent.domain.game import AdventurePlan, LanguageCode, PlayerCharacter
 
 LOGGER = logging.getLogger(__name__)
-
-
-class AdventurePlanLoader(Protocol):
-    """Load the validated adventure produced by the previous workflow step."""
-
-    def load(self, adventure_ref: str) -> AdventurePlan: ...
-
-
-class CharacterBundleStore(Protocol):
-    """Persist the character and its shared visual/audio opening."""
-
-    def save(
-        self,
-        campaign_id: CampaignId,
-        character: PlayerCharacter,
-        opening: OpeningDocument,
-        portrait_key: str | None = None,
-    ) -> str: ...
-
-
-class PortraitGenerator(Protocol):
-    """Render one AI portrait for a generated protagonist."""
-
-    def generate(self, character: PlayerCharacter) -> bytes: ...
-
-
-class PortraitStore(Protocol):
-    """Persist the one portrait image generated per campaign."""
-
-    def save(self, campaign_id: CampaignId, image: bytes) -> str: ...
 
 
 class CharacterStepInput(ContractModel):
@@ -80,12 +49,12 @@ class CharacterStep:
 
     def __init__(
         self,
-        architect: CharacterArchitectPort,
-        adventures: AdventurePlanLoader,
-        characters: CharacterBundleStore,
+        architect: Any,
+        adventures: Any,
+        characters: Any,
         *,
-        portrait_generator: PortraitGenerator | None = None,
-        portrait_store: PortraitStore | None = None,
+        portrait_generator: Any | None = None,
+        portrait_store: Any | None = None,
         monotonic: Callable[[], float] = time.perf_counter,
     ) -> None:
         self._architect = architect
@@ -131,7 +100,7 @@ class CharacterStep:
             return None
         try:
             image = self._portrait_generator.generate(character)
-            return self._portrait_store.save(campaign_id, image)
+            return cast(str, self._portrait_store.save(campaign_id, image))
         except Exception:
             LOGGER.exception("portrait_generation_failed", extra={"campaign_id": campaign_id})
             return None

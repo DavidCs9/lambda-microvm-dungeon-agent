@@ -3,8 +3,6 @@ from __future__ import annotations
 from datetime import UTC, datetime
 
 from dungeon_agent.control_plane.agents.roles import OutputModel
-from dungeon_agent.control_plane.application.sessions import DefaultSessionFactory
-from dungeon_agent.control_plane.application.turns import TurnWorker
 from dungeon_agent.control_plane.domain.enums import EventType, SessionPhase, SessionStatus
 from dungeon_agent.control_plane.domain.models import (
     MicrovmLaunchResult,
@@ -24,6 +22,7 @@ from dungeon_agent.control_plane.persistence.memory import (
     InMemoryCampaignRepository,
     InMemoryControlPlaneRepository,
 )
+from dungeon_agent.control_plane.turns import TurnWorker
 from dungeon_agent.domain.game import (
     AdventurePlan,
     LanguageCode,
@@ -140,7 +139,6 @@ def _handlers(
         repository,
         repository,
         FakeWorkflows(),
-        DefaultSessionFactory(),
         InMemoryCampaignRepository(),
         turns=invoker,
         clock=lambda: NOW,

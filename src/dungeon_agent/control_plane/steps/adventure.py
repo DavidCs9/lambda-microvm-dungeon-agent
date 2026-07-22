@@ -2,7 +2,7 @@
 
 import time
 from collections.abc import Callable, Mapping
-from typing import Literal, Protocol
+from typing import Any, Literal
 
 from pydantic import Field
 
@@ -13,14 +13,7 @@ from dungeon_agent.control_plane.domain.models import (
     CorrelationId,
     CreateCampaignWorkflowInput,
 )
-from dungeon_agent.control_plane.domain.ports import AdventureArchitectPort
 from dungeon_agent.domain.game import AdventurePlan, LanguageCode
-
-
-class AdventurePlanStore(Protocol):
-    """Persist a validated plan and return its opaque location."""
-
-    def save(self, campaign_id: CampaignId, adventure: AdventurePlan) -> str: ...
 
 
 class AdventureStepResult(ContractModel):
@@ -39,8 +32,8 @@ class AdventureStep:
 
     def __init__(
         self,
-        architect: AdventureArchitectPort,
-        plans: AdventurePlanStore,
+        architect: Any,
+        plans: Any,
         *,
         monotonic: Callable[[], float] = time.perf_counter,
     ) -> None:

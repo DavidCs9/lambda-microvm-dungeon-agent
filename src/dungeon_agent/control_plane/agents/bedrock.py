@@ -3,14 +3,11 @@
 from __future__ import annotations
 
 import time
-from typing import TYPE_CHECKING, TypeVar
+from typing import Any, TypeVar
 
 from pydantic import BaseModel, ValidationError
 
 from dungeon_agent.control_plane.agents.metrics import AgentMetricsPort
-
-if TYPE_CHECKING:
-    from mypy_boto3_bedrock_runtime import BedrockRuntimeClient
 
 OutputModel = TypeVar("OutputModel", bound=BaseModel)
 
@@ -20,7 +17,7 @@ class StructuredBedrockAgent:
 
     def __init__(
         self,
-        client: BedrockRuntimeClient,
+        client: Any,
         model_id: str,
         metrics: AgentMetricsPort,
     ) -> None:

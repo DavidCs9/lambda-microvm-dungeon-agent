@@ -5,7 +5,6 @@ import pytest
 from pydantic import ValidationError
 
 from dungeon_agent.control_plane.agents.metrics import RoleMetricsCollector
-from dungeon_agent.control_plane.application import DefaultCampaignFactory
 from dungeon_agent.control_plane.domain.enums import (
     CampaignPhase,
     CampaignStatus,
@@ -16,7 +15,6 @@ from dungeon_agent.control_plane.domain.models import (
     CampaignEvent,
     CampaignId,
     CampaignRecord,
-    CreateCampaignCommand,
     OpeningDocument,
 )
 from dungeon_agent.control_plane.identifiers import new_campaign_id
@@ -108,24 +106,6 @@ def test_campaign_event_validates_payload_and_round_trips() -> None:
             correlation_id="corr-campaign-test",
             payload=CampaignCreationStartedPayload(language="en"),
         )
-
-
-def test_factory_creates_a_requested_campaign_from_the_command() -> None:
-    factory = DefaultCampaignFactory(id_factory=lambda: CAMPAIGN_ID)
-    command = CreateCampaignCommand(
-        owner_id="user_demo",
-        language="es",
-        idempotency_key="campaign-command-001",
-        correlation_id="corr-campaign-factory",
-    )
-
-    campaign = factory.create(command, NOW)
-
-    assert campaign.campaign_id == CAMPAIGN_ID
-    assert campaign.status is CampaignStatus.REQUESTED
-    assert campaign.phase is CampaignPhase.REQUESTED
-    assert campaign.revision == 0
-    assert campaign.language == "es"
 
 
 class _Sink:

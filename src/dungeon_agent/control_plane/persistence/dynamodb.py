@@ -2,10 +2,8 @@
 
 from collections.abc import Iterable, Mapping
 from datetime import timedelta
-from typing import Protocol, cast
-
-import boto3
-from botocore.config import Config
+from importlib import import_module
+from typing import Any, Protocol, cast
 
 from dungeon_agent.control_plane.domain.enums import SessionStatus
 from dungeon_agent.control_plane.domain.models import (
@@ -446,7 +444,9 @@ def create_dynamodb_repository(
     idempotency_ttl_seconds: int = 86_400,
 ) -> DynamoDbControlPlaneRepository:
     """Create one reusable DynamoDB client and its repository adapter."""
-    config = Config(
+    config_cls = cast(Any, import_module("botocore.config")).Config
+    boto3 = cast(Any, import_module("boto3"))
+    config = config_cls(
         retries={"total_max_attempts": 3, "mode": "adaptive"},
         connect_timeout=3,
         read_timeout=10,
