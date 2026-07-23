@@ -116,7 +116,6 @@ class SessionHttpHandlers:
         except Exception:
             return self._dependency_error(correlation_id)
 
-
     def get_session(
         self, identity: AuthenticatedIdentity, session_id: SessionId, *, correlation_id: str
     ) -> HttpResult:
@@ -125,7 +124,6 @@ class SessionHttpHandlers:
             return error
         assert session is not None
         return HttpResult(200, SessionEnvelope(session=session), correlation_id)
-
 
     def list_active_sessions(
         self, identity: AuthenticatedIdentity, *, correlation_id: str
@@ -264,7 +262,6 @@ class SessionHttpHandlers:
         )
         return SessionRecord.model_validate(saved)
 
-
     def _emit(
         self,
         session_id: SessionId,
@@ -288,4 +285,3 @@ class SessionHttpHandlers:
     @staticmethod
     def _conflict(message: str, correlation_id: str) -> HttpResult:
         return error_result(409, ErrorCode.SESSION_CONFLICT, message, False, correlation_id)
-

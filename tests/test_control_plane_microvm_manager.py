@@ -5,11 +5,6 @@ from datetime import UTC, datetime
 
 import pytest
 
-from dungeon_agent.plane_shared.domain.models import SessionId
-from dungeon_agent.plane_shared.microvms.manager import (
-    LambdaMicrovmManager,
-    TurnRejectedError,
-)
 from dungeon_agent.domain.game import (
     AdventurePlan,
     Character,
@@ -21,6 +16,11 @@ from dungeon_agent.domain.game import (
     WorldState,
 )
 from dungeon_agent.microvm import HttpResult
+from dungeon_agent.plane_shared.domain.models import SessionId
+from dungeon_agent.plane_shared.microvms.manager import (
+    LambdaMicrovmManager,
+    TurnRejectedError,
+)
 
 SESSION_ID: SessionId = "ses_01J00000000000000000000002"
 IMAGE_ARN = "arn:aws:lambda:us-east-2:225989371926:microvm-image:dungeon-agent-fastapi"

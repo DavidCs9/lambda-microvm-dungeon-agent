@@ -4,6 +4,7 @@ from datetime import UTC, datetime, timedelta
 import pytest
 from pydantic import ValidationError
 
+from dungeon_agent.control_plane.workflow.campaigns import DurableCampaignWorkflowStub
 from dungeon_agent.plane_shared.domain.enums import (
     CampaignPhase,
     CampaignStatus,
@@ -25,7 +26,6 @@ from dungeon_agent.plane_shared.persistence.errors import (
     CampaignRevisionConflictError,
 )
 from dungeon_agent.plane_shared.persistence.memory import InMemoryCampaignRepository
-from dungeon_agent.control_plane.workflow.campaigns import DurableCampaignWorkflowStub
 
 NOW = datetime(2026, 7, 18, 21, 0, tzinfo=UTC)
 CAMPAIGN_ID: CampaignId = "cam_01J00000000000000000000000"
