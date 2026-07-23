@@ -24,8 +24,8 @@ Based on the official [C4 model](https://c4model.com/) (Simon Brown) and
 | Supporting diagrams for flows | Sequence diagram for a turn; flowchart for REST ownership |
 | Progressive disclosure | Polly/S3 kept out of L1/L2 boxes (see tables below) so links stay readable |
 
-Mermaid’s C4 renderer is experimental; these diagrams were **rendered to PNG and visually
-checked** so arrows do not cross through unrelated boxes.
+Mermaid’s C4 renderer is experimental. Checked PNG renders live in [`docs/diagrams/`](diagrams/);
+Mermaid sources stay in collapsible blocks for editing.
 
 ## Control plane vs data plane (lab taxonomy)
 
@@ -45,6 +45,11 @@ it wires both planes. Source of truth for REST ownership: `ROUTE_PLANE` in
 `plane_shared/http/api_gateway.py`.
 
 ### REST endpoints by plane
+
+![REST endpoints by plane](diagrams/rest-by-plane.png)
+
+<details>
+<summary>Mermaid source</summary>
 
 ```mermaid
 flowchart LR
@@ -74,6 +79,7 @@ flowchart LR
   class DATA,D1,D2,D3 data
   class SPA spa
 ```
+</details>
 
 ### WebSocket by plane
 
@@ -106,6 +112,11 @@ Audience: anyone. Shows people, the system, and important externals.
 
 *(Amazon Polly omitted here so Mermaid links stay clean; it is used for TTS from the data plane.)*
 
+![L1 System Context](diagrams/l1-system-context.png)
+
+<details>
+<summary>Mermaid source</summary>
+
 ```mermaid
 C4Context
 title L1 System Context — Dungeon Agent
@@ -124,6 +135,7 @@ UpdateRelStyle(da, bedrock, $textColor="#334155", $lineColor="#64748b", $offsetY
 UpdateRelStyle(da, microvms, $textColor="#334155", $lineColor="#64748b", $offsetY="30")
 UpdateLayoutConfig($c4ShapeInRow="2", $c4BoundaryInRow="1")
 ```
+</details>
 
 ---
 
@@ -134,6 +146,11 @@ Audience: developers / ops. **Containers** here are separately runnable/deployab
 control vs data plane packages appear at L3.
 
 *(S3 media cache and Polly omitted from the box diagram for link clarity; Backend uses both.)*
+
+![L2 Containers](diagrams/l2-containers.png)
+
+<details>
+<summary>Mermaid source</summary>
 
 ```mermaid
 C4Container
@@ -163,6 +180,7 @@ UpdateRelStyle(backend, vm, $textColor="#334155", $lineColor="#64748b", $offsetY
 UpdateRelStyle(backend, bedrock, $textColor="#334155", $lineColor="#64748b", $offsetY="20")
 UpdateLayoutConfig($c4ShapeInRow="2", $c4BoundaryInRow="1")
 ```
+</details>
 
 ### Main flows
 
@@ -186,6 +204,11 @@ Zoom into the **Backend** container. Packages are components, not separate deplo
 
 ### REST dispatch (control vs data)
 
+![L3 control vs data plane](diagrams/l3-control-vs-data.png)
+
+<details>
+<summary>Mermaid source</summary>
+
 ```mermaid
 C4Component
 title L3 Backend — control vs data plane packages
@@ -208,8 +231,14 @@ UpdateRelStyle(cp, shared, $textColor="#334155", $lineColor="#64748b", $offsetX=
 UpdateRelStyle(dp, shared, $textColor="#334155", $lineColor="#64748b", $offsetX="20")
 UpdateLayoutConfig($c4ShapeInRow="2", $c4BoundaryInRow="1")
 ```
+</details>
 
 ### WebSocket fan-out
+
+![L3 WebSocket fan-out](diagrams/l3-ws-fanout.png)
+
+<details>
+<summary>Mermaid source</summary>
 
 ```mermaid
 C4Component
@@ -231,10 +260,16 @@ UpdateRelStyle(dp, shared, $textColor="#334155", $lineColor="#64748b", $offsetX=
 UpdateRelStyle(shared, ws, $textColor="#334155", $lineColor="#64748b", $offsetY="-25")
 UpdateLayoutConfig($c4ShapeInRow="2", $c4BoundaryInRow="1")
 ```
+</details>
 
 ### Dynamic — one player turn (data plane)
 
 Supporting diagram (sequence is clearer than Mermaid `C4Dynamic` for numbered steps):
+
+![One player turn sequence](diagrams/turn-sequence.png)
+
+<details>
+<summary>Mermaid source</summary>
 
 ```mermaid
 sequenceDiagram
@@ -255,6 +290,7 @@ sequenceDiagram
   Worker->>WS: post_to_connection
   WS-->>SPA: turn.* / dice / narration (WSS)
 ```
+</details>
 
 Missed WS frames: REST `GET /sessions/{id}/events?after=N` (data plane).
 
