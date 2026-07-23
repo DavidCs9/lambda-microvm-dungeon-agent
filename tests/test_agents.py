@@ -3,11 +3,8 @@ from unittest.mock import Mock
 import pytest
 from pydantic import ValidationError
 
-from dungeon_agent.control_plane.agents import (
-    AdventureArchitect,
-    CharacterArchitect,
-    StructuredBedrockAgent,
-)
+from dungeon_agent.control_plane.agents.bedrock import StructuredBedrockAgent
+from dungeon_agent.control_plane.agents.roles import AdventureArchitect, CharacterArchitect
 from dungeon_agent.orchestrator.observability import SessionMetrics
 from tests.test_adventure import sample_plan, sample_player
 
@@ -122,7 +119,7 @@ def test_character_architect_grounds_protagonist_in_adventure() -> None:
     assert '"adventure"' in prompt
     assert "Spanish" in prompt
     assert "él / lo" in prompt
-    assert "never default to feminine" in system
+    assert "vary gender/presentation" in system
 
 
 def test_adventure_architect_injects_theme_seed_into_prompt() -> None:
@@ -141,4 +138,4 @@ def test_adventure_architect_injects_theme_seed_into_prompt() -> None:
     system = request["system"][0]["text"]
     assert "a ferry stuck between two dawns" in prompt
     assert "Spanish" in prompt
-    assert "silenced village bell" in system
+    assert "silent bell/tower" in system

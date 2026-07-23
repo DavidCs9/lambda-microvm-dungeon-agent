@@ -1,28 +1,12 @@
-"""DynamoDB connection records with TTL and aggregate subscriptions."""
-
 from collections.abc import Mapping
-from typing import Protocol
-
-from boto3.dynamodb.conditions import Key
+from typing import Any
 
 from dungeon_agent.control_plane.domain.models import CampaignId, SessionId
 from dungeon_agent.control_plane.realtime.models import ConnectionRecord
 
 
-class DynamoTable(Protocol):
-    def put_item(self, **kwargs: object) -> Mapping[str, object]: ...
-
-    def get_item(self, **kwargs: object) -> Mapping[str, object]: ...
-
-    def update_item(self, **kwargs: object) -> Mapping[str, object]: ...
-
-    def delete_item(self, **kwargs: object) -> Mapping[str, object]: ...
-
-    def query(self, **kwargs: object) -> Mapping[str, object]: ...
-
-
 class DynamoDbConnectionRepository:
-    def __init__(self, table: DynamoTable) -> None:
+    def __init__(self, table: Any) -> None:
         self._table = table
 
     def put(self, connection: ConnectionRecord) -> None:
@@ -75,9 +59,11 @@ class DynamoDbConnectionRepository:
 
     def _subscribers_of(self, aggregate_pk: str) -> tuple[ConnectionRecord, ...]:
         response = self._table.query(
-            KeyConditionExpression=(
-                Key("PK").eq(aggregate_pk) & Key("SK").begins_with("CONNECTION#")
-            ),
+            KeyConditionExpression="PK = :pk AND begins_with(SK, :connectionPrefix)",
+            ExpressionAttributeValues={
+                ":pk": aggregate_pk,
+                ":connectionPrefix": "CONNECTION#",
+            },
             ConsistentRead=True,
         )
         items = response.get("Items", [])

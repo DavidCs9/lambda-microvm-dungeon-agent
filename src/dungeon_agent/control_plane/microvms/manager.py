@@ -1,12 +1,10 @@
-"""Pragmatic adapter around the Lambda MicroVM lifecycle API."""
-
 from __future__ import annotations
 
 import time
-from collections.abc import Callable, Mapping, Sequence
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from datetime import UTC, datetime
-from typing import Protocol, cast
+from typing import Any, cast
 from uuid import uuid4
 
 from dungeon_agent.control_plane.domain.models import MicrovmLaunchResult, SessionId
@@ -17,68 +15,13 @@ from dungeon_agent.domain.game import (
     TurnProposal,
     WorldState,
 )
-from dungeon_agent.microvm import HttpResult, request_json
+from dungeon_agent.microvm import request_json
 
 _TERMINAL_STATES = {"TERMINATED"}
 
 
-class LambdaMicrovmsClient(Protocol):
-    """Small subset of the generated Lambda MicroVM client used by this adapter."""
-
-    def list_microvm_images(self, *, nameFilter: str, maxResults: int) -> Mapping[str, object]: ...
-
-    def get_microvm_image(self, *, imageIdentifier: str) -> Mapping[str, object]: ...
-
-    def run_microvm(
-        self,
-        *,
-        imageIdentifier: str,
-        imageVersion: str,
-        ingressNetworkConnectors: Sequence[str],
-        egressNetworkConnectors: Sequence[str],
-        idlePolicy: Mapping[str, object],
-        maximumDurationInSeconds: int,
-        logging: Mapping[str, object],
-        clientToken: str,
-    ) -> Mapping[str, object]: ...
-
-    def get_microvm(self, *, microvmIdentifier: str) -> Mapping[str, object]: ...
-
-    def create_microvm_auth_token(
-        self,
-        *,
-        microvmIdentifier: str,
-        expirationInMinutes: int,
-        allowedPorts: Sequence[Mapping[str, int]],
-    ) -> Mapping[str, object]: ...
-
-    def terminate_microvm(self, *, microvmIdentifier: str) -> Mapping[str, object]: ...
-
-
-class JsonRequester(Protocol):
-    def __call__(
-        self,
-        endpoint: str,
-        token: str,
-        method: str,
-        path: str,
-        payload: dict[str, object] | None = None,
-    ) -> HttpResult: ...
-
-
-class MicrovmMetrics(Protocol):
-    """Optional timing hook used by a Lambda handler or tests."""
-
-    def record(self, operation: str, latency_ms: float) -> None: ...
-
-
-class _NullMetrics:
-    def record(self, operation: str, latency_ms: float) -> None:
-        del operation, latency_ms
-
-
 class TurnRejectedError(RuntimeError):
-    """Raised when the MicroVM rules API rejects a Dungeon Master proposal."""
+    pass
 
 
 @dataclass(frozen=True)
@@ -88,16 +31,14 @@ class _ImageVersion:
 
 
 class LambdaMicrovmManager:
-    """Resolve the latest image and own one MicroVM's complete lifecycle."""
-
     def __init__(
         self,
-        client: LambdaMicrovmsClient,
+        client: Any,
         image_name_or_arn: str,
         region: str,
         *,
-        requester: JsonRequester = request_json,
-        metrics: MicrovmMetrics | None = None,
+        requester: Any = request_json,
+        metrics: Any | None = None,
         timeout_seconds: float = 180,
         poll_interval_seconds: float = 1,
         now: Callable[[], datetime] | None = None,
@@ -108,7 +49,7 @@ class LambdaMicrovmManager:
         self._image_name_or_arn = image_name_or_arn
         self._region = region
         self._requester = requester
-        self._metrics = metrics or _NullMetrics()
+        self._metrics = metrics
         self._timeout_seconds = timeout_seconds
         self._poll_interval_seconds = poll_interval_seconds
         self._now = now or (lambda: datetime.now(UTC))
@@ -116,8 +57,7 @@ class LambdaMicrovmManager:
         self._sleep = sleep
 
     def launch(self, session_id: SessionId) -> MicrovmLaunchResult:
-        image = self._timed("image_resolution", self._resolve_latest_image)
-        started = self._monotonic()
+        image = self._resolve_latest_image()
         response = self._client.run_microvm(
             imageIdentifier=image.arn,
             imageVersion=image.version,
@@ -130,20 +70,20 @@ class LambdaMicrovmManager:
             },
             maximumDurationInSeconds=1_800,
             logging={"disabled": {}},
-            # Unique per launch: reusing session_id as the token breaks rehydrate
-            # after idle terminate (Lambda MicroVMs rejects the duplicate token).
             clientToken=f"{session_id}-{uuid4().hex}",
         )
-        self._metrics.record("launch", self._elapsed_ms(started))
         microvm_id = self._required_string(response, "microvmId")
         try:
-            self._timed("readiness", lambda: self.wait_until_running(microvm_id))
+            self.wait_until_running(microvm_id)
         except Exception as error:
             try:
                 self.terminate(microvm_id)
             except Exception as cleanup_error:
                 error.add_note(f"MicroVM cleanup also failed: {cleanup_error}")
             raise
+        if self._metrics is not None:
+            for operation in ("image_resolution", "launch", "readiness"):
+                self._metrics.record(operation, 0)
         return MicrovmLaunchResult(microvm_id=microvm_id, ready_at=self._now())
 
     def wait_until_running(self, microvm_id: str) -> Mapping[str, object]:
@@ -156,7 +96,6 @@ class LambdaMicrovmManager:
         adventure: AdventurePlan,
         character: PlayerCharacter,
     ) -> WorldState:
-        started = self._monotonic()
         endpoint, token = self._endpoint_and_token(microvm_id)
         result = self._requester(
             endpoint,
@@ -171,12 +110,9 @@ class LambdaMicrovmManager:
         )
         if not 200 <= result.status < 300:
             raise RuntimeError(f"initialize MicroVM returned HTTP {result.status}: {result.body}")
-        world = WorldState.model_validate(result.body)
-        self._metrics.record("initialization", self._elapsed_ms(started))
-        return world
+        return WorldState.model_validate(result.body)
 
     def apply_turn(self, microvm_id: str, action: str, proposal: TurnProposal) -> WorldState:
-        started = self._monotonic()
         endpoint, token = self._endpoint_and_token(microvm_id)
         result = self._requester(
             endpoint,
@@ -192,19 +128,19 @@ class LambdaMicrovmManager:
             raise TurnRejectedError(f"MicroVM rejected the proposal: {result.body}")
         if not 200 <= result.status < 300:
             raise RuntimeError(f"apply turn returned HTTP {result.status}: {result.body}")
-        world = WorldState.model_validate(result.body)
-        self._metrics.record("turn", self._elapsed_ms(started))
-        return world
+        return WorldState.model_validate(result.body)
 
     def is_running(self, microvm_id: str) -> bool:
         try:
-            microvm = self._client.get_microvm(microvmIdentifier=microvm_id)
+            microvm = cast(
+                Mapping[str, object],
+                self._client.get_microvm(microvmIdentifier=microvm_id),
+            )
         except Exception:
             return False
-        return microvm.get("state") == "RUNNING"
+        return bool(microvm.get("state") == "RUNNING")
 
     def rehydrate(self, session_id: SessionId, state: WorldState) -> MicrovmLaunchResult:
-        started = self._monotonic()
         launch = self.launch(session_id)
         try:
             self.restore(launch.microvm_id, state)
@@ -214,7 +150,6 @@ class LambdaMicrovmManager:
             except Exception as cleanup_error:
                 error.add_note(f"MicroVM cleanup also failed: {cleanup_error}")
             raise
-        self._metrics.record("rehydration", self._elapsed_ms(started))
         return launch
 
     def restore(self, microvm_id: str, state: WorldState) -> None:
@@ -235,10 +170,8 @@ class LambdaMicrovmManager:
             )
 
     def terminate(self, microvm_id: str) -> None:
-        started = self._monotonic()
         self._client.terminate_microvm(microvmIdentifier=microvm_id)
         self._wait_for_state(microvm_id, "TERMINATED")
-        self._metrics.record("termination", self._elapsed_ms(started))
 
     def _endpoint_and_token(self, microvm_id: str) -> tuple[str, str]:
         microvm = self._client.get_microvm(microvmIdentifier=microvm_id)
@@ -276,7 +209,6 @@ class LambdaMicrovmManager:
                     f"Expected one MicroVM image named {image_identifier!r}, found {len(matches)}"
                 )
             image_identifier = self._required_string(matches[0], "imageArn")
-
         image = self._client.get_microvm_image(imageIdentifier=image_identifier)
         return _ImageVersion(
             arn=self._required_string(image, "imageArn"),
@@ -286,7 +218,10 @@ class LambdaMicrovmManager:
     def _wait_for_state(self, microvm_id: str, expected_state: str) -> Mapping[str, object]:
         deadline = self._monotonic() + self._timeout_seconds
         while self._monotonic() < deadline:
-            response = self._client.get_microvm(microvmIdentifier=microvm_id)
+            response = cast(
+                Mapping[str, object],
+                self._client.get_microvm(microvmIdentifier=microvm_id),
+            )
             state = response.get("state")
             if state == expected_state:
                 return response
@@ -300,15 +235,6 @@ class LambdaMicrovmManager:
         return (
             f"arn:aws:lambda:{self._region}:aws:network-connector:aws-network-connector:{connector}"
         )
-
-    def _timed[T](self, operation: str, function: Callable[[], T]) -> T:
-        started = self._monotonic()
-        result = function()
-        self._metrics.record(operation, self._elapsed_ms(started))
-        return result
-
-    def _elapsed_ms(self, started: float) -> float:
-        return (self._monotonic() - started) * 1_000
 
     @staticmethod
     def _required_string(values: Mapping[str, object], key: str) -> str:

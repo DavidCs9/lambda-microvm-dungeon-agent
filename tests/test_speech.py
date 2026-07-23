@@ -7,26 +7,23 @@ from dungeon_agent.audio.polly import (
     speech_cache_key,
     speech_content_digest,
 )
-from dungeon_agent.control_plane.application import DefaultCampaignFactory
 from dungeon_agent.control_plane.http.api_gateway import ApiGatewayHttpAdapter
-from dungeon_agent.control_plane.http.handlers import (
-    CampaignHttpHandlers,
-    SessionHttpHandlers,
-    SpeechHttpHandlers,
+from dungeon_agent.control_plane.http.campaigns import CampaignHttpHandlers
+from dungeon_agent.control_plane.http.sessions import SessionHttpHandlers
+from dungeon_agent.control_plane.http.speech import SpeechHttpHandlers
+from dungeon_agent.control_plane.persistence.memory import (
+    InMemoryCampaignRepository,
+    InMemoryControlPlaneRepository,
 )
 from tests.test_control_plane_http import (
     CAMPAIGN_ID,
     NOW,
-    FakeCampaignEventRepository,
-    FakeCampaignRepository,
-    FakeEventRepository,
     FakeMicrovmManager,
     FakeOpeningLoader,
-    FakeSessionFactory,
-    FakeSessionRepository,
     FakeWorkflowStarter,
     _body,
     _event,
+    _put_campaign,
     ready_campaign,
 )
 
@@ -75,12 +72,10 @@ class FakeS3Client:
 
 
 def _speech_adapter() -> tuple[ApiGatewayHttpAdapter, FakePollyClient, FakeS3Client]:
-    sessions = FakeSessionRepository()
-    events = FakeEventRepository()
+    sessions = InMemoryControlPlaneRepository()
     workflows = FakeWorkflowStarter()
-    factory = FakeSessionFactory()
-    campaigns = FakeCampaignRepository()
-    campaigns.records[CAMPAIGN_ID] = ready_campaign()
+    campaigns = InMemoryCampaignRepository()
+    _put_campaign(campaigns, ready_campaign())
     polly = FakePollyClient()
     s3 = FakeS3Client()
     synthesizer = S3PollySpeechSynthesizer(
@@ -91,20 +86,18 @@ def _speech_adapter() -> tuple[ApiGatewayHttpAdapter, FakePollyClient, FakeS3Cli
     )
     handlers = SessionHttpHandlers(
         sessions,
-        events,
         workflows,
-        factory,
         campaigns,
         microvms=FakeMicrovmManager(),
         clock=lambda: NOW,
+        session_id_factory=lambda: "ses_01J00000000000000000000000",
     )
     campaign_handlers = CampaignHttpHandlers(
         campaigns,
-        FakeCampaignEventRepository(),
         workflows,
-        DefaultCampaignFactory(),
         openings=FakeOpeningLoader(),
         clock=lambda: NOW,
+        campaign_id_factory=lambda: CAMPAIGN_ID,
     )
     speech = SpeechHttpHandlers(synthesizer)
     adapter = ApiGatewayHttpAdapter(

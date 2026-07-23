@@ -1,47 +1,21 @@
-"""Authoritative player turns: Dungeon Master proposal, MicroVM ruling, durable events."""
-
-import time
 from collections.abc import Callable, Mapping
 from datetime import datetime
-from typing import Literal, Protocol, cast
+from typing import Any, Literal, cast
 
-from dungeon_agent.control_plane.agents.roles import DungeonMaster, StructuredAgentPort
-from dungeon_agent.control_plane.application.events import append_session_event, utc_now
+from dungeon_agent.control_plane.agents.roles import DungeonMaster
 from dungeon_agent.control_plane.domain.enums import EventType, SessionPhase, SessionStatus
 from dungeon_agent.control_plane.domain.models import (
     DiceRolledPayload,
     PhaseChangedPayload,
     SessionCompletedPayload,
-    SessionId,
     SessionRecord,
     SubmitTurnCommand,
     TurnCompletedPayload,
 )
-from dungeon_agent.control_plane.domain.ports import (
-    EventDeliveryPort,
-    EventRepository,
-    MicrovmManagerPort,
-    SessionRepository,
-)
+from dungeon_agent.control_plane.events import append_session_event, utc_now
 from dungeon_agent.control_plane.microvms.manager import TurnRejectedError
-from dungeon_agent.control_plane.telemetry.emf import EmfTelemetry
-from dungeon_agent.domain.game import WorldState
 
 Clock = Callable[[], datetime]
-
-
-class TurnWorkerInvoker(Protocol):
-    """Start the asynchronous turn worker exactly once per accepted action."""
-
-    def invoke_turn(self, command: SubmitTurnCommand) -> None: ...
-
-
-class WorldSnapshotStore(Protocol):
-    """Persist the latest authoritative world outside the MicroVM."""
-
-    def save(self, session_id: SessionId, world: WorldState) -> None: ...
-
-    def load(self, session_id: SessionId) -> WorldState: ...
 
 
 class TurnWorker:
@@ -49,48 +23,32 @@ class TurnWorker:
 
     def __init__(
         self,
-        sessions: SessionRepository,
-        events: EventRepository,
-        snapshots: WorldSnapshotStore,
-        agent: StructuredAgentPort,
-        microvms: MicrovmManagerPort,
+        store: Any,
+        snapshots: Any,
+        agent: Any,
+        microvms: Any,
         *,
-        delivery: EventDeliveryPort | None = None,
-        telemetry: EmfTelemetry | None = None,
+        delivery: Any | None = None,
         clock: Clock | None = None,
-        monotonic: Callable[[], float] = time.monotonic,
     ) -> None:
-        self._sessions = sessions
-        self._events = events
+        self._store = store
         self._snapshots = snapshots
         self._agent = agent
         self._microvms = microvms
         self._delivery = delivery
-        self._telemetry = telemetry
         self._clock = clock or utc_now
-        self._monotonic = monotonic
 
     def handle(self, raw_command: Mapping[str, object]) -> dict[str, object]:
         command = SubmitTurnCommand.model_validate(raw_command)
-        started = self._monotonic()
         try:
             outcome = self._run(command)
         except Exception as error:
             self._fail(command, error)
             return {"turnId": command.turn_id, "status": "failed"}
-        latency_ms = (self._monotonic() - started) * 1_000
-        if self._telemetry is not None and outcome != "skipped":
-            self._telemetry.phase(
-                "turn",
-                outcome,
-                latency_ms,
-                session_id=command.session_id,
-                correlation_id=command.correlation_id,
-            )
         return {"turnId": command.turn_id, "status": outcome}
 
     def _run(self, command: SubmitTurnCommand) -> str:
-        session = self._sessions.get(command.session_id)
+        session = self._store.get(command.session_id)
         if (
             session is None
             or session.owner_id != command.owner_id
@@ -99,8 +57,7 @@ class TurnWorker:
         ):
             # The worker is invoked asynchronously; a duplicate delivery must not replay.
             return "skipped"
-
-        snapshot = self._snapshots.load(command.session_id)
+        snapshot = self._snapshots.load_snapshot(command.session_id)
         microvm_id = session.active_microvm_id
         if microvm_id is None:
             raise RuntimeError("active session has no MicroVM")
@@ -120,7 +77,6 @@ class TurnWorker:
                 )
             )
             microvm_id = replacement.microvm_id
-
         world_prompt = cast(dict[str, object], snapshot.model_dump(mode="json"))
         dungeon_master = DungeonMaster(self._agent, session.language)
         proposal = dungeon_master.adjudicate(command.action, world_prompt)
@@ -129,12 +85,10 @@ class TurnWorker:
         except TurnRejectedError as error:
             proposal = dungeon_master.adjudicate(command.action, world_prompt, str(error)[:500])
             world = self._microvms.apply_turn(microvm_id, command.action, proposal)
-
-        self._snapshots.save(command.session_id, world)
+        self._snapshots.save_snapshot(command.session_id, world)
         result = world.last_result
         if result is None:
             raise RuntimeError("MicroVM returned no turn result")
-
         finished = world.status in {"won", "lost"}
         session = self._save(
             session.model_copy(
@@ -186,7 +140,7 @@ class TurnWorker:
     def _fail(self, command: SubmitTurnCommand, error: Exception) -> None:
         print(f"turn {command.turn_id} failed: {type(error).__name__}: {error}")
         try:
-            session = self._sessions.get(command.session_id)
+            session = self._store.get(command.session_id)
             if session is None or session.status is not SessionStatus.ACTIVE:
                 return
             session = self._save(
@@ -214,7 +168,8 @@ class TurnWorker:
 
     def _save(self, session: SessionRecord) -> SessionRecord:
         validated = SessionRecord.model_validate(session)
-        return self._sessions.save(validated, expected_revision=validated.revision - 1)
+        saved = self._store.save(validated, expected_revision=validated.revision - 1)
+        return SessionRecord.model_validate(saved)
 
     def _emit(
         self,
@@ -227,8 +182,7 @@ class TurnWorker:
         now: datetime,
     ) -> None:
         append_session_event(
-            self._sessions,
-            self._events,
+            self._store,
             self._delivery,
             command.session_id,
             event_type,

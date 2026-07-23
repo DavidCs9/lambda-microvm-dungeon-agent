@@ -1,7 +1,5 @@
-"""Versioned session, event, opening, workflow, and error schemas."""
-
 from datetime import datetime
-from typing import Annotated, Literal
+from typing import Annotated, Any, Literal
 
 from pydantic import Field, model_validator
 
@@ -17,14 +15,26 @@ from dungeon_agent.control_plane.domain.enums import (
 )
 from dungeon_agent.domain.game import LanguageCode
 
-SessionId = Annotated[str, Field(pattern=r"^ses_[0-9A-HJKMNP-TV-Z]{26}$")]
-EventId = Annotated[str, Field(pattern=r"^evt_[0-9A-HJKMNP-TV-Z]{26}$")]
-TurnId = Annotated[str, Field(pattern=r"^trn_[0-9A-HJKMNP-TV-Z]{26}$")]
-CampaignId = Annotated[str, Field(pattern=r"^cam_[0-9A-HJKMNP-TV-Z]{26}$")]
+SessionId = Annotated[str, Field(pattern="^ses_[0-9A-HJKMNP-TV-Z]{26}$")]
+EventId = Annotated[str, Field(pattern="^evt_[0-9A-HJKMNP-TV-Z]{26}$")]
+TurnId = Annotated[str, Field(pattern="^trn_[0-9A-HJKMNP-TV-Z]{26}$")]
+CampaignId = Annotated[str, Field(pattern="^cam_[0-9A-HJKMNP-TV-Z]{26}$")]
 CorrelationId = Annotated[str, Field(min_length=8, max_length=100)]
 OwnerId = Annotated[str, Field(min_length=3, max_length=100)]
 IdempotencyKey = Annotated[str, Field(min_length=8, max_length=128)]
-ArtifactRef = Annotated[str, Field(min_length=3, max_length=2_048)]
+ArtifactRef = Annotated[str, Field(min_length=3, max_length=2048)]
+_SESSION_PHASE_BY_STATUS = {
+    SessionStatus.REQUESTED: SessionPhase.REQUESTED,
+    SessionStatus.READY: SessionPhase.READY,
+    SessionStatus.ACTIVE: SessionPhase.PLAYING,
+    SessionStatus.COMPLETED: SessionPhase.COMPLETED,
+    SessionStatus.FAILED: SessionPhase.FAILED,
+}
+_CAMPAIGN_PHASE_BY_STATUS = {
+    CampaignStatus.REQUESTED: CampaignPhase.REQUESTED,
+    CampaignStatus.READY: CampaignPhase.READY,
+    CampaignStatus.FAILED: CampaignPhase.FAILED,
+}
 
 
 def _require_aware(value: datetime, field_name: str) -> None:
@@ -32,54 +42,55 @@ def _require_aware(value: datetime, field_name: str) -> None:
         raise ValueError(f"{field_name} must include a timezone")
 
 
-class CreateSessionCommand(ContractModel):
+def _validate_timestamps(created_at: datetime, updated_at: datetime) -> None:
+    _require_aware(created_at, "created_at")
+    _require_aware(updated_at, "updated_at")
+    if updated_at < created_at:
+        raise ValueError("updated_at cannot precede created_at")
+
+
+def _validate_status_phase(status: object, phase: object, expected: Any) -> None:
+    if (expected_phase := expected.get(status)) is not None and phase is not expected_phase:
+        raise ValueError(f"status {status} requires phase {expected_phase}")
+
+
+def _validate_event(
+    event_type: EventType,
+    payload: object,
+    occurred_at: datetime,
+    mapping: dict[EventType, type[ContractModel]],
+    label: str,
+) -> None:
+    _require_aware(occurred_at, "occurred_at")
+    expected = mapping.get(event_type)
+    if expected is None:
+        raise ValueError(f"event {event_type} is not a {label} event")
+    if not isinstance(payload, expected):
+        raise ValueError(f"event {event_type} requires payload {expected.__name__}")
+
+
+class _WorkflowInput(ContractModel):
     schema_version: Literal[1] = 1
     owner_id: OwnerId
     language: LanguageCode
-    campaign_id: CampaignId
-    campaign_revision: int = Field(ge=0)
     idempotency_key: IdempotencyKey
     correlation_id: CorrelationId
+    requested_at: datetime
+
+    @model_validator(mode="after")
+    def validate_requested_at(self) -> _WorkflowInput:
+        _require_aware(self.requested_at, "requested_at")
+        return self
 
 
-class CreateSessionWorkflowInput(ContractModel):
-    schema_version: Literal[1] = 1
+class CreateSessionWorkflowInput(_WorkflowInput):
     session_id: SessionId
-    owner_id: OwnerId
-    language: LanguageCode
     campaign_id: CampaignId
     campaign_revision: int = Field(ge=0)
-    idempotency_key: IdempotencyKey
-    correlation_id: CorrelationId
-    requested_at: datetime
-
-    @model_validator(mode="after")
-    def validate_requested_at(self) -> CreateSessionWorkflowInput:
-        _require_aware(self.requested_at, "requested_at")
-        return self
 
 
-class CreateCampaignCommand(ContractModel):
-    schema_version: Literal[1] = 1
-    owner_id: OwnerId
-    language: LanguageCode
-    idempotency_key: IdempotencyKey
-    correlation_id: CorrelationId
-
-
-class CreateCampaignWorkflowInput(ContractModel):
-    schema_version: Literal[1] = 1
+class CreateCampaignWorkflowInput(_WorkflowInput):
     campaign_id: CampaignId
-    owner_id: OwnerId
-    language: LanguageCode
-    idempotency_key: IdempotencyKey
-    correlation_id: CorrelationId
-    requested_at: datetime
-
-    @model_validator(mode="after")
-    def validate_requested_at(self) -> CreateCampaignWorkflowInput:
-        _require_aware(self.requested_at, "requested_at")
-        return self
 
 
 class SubmitTurnCommand(ContractModel):
@@ -93,107 +104,65 @@ class SubmitTurnCommand(ContractModel):
     correlation_id: CorrelationId
 
 
-class SessionRecord(ContractModel):
+class _AggregateRecord(ContractModel):
     schema_version: Literal[1] = 1
-    session_id: SessionId
     owner_id: OwnerId
     language: LanguageCode
-    status: SessionStatus
-    phase: SessionPhase
     revision: int = Field(ge=0)
     last_event_sequence: int = Field(ge=0)
     created_at: datetime
     updated_at: datetime
+    workflow_execution_arn: str | None = Field(default=None, min_length=20, max_length=2048)
+
+    def _validate_timestamps(self) -> None:
+        _validate_timestamps(self.created_at, self.updated_at)
+
+
+class SessionRecord(_AggregateRecord):
+    session_id: SessionId
+    status: SessionStatus
+    phase: SessionPhase
     campaign_id: CampaignId | None = None
     campaign_revision: int | None = Field(default=None, ge=0)
-    workflow_execution_arn: str | None = Field(default=None, min_length=20, max_length=2_048)
     active_microvm_id: str | None = Field(default=None, min_length=1, max_length=200)
     last_turn_id: TurnId | None = None
     last_action_idempotency_key: IdempotencyKey | None = None
 
     @model_validator(mode="after")
     def validate_lifecycle(self) -> SessionRecord:
-        _require_aware(self.created_at, "created_at")
-        _require_aware(self.updated_at, "updated_at")
-        if self.updated_at < self.created_at:
-            raise ValueError("updated_at cannot precede created_at")
-        expected_phase = {
-            SessionStatus.REQUESTED: SessionPhase.REQUESTED,
-            SessionStatus.READY: SessionPhase.READY,
-            SessionStatus.ACTIVE: SessionPhase.PLAYING,
-            SessionStatus.COMPLETED: SessionPhase.COMPLETED,
-            SessionStatus.FAILED: SessionPhase.FAILED,
-        }.get(self.status)
-        if expected_phase is not None and self.phase is not expected_phase:
-            raise ValueError(f"status {self.status} requires phase {expected_phase}")
-        if (
-            self.status in {SessionStatus.READY, SessionStatus.ACTIVE}
-            and not self.active_microvm_id
+        self._validate_timestamps()
+        _validate_status_phase(self.status, self.phase, _SESSION_PHASE_BY_STATUS)
+        if self.status in {SessionStatus.READY, SessionStatus.ACTIVE} and (
+            not self.active_microvm_id
         ):
             raise ValueError("ready or active sessions require an active MicroVM")
         return self
 
 
-class RoleGenerationMetrics(ContractModel):
-    """Recorded once per model role during campaign generation."""
-
-    model_id: str = Field(min_length=1, max_length=200)
-    calls: int = Field(ge=0)
-    input_tokens: int = Field(ge=0)
-    output_tokens: int = Field(ge=0)
-    latency_ms: int = Field(ge=0)
-    repairs: int = Field(ge=0)
-
-
-class CampaignGenerationMetrics(ContractModel):
-    adventure_architect: RoleGenerationMetrics | None = None
-    character_architect: RoleGenerationMetrics | None = None
-
-
-class CampaignRecord(ContractModel):
-    """An immutable, owner-scoped, reusable game template."""
-
-    schema_version: Literal[1] = 1
+class CampaignRecord(_AggregateRecord):
     campaign_id: CampaignId
-    owner_id: OwnerId
-    language: LanguageCode
     status: CampaignStatus
     phase: CampaignPhase
-    revision: int = Field(ge=0)
-    last_event_sequence: int = Field(ge=0)
-    created_at: datetime
-    updated_at: datetime
     adventure_ref: ArtifactRef | None = None
     character_ref: ArtifactRef | None = None
     opening_title: str | None = None
-    generation: CampaignGenerationMetrics | None = None
-    workflow_execution_arn: str | None = Field(default=None, min_length=20, max_length=2_048)
 
     @model_validator(mode="after")
     def validate_lifecycle(self) -> CampaignRecord:
-        _require_aware(self.created_at, "created_at")
-        _require_aware(self.updated_at, "updated_at")
-        if self.updated_at < self.created_at:
-            raise ValueError("updated_at cannot precede created_at")
-        expected_phase = {
-            CampaignStatus.REQUESTED: CampaignPhase.REQUESTED,
-            CampaignStatus.READY: CampaignPhase.READY,
-            CampaignStatus.FAILED: CampaignPhase.FAILED,
-        }.get(self.status)
-        if expected_phase is not None and self.phase is not expected_phase:
-            raise ValueError(f"status {self.status} requires phase {expected_phase}")
+        self._validate_timestamps()
+        _validate_status_phase(self.status, self.phase, _CAMPAIGN_PHASE_BY_STATUS)
         if self.status is CampaignStatus.READY and (
-            self.adventure_ref is None or self.character_ref is None
+            not (self.adventure_ref and self.character_ref)
         ):
             raise ValueError("ready campaigns require persisted adventure and character")
         return self
 
 
 class OpeningBlock(ContractModel):
-    id: str = Field(pattern=r"^[a-z][a-z0-9_]{1,39}$")
+    id: str = Field(pattern="^[a-z][a-z0-9_]{1,39}$")
     position: int = Field(ge=0, le=30)
     kind: OpeningBlockKind
-    text: str = Field(min_length=2, max_length=1_000)
+    text: str = Field(min_length=2, max_length=1000)
     narratable: bool = True
 
 
@@ -205,22 +174,24 @@ class OpeningDocument(ContractModel):
 
     @model_validator(mode="after")
     def validate_blocks(self) -> OpeningDocument:
-        positions = [block.position for block in self.blocks]
-        if positions != list(range(len(self.blocks))):
+        if [block.position for block in self.blocks] != list(range(len(self.blocks))):
             raise ValueError("opening block positions must be contiguous and ordered")
         if len({block.id for block in self.blocks}) != len(self.blocks):
             raise ValueError("opening block ids must be unique")
-        kinds = [block.kind for block in self.blocks]
-        if kinds.count(OpeningBlockKind.IDENTITY) != 1:
-            raise ValueError("opening requires exactly one identity block")
-        if kinds.count(OpeningBlockKind.MOTIVATION) != 1:
-            raise ValueError("opening requires exactly one motivation block")
-        if kinds.count(OpeningBlockKind.SITUATION) != 1:
-            raise ValueError("opening requires exactly one situation block")
-        if kinds.count(OpeningBlockKind.KNOWLEDGE) < 2:
+        counts = {
+            kind: sum(block.kind is kind for block in self.blocks) for kind in OpeningBlockKind
+        }
+        required = {
+            OpeningBlockKind.IDENTITY: 1,
+            OpeningBlockKind.MOTIVATION: 1,
+            OpeningBlockKind.SITUATION: 1,
+            OpeningBlockKind.POSSIBLE_ACTION: 3,
+        }
+        for kind, expected in required.items():
+            if counts[kind] != expected:
+                raise ValueError(f"opening requires {expected} {kind.value} block(s)")
+        if counts[OpeningBlockKind.KNOWLEDGE] < 2:
             raise ValueError("opening requires at least two knowledge blocks")
-        if kinds.count(OpeningBlockKind.POSSIBLE_ACTION) != 3:
-            raise ValueError("opening requires exactly three possible actions")
         if not any(block.narratable for block in self.blocks):
             raise ValueError("opening requires narratable content")
         return self
@@ -231,7 +202,7 @@ class CreationStartedPayload(ContractModel):
 
 
 class PhaseChangedPayload(ContractModel):
-    phase: SessionPhase
+    phase: SessionPhase | CampaignPhase
     elapsed_ms: int = Field(ge=0)
     revision: int | None = Field(default=None, ge=0)
 
@@ -241,15 +212,17 @@ class CreationFailedPayload(ContractModel):
     retryable: bool
 
 
-class SessionReadyPayload(ContractModel):
+class ReadyPayload(ContractModel):
     revision: int = Field(ge=0)
     opening: OpeningDocument
+
+
+SessionReadyPayload = ReadyPayload
 
 
 class TurnStartedPayload(ContractModel):
     turn_id: TurnId
     expected_revision: int = Field(ge=0)
-    # Optional for events emitted before action was persisted on the wire.
     action: str | None = Field(default=None, min_length=1, max_length=500)
 
 
@@ -263,14 +236,13 @@ class DiceRolledPayload(ContractModel):
 class NarrationDeltaPayload(ContractModel):
     turn_id: TurnId
     index: int = Field(ge=0)
-    text: str = Field(min_length=1, max_length=4_000)
+    text: str = Field(min_length=1, max_length=4000)
 
 
 class TurnCompletedPayload(ContractModel):
     turn_id: TurnId
     revision: int = Field(ge=1)
-    narration: str = Field(min_length=1, max_length=4_000)
-    # Optional for events emitted before action was persisted on the wire.
+    narration: str = Field(min_length=1, max_length=4000)
     action: str | None = Field(default=None, min_length=1, max_length=500)
 
 
@@ -279,32 +251,13 @@ class SessionCompletedPayload(ContractModel):
     revision: int = Field(ge=0)
 
 
-class CampaignCreationStartedPayload(ContractModel):
-    language: LanguageCode
-
-
-class CampaignPhaseChangedPayload(ContractModel):
-    phase: CampaignPhase
-    elapsed_ms: int = Field(ge=0)
-
-
-class CampaignCreationFailedPayload(ContractModel):
-    code: ErrorCode
-    retryable: bool
-
-
-class CampaignReadyPayload(ContractModel):
-    revision: int = Field(ge=0)
-    opening: OpeningDocument
-
-
+CampaignCreationStartedPayload = CreationStartedPayload
+CampaignPhaseChangedPayload = PhaseChangedPayload
+CampaignCreationFailedPayload = CreationFailedPayload
+CampaignReadyPayload = ReadyPayload
 CampaignEventPayload = (
-    CampaignCreationStartedPayload
-    | CampaignPhaseChangedPayload
-    | CampaignCreationFailedPayload
-    | CampaignReadyPayload
+    CreationStartedPayload | PhaseChangedPayload | CreationFailedPayload | ReadyPayload
 )
-
 _PAYLOAD_BY_CAMPAIGN_EVENT: dict[EventType, type[ContractModel]] = {
     EventType.CAMPAIGN_CREATION_STARTED: CampaignCreationStartedPayload,
     EventType.CAMPAIGN_PHASE_CHANGED: CampaignPhaseChangedPayload,
@@ -325,12 +278,9 @@ class CampaignEvent(ContractModel):
 
     @model_validator(mode="after")
     def validate_event(self) -> CampaignEvent:
-        _require_aware(self.occurred_at, "occurred_at")
-        expected = _PAYLOAD_BY_CAMPAIGN_EVENT.get(self.type)
-        if expected is None:
-            raise ValueError(f"event {self.type} is not a campaign event")
-        if not isinstance(self.payload, expected):
-            raise ValueError(f"event {self.type} requires payload {expected.__name__}")
+        _validate_event(
+            self.type, self.payload, self.occurred_at, _PAYLOAD_BY_CAMPAIGN_EVENT, "campaign"
+        )
         return self
 
 
@@ -338,14 +288,13 @@ EventPayload = (
     CreationStartedPayload
     | PhaseChangedPayload
     | CreationFailedPayload
-    | SessionReadyPayload
+    | ReadyPayload
     | TurnStartedPayload
     | DiceRolledPayload
     | NarrationDeltaPayload
     | TurnCompletedPayload
     | SessionCompletedPayload
 )
-
 _PAYLOAD_BY_EVENT: dict[EventType, type[ContractModel]] = {
     EventType.SESSION_CREATION_STARTED: CreationStartedPayload,
     EventType.SESSION_PHASE_CHANGED: PhaseChangedPayload,
@@ -371,12 +320,7 @@ class SessionEvent(ContractModel):
 
     @model_validator(mode="after")
     def validate_event(self) -> SessionEvent:
-        _require_aware(self.occurred_at, "occurred_at")
-        expected = _PAYLOAD_BY_EVENT.get(self.type)
-        if expected is None:
-            raise ValueError(f"event {self.type} is not a session event")
-        if not isinstance(self.payload, expected):
-            raise ValueError(f"event {self.type} requires payload {expected.__name__}")
+        _validate_event(self.type, self.payload, self.occurred_at, _PAYLOAD_BY_EVENT, "session")
         return self
 
 

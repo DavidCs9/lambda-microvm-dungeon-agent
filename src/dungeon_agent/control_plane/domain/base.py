@@ -1,5 +1,3 @@
-"""Common behavior for stable JSON contracts."""
-
 from pydantic import BaseModel, ConfigDict
 
 

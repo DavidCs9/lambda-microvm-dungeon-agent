@@ -1,16 +1,9 @@
-"""Schema-validated Amazon Bedrock Converse adapter."""
-
 from __future__ import annotations
 
 import time
-from typing import TYPE_CHECKING, TypeVar
+from typing import Any, TypeVar
 
 from pydantic import BaseModel, ValidationError
-
-from dungeon_agent.control_plane.agents.metrics import AgentMetricsPort
-
-if TYPE_CHECKING:
-    from mypy_boto3_bedrock_runtime import BedrockRuntimeClient
 
 OutputModel = TypeVar("OutputModel", bound=BaseModel)
 
@@ -20,9 +13,9 @@ class StructuredBedrockAgent:
 
     def __init__(
         self,
-        client: BedrockRuntimeClient,
+        client: Any,
         model_id: str,
-        metrics: AgentMetricsPort,
+        metrics: Any | None = None,
     ) -> None:
         self.client = client
         self.model_id = model_id
@@ -97,12 +90,13 @@ class StructuredBedrockAgent:
                 "agent_role": tool_name,
             },
         )
-        usage = response["usage"]
-        self.metrics.record(
-            input_tokens=usage["inputTokens"],
-            output_tokens=usage["outputTokens"],
-            latency_ms=(time.perf_counter() - started) * 1_000,
-        )
+        if self.metrics is not None:
+            usage = response["usage"]
+            self.metrics.record(
+                input_tokens=usage["inputTokens"],
+                output_tokens=usage["outputTokens"],
+                latency_ms=(time.perf_counter() - started) * 1_000,
+            )
         content = response["output"]["message"]["content"]
         for block in content:
             tool_use = block.get("toolUse")

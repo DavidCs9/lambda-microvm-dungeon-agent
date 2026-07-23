@@ -1,5 +1,3 @@
-"""HTTP-specific request, response, and authentication models."""
-
 from dataclasses import dataclass
 from typing import Literal
 
@@ -21,69 +19,49 @@ from dungeon_agent.domain.game import LanguageCode
 
 
 class AuthenticatedIdentity(ContractModel):
-    """Identity established by the API Gateway JWT authorizer."""
-
     owner_id: str = Field(min_length=3, max_length=100)
 
 
 class CreateSessionRequest(ContractModel):
-    """Player-controlled fields accepted by ``POST /sessions``."""
-
     language: LanguageCode
     campaign_id: CampaignId
 
 
 class CreateCampaignRequest(ContractModel):
-    """Player-controlled fields accepted by ``POST /campaigns``."""
-
     language: LanguageCode
 
 
 class SubmitActionRequest(ContractModel):
-    """Player-controlled fields accepted by ``POST /sessions/{sessionId}/actions``."""
-
     action: str = Field(min_length=1, max_length=500)
     expected_revision: int = Field(ge=0)
 
 
 class SpeechRequest(ContractModel):
-    """Player-controlled fields accepted by ``POST /speech``."""
-
     text: str = Field(min_length=1, max_length=4000)
     language: LanguageCode
 
 
 class SessionEnvelope(ContractModel):
-    """Stable wrapper used by create and read responses."""
-
     version: Literal[1] = 1
     session: SessionRecord
 
 
 class CampaignEnvelope(ContractModel):
-    """Stable wrapper used by campaign create and read responses."""
-
     version: Literal[1] = 1
     campaign: CampaignRecord
 
 
 class CampaignListEnvelope(ContractModel):
-    """Owner-scoped campaign list for resume discovery."""
-
     version: Literal[1] = 1
     campaigns: tuple[CampaignRecord, ...]
 
 
 class SessionListEnvelope(ContractModel):
-    """Owner-scoped active-session list for the Continuar picker."""
-
     version: Literal[1] = 1
     sessions: tuple[SessionRecord, ...]
 
 
 class OpeningEnvelope(ContractModel):
-    """Opening document for a ready campaign, loaded without event replay."""
-
     version: Literal[1] = 1
     campaign_id: CampaignId
     opening: OpeningDocument
@@ -91,8 +69,6 @@ class OpeningEnvelope(ContractModel):
 
 
 class TurnAcceptedEnvelope(ContractModel):
-    """Acknowledgement that an action was checked out for asynchronous adjudication."""
-
     version: Literal[1] = 1
     session_id: SessionId
     turn_id: TurnId
@@ -100,8 +76,6 @@ class TurnAcceptedEnvelope(ContractModel):
 
 
 class EventListEnvelope(ContractModel):
-    """Ordered, reconnect-safe event replay response."""
-
     version: Literal[1] = 1
     session_id: SessionId
     events: tuple[SessionEvent, ...]
@@ -109,8 +83,6 @@ class EventListEnvelope(ContractModel):
 
 
 class CampaignEventListEnvelope(ContractModel):
-    """Ordered, reconnect-safe campaign event replay response."""
-
     version: Literal[1] = 1
     campaign_id: CampaignId
     events: tuple[CampaignEvent, ...]
@@ -118,8 +90,6 @@ class CampaignEventListEnvelope(ContractModel):
 
 
 class SpeechEnvelope(ContractModel):
-    """Presigned playback URL for one narrated sentence or opening block."""
-
     version: Literal[1] = 1
     url: str = Field(min_length=1)
     expires_in_seconds: int = Field(ge=1, le=3600)
@@ -142,8 +112,6 @@ HttpBody = (
 
 @dataclass(frozen=True, slots=True)
 class HttpResult:
-    """Transport-neutral result that an adapter can map to API Gateway."""
-
     status_code: int
     body: HttpBody
     correlation_id: str

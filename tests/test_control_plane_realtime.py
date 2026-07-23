@@ -12,10 +12,7 @@ from dungeon_agent.control_plane.domain.models import (
     SessionRecord,
 )
 from dungeon_agent.control_plane.persistence.memory import InMemoryControlPlaneRepository
-from dungeon_agent.control_plane.realtime.delivery import (
-    BestEffortEventDelivery,
-    DurableEventPublisher,
-)
+from dungeon_agent.control_plane.realtime.delivery import BestEffortEventDelivery
 from dungeon_agent.control_plane.realtime.dynamodb import DynamoDbConnectionRepository
 from dungeon_agent.control_plane.realtime.memory import InMemoryConnectionRepository
 from dungeon_agent.control_plane.realtime.service import RealtimeSessionService
@@ -56,7 +53,7 @@ def test_connect_subscribe_and_replay_durable_events() -> None:
     event = make_event()
     store.append(event, expected_previous_sequence=0)
     connections = InMemoryConnectionRepository()
-    realtime = RealtimeSessionService(connections, store, store, clock=lambda: NOW)
+    realtime = RealtimeSessionService(connections, store, clock=lambda: NOW)
 
     connection = realtime.connect("connection-1", "user_demo")
     replay = realtime.subscribe("connection-1", "user_demo", SESSION_ID, after_sequence=0)
@@ -69,9 +66,7 @@ def test_connect_subscribe_and_replay_durable_events() -> None:
 def test_subscribe_rejects_a_different_owner() -> None:
     store = InMemoryControlPlaneRepository()
     store.create(make_session(), "create-request-001")
-    realtime = RealtimeSessionService(
-        InMemoryConnectionRepository(), store, store, clock=lambda: NOW
-    )
+    realtime = RealtimeSessionService(InMemoryConnectionRepository(), store, clock=lambda: NOW)
     realtime.connect("connection-1", "user_demo")
 
     with pytest.raises(PermissionError):
@@ -104,7 +99,7 @@ def test_delivery_removes_stale_connections() -> None:
     store = InMemoryControlPlaneRepository()
     store.create(make_session(), "create-request-001")
     connections = InMemoryConnectionRepository()
-    realtime = RealtimeSessionService(connections, store, store, clock=lambda: NOW)
+    realtime = RealtimeSessionService(connections, store, clock=lambda: NOW)
     realtime.connect("connection-1", "user_demo")
     realtime.subscribe("connection-1", "user_demo", SESSION_ID, after_sequence=0)
     client = FakeManagementClient()
@@ -113,26 +108,6 @@ def test_delivery_removes_stale_connections() -> None:
     BestEffortEventDelivery(connections, client).deliver("user_demo", make_event())
 
     assert connections.get("connection-1") is None
-
-
-def test_publisher_stores_before_sending() -> None:
-    calls: list[str] = []
-
-    class Events:
-        def append(self, event: SessionEvent, *, expected_previous_sequence: int) -> None:
-            assert expected_previous_sequence == 0
-            calls.append("append")
-
-        def list_after(self, session_id: SessionId, sequence: int) -> tuple[SessionEvent, ...]:
-            return ()
-
-    class Delivery:
-        def deliver(self, owner_id: str, event: SessionEvent) -> None:
-            calls.append("deliver")
-
-    DurableEventPublisher(Events(), Delivery()).publish("user_demo", make_event())
-
-    assert calls == ["append", "deliver"]
 
 
 class FakeTable:
@@ -179,7 +154,7 @@ def test_dynamodb_adapter_writes_ttl_to_connection_and_subscription() -> None:
     repository = DynamoDbConnectionRepository(table)
     store = InMemoryControlPlaneRepository()
     store.create(make_session(), "create-request-001")
-    realtime = RealtimeSessionService(repository, store, store, clock=lambda: NOW)
+    realtime = RealtimeSessionService(repository, store, clock=lambda: NOW)
 
     connection = realtime.connect("connection-1", "user_demo")
     realtime.subscribe("connection-1", "user_demo", SESSION_ID, after_sequence=0)

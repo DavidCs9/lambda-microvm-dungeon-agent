@@ -12,7 +12,6 @@ from dungeon_agent.control_plane.domain.models import (
     SessionId,
     SessionRecord,
 )
-from dungeon_agent.control_plane.domain.ports import EventRepository, SessionRepository
 from dungeon_agent.control_plane.persistence.dynamodb import DynamoDbControlPlaneRepository
 from dungeon_agent.control_plane.persistence.errors import (
     EventSequenceConflictError,
@@ -49,15 +48,6 @@ def make_event(sequence: int, *, suffix: str = "1") -> SessionEvent:
         correlation_id="corr-persistence-test",
         payload=CreationStartedPayload(language="es"),
     )
-
-
-def test_in_memory_adapter_satisfies_repository_ports() -> None:
-    repository = InMemoryControlPlaneRepository()
-    session_port: SessionRepository = repository
-    event_port: EventRepository = repository
-
-    assert session_port is repository
-    assert event_port is repository
 
 
 def test_in_memory_create_is_owner_scoped_and_idempotent() -> None:

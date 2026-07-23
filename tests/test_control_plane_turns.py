@@ -2,9 +2,6 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 
-from dungeon_agent.control_plane.agents.roles import OutputModel
-from dungeon_agent.control_plane.application.sessions import DefaultSessionFactory
-from dungeon_agent.control_plane.application.turns import TurnWorker
 from dungeon_agent.control_plane.domain.enums import EventType, SessionPhase, SessionStatus
 from dungeon_agent.control_plane.domain.models import (
     MicrovmLaunchResult,
@@ -13,17 +10,18 @@ from dungeon_agent.control_plane.domain.models import (
     SubmitTurnCommand,
     TurnId,
 )
-from dungeon_agent.control_plane.http.handlers import SessionHttpHandlers
 from dungeon_agent.control_plane.http.models import (
     AuthenticatedIdentity,
     HttpResult,
     SubmitActionRequest,
 )
+from dungeon_agent.control_plane.http.sessions import SessionHttpHandlers
 from dungeon_agent.control_plane.identifiers import new_turn_id
 from dungeon_agent.control_plane.persistence.memory import (
     InMemoryCampaignRepository,
     InMemoryControlPlaneRepository,
 )
+from dungeon_agent.control_plane.turns import TurnWorker
 from dungeon_agent.domain.game import (
     AdventurePlan,
     LanguageCode,
@@ -52,7 +50,7 @@ class FakeAgent:
     def __init__(self, output: TurnProposal) -> None:
         self.output = output
 
-    def invoke(self, *, output_model: type[OutputModel], **kwargs: object) -> OutputModel:
+    def invoke(self, *, output_model: type[TurnProposal], **kwargs: object) -> TurnProposal:
         return output_model.model_validate(self.output.model_dump(mode="python"))
 
 
@@ -97,10 +95,10 @@ class FakeSnapshots:
         self.world = world
         self.saved: list[WorldState] = []
 
-    def save(self, session_id: SessionId, world: WorldState) -> None:
+    def save_snapshot(self, session_id: SessionId, world: WorldState) -> None:
         self.saved.append(world)
 
-    def load(self, session_id: SessionId) -> WorldState:
+    def load_snapshot(self, session_id: SessionId) -> WorldState:
         return self.world
 
 
@@ -138,9 +136,7 @@ def _handlers(
 ) -> SessionHttpHandlers:
     return SessionHttpHandlers(
         repository,
-        repository,
         FakeWorkflows(),
-        DefaultSessionFactory(),
         InMemoryCampaignRepository(),
         turns=invoker,
         clock=lambda: NOW,
@@ -249,7 +245,6 @@ def test_worker_applies_the_turn_and_emits_authoritative_events() -> None:
     microvms = FakeMicrovms(_turn_world())
     worker = TurnWorker(
         repository,
-        repository,
         snapshots,
         FakeAgent(proposal()),
         microvms,
@@ -272,7 +267,6 @@ def test_worker_applies_the_turn_and_emits_authoritative_events() -> None:
 def test_worker_skips_a_duplicate_async_delivery() -> None:
     repository = _repository()  # READY, no matching checkout
     worker = TurnWorker(
-        repository,
         repository,
         FakeSnapshots(_turn_world()),
         FakeAgent(proposal()),
@@ -299,11 +293,10 @@ def test_worker_failure_returns_the_session_to_ready() -> None:
     )
 
     class BrokenSnapshots(FakeSnapshots):
-        def load(self, session_id: SessionId) -> WorldState:
+        def load_snapshot(self, session_id: SessionId) -> WorldState:
             raise LookupError("missing snapshot")
 
     worker = TurnWorker(
-        repository,
         repository,
         BrokenSnapshots(_turn_world()),
         FakeAgent(proposal()),
