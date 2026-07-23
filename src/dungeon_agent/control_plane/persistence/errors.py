@@ -1,5 +1,7 @@
 class PersistenceConflictError(RuntimeError):
     pass
+
+
 AlreadyExistsError = PersistenceConflictError
 RevisionConflictError = PersistenceConflictError
 EventSequenceConflictError = PersistenceConflictError

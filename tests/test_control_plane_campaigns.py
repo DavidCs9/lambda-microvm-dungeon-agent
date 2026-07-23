@@ -311,7 +311,7 @@ def test_emit_campaign_ready_reuses_stashed_opening() -> None:
 
     assert loader.calls == 0
     events = repository.list_after(CAMPAIGN_ID, 0)
-    assert events[-1].payload.opening.title == "Stashed title"  # type: ignore[union-attr]
+    assert events[-1].payload.opening.title == "Stashed title"
 
 
 class _OpeningLoader:
@@ -335,7 +335,7 @@ def _opening(language: str) -> OpeningDocument:
         ("action_3", OpeningBlockKind.POSSIBLE_ACTION, "Cross to the mill.", False),
     )
     return OpeningDocument(
-        language=language,  # type: ignore[arg-type]
+        language=language,
         title="The silent tower",
         blocks=tuple(
             OpeningBlock(id=block_id, position=index, kind=kind, text=text, narratable=narratable)

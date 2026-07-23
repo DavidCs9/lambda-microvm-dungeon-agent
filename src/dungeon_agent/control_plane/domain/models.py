@@ -1,7 +1,8 @@
-# ruff: noqa: I001
 from datetime import datetime
 from typing import Annotated, Any, Literal
+
 from pydantic import Field, model_validator
+
 from dungeon_agent.control_plane.domain.base import ContractModel
 from dungeon_agent.control_plane.domain.enums import (
     CampaignPhase,
