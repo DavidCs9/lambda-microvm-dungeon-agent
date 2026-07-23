@@ -2,7 +2,10 @@ import json
 from datetime import UTC, datetime, timedelta
 from typing import Any, Never, cast
 
-from dungeon_agent.control_plane.domain.enums import (
+from dungeon_agent.control_plane.http.campaigns import CampaignHttpHandlers
+from dungeon_agent.control_plane.http.sessions import SessionHttpHandlers
+from dungeon_agent.data_plane.http.actions import ActionHttpHandlers
+from dungeon_agent.plane_shared.domain.enums import (
     CampaignPhase,
     CampaignStatus,
     EventType,
@@ -10,7 +13,7 @@ from dungeon_agent.control_plane.domain.enums import (
     SessionPhase,
     SessionStatus,
 )
-from dungeon_agent.control_plane.domain.models import (
+from dungeon_agent.plane_shared.domain.models import (
     CampaignId,
     CampaignRecord,
     CreateCampaignWorkflowInput,
@@ -23,10 +26,8 @@ from dungeon_agent.control_plane.domain.models import (
     SessionId,
     SessionRecord,
 )
-from dungeon_agent.control_plane.http.api_gateway import ApiGatewayHttpAdapter
-from dungeon_agent.control_plane.http.campaigns import CampaignHttpHandlers
-from dungeon_agent.control_plane.http.sessions import SessionHttpHandlers
-from dungeon_agent.control_plane.persistence.memory import (
+from dungeon_agent.plane_shared.http.api_gateway import ApiGatewayHttpAdapter
+from dungeon_agent.plane_shared.persistence.memory import (
     InMemoryCampaignRepository,
     InMemoryControlPlaneRepository,
 )
@@ -147,6 +148,11 @@ def _session_events(
     return tuple(events[index] for index in sorted(events))
 
 
+class _NoopTurnInvoker:
+    def invoke_turn(self, command: object) -> None:
+        raise AssertionError(f"unexpected turn invoke: {command}")
+
+
 def _adapter() -> tuple[
     ApiGatewayHttpAdapter,
     InMemoryControlPlaneRepository,
@@ -175,8 +181,9 @@ def _adapter() -> tuple[
         clock=lambda: NOW,
         campaign_id_factory=lambda: CAMPAIGN_ID,
     )
+    actions = ActionHttpHandlers(sessions, _NoopTurnInvoker(), clock=lambda: NOW)
     return (
-        ApiGatewayHttpAdapter(handlers, campaign_handlers),
+        ApiGatewayHttpAdapter(handlers, campaign_handlers, actions=actions),
         sessions,
         sessions,
         workflows,

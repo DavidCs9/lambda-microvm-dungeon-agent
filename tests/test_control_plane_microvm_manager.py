@@ -5,8 +5,8 @@ from datetime import UTC, datetime
 
 import pytest
 
-from dungeon_agent.control_plane.domain.models import SessionId
-from dungeon_agent.control_plane.microvms.manager import (
+from dungeon_agent.plane_shared.domain.models import SessionId
+from dungeon_agent.plane_shared.microvms.manager import (
     LambdaMicrovmManager,
     TurnRejectedError,
 )

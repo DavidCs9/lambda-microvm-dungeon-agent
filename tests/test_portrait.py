@@ -5,7 +5,7 @@ from dungeon_agent.control_plane.agents.portrait import (
     build_portrait_prompt,
     generate_character_portrait,
 )
-from dungeon_agent.control_plane.persistence.portraits import portrait_object_key
+from dungeon_agent.plane_shared.persistence.portraits import portrait_object_key
 from tests.test_adventure import sample_player
 
 

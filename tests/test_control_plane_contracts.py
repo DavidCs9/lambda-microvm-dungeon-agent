@@ -7,12 +7,12 @@ import pytest
 from pydantic import ValidationError
 
 from dungeon_agent.api import models as api_models
-from dungeon_agent.control_plane.domain.enums import (
+from dungeon_agent.plane_shared.domain.enums import (
     EventType,
     SessionPhase,
     SessionStatus,
 )
-from dungeon_agent.control_plane.domain.models import (
+from dungeon_agent.plane_shared.domain.models import (
     CreateSessionWorkflowInput,
     PhaseChangedPayload,
     SessionEvent,

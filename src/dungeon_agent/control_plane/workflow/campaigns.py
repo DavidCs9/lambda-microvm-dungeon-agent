@@ -3,13 +3,22 @@ from collections.abc import Callable, Mapping
 from datetime import UTC, datetime
 from typing import Any, cast
 
-from dungeon_agent.control_plane.domain.enums import (
+from dungeon_agent.control_plane.workflow.runner import (
+    elapsed_ms,
+    mark_phase,
+    prepare_run,
+    required_record,
+    update_record,
+)
+from dungeon_agent.control_plane.workflow.util import required_string
+from dungeon_agent.domain.game import AdventurePlan, LanguageCode, PlayerCharacter
+from dungeon_agent.plane_shared.domain.enums import (
     CampaignPhase,
     CampaignStatus,
     ErrorCode,
     EventType,
 )
-from dungeon_agent.control_plane.domain.models import (
+from dungeon_agent.plane_shared.domain.models import (
     ArtifactRef,
     CampaignCreationFailedPayload,
     CampaignCreationStartedPayload,
@@ -20,16 +29,7 @@ from dungeon_agent.control_plane.domain.models import (
     CreateCampaignWorkflowInput,
     OpeningDocument,
 )
-from dungeon_agent.control_plane.events import append_campaign_event
-from dungeon_agent.control_plane.workflow.runner import (
-    elapsed_ms,
-    mark_phase,
-    prepare_run,
-    required_record,
-    update_record,
-)
-from dungeon_agent.control_plane.workflow.util import required_string
-from dungeon_agent.domain.game import AdventurePlan, LanguageCode, PlayerCharacter
+from dungeon_agent.plane_shared.events import append_campaign_event
 
 Clock = Callable[[], datetime]
 
@@ -276,8 +276,8 @@ def _elapsed_ms(monotonic: Callable[[], float], started: float) -> int:
 def build_opening(
     language: LanguageCode, adventure: AdventurePlan, character: PlayerCharacter
 ) -> OpeningDocument:
-    from dungeon_agent.control_plane.domain.enums import OpeningBlockKind
-    from dungeon_agent.control_plane.domain.models import OpeningBlock
+    from dungeon_agent.plane_shared.domain.enums import OpeningBlockKind
+    from dungeon_agent.plane_shared.domain.models import OpeningBlock
 
     content = [
         (

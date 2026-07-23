@@ -7,6 +7,8 @@ on:
     paths:
       - "infra/control-plane/**"
       - "src/dungeon_agent/control_plane/**"
+      - "src/dungeon_agent/data_plane/**"
+      - "src/dungeon_agent/plane_shared/**"
       - ".github/workflows/deploy-control-plane.yml"
 
 permissions:

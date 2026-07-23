@@ -2,24 +2,6 @@ from collections.abc import Callable, Mapping
 from datetime import UTC, datetime
 from typing import Any, NoReturn, cast
 
-from dungeon_agent.control_plane.domain.enums import (
-    CampaignStatus,
-    ErrorCode,
-    EventType,
-    SessionPhase,
-    SessionStatus,
-)
-from dungeon_agent.control_plane.domain.models import (
-    CampaignId,
-    CreateSessionWorkflowInput,
-    CreationFailedPayload,
-    CreationStartedPayload,
-    PhaseChangedPayload,
-    SessionId,
-    SessionReadyPayload,
-    SessionRecord,
-)
-from dungeon_agent.control_plane.events import append_session_event
 from dungeon_agent.control_plane.workflow.runner import (
     elapsed_ms,
     mark_phase,
@@ -29,6 +11,24 @@ from dungeon_agent.control_plane.workflow.runner import (
 )
 from dungeon_agent.control_plane.workflow.util import required_string
 from dungeon_agent.domain.game import LanguageCode
+from dungeon_agent.plane_shared.domain.enums import (
+    CampaignStatus,
+    ErrorCode,
+    EventType,
+    SessionPhase,
+    SessionStatus,
+)
+from dungeon_agent.plane_shared.domain.models import (
+    CampaignId,
+    CreateSessionWorkflowInput,
+    CreationFailedPayload,
+    CreationStartedPayload,
+    PhaseChangedPayload,
+    SessionId,
+    SessionReadyPayload,
+    SessionRecord,
+)
+from dungeon_agent.plane_shared.events import append_session_event
 
 Clock = Callable[[], datetime]
 
