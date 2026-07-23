@@ -9,10 +9,28 @@ campaign vs play, [0003](rfcs/0003-videogame-web-client.md) web client,
 [0004](rfcs/0004-resume-existing-campaign.md) resume, [0007](rfcs/0007-live-polly-narrator.md)
 speech. Deploy lanes: [`.cursor/rules/deploy-lanes.mdc`](../.cursor/rules/deploy-lanes.mdc).
 
+## Diagramming notes (C4 + Mermaid)
+
+Based on the official [C4 model](https://c4model.com/) (Simon Brown) and
+[Mermaid C4 syntax](https://mermaid.js.org/syntax/c4.html):
+
+| Practice | How we apply it |
+|---|---|
+| One level of detail per diagram | L1 people/systems; L2 deployable containers; L3 packages inside Backend |
+| Containers = deployable units | Web SPA, Backend (one SAM stack), DynamoDB, Game MicroVM — not Python packages |
+| Planes are L3 components | `control_plane` / `data_plane` / `plane_shared` live inside Backend |
+| Few relationships | Mermaid C4 layout breaks past ~5–6 edges; diagrams are split |
+| Protocols on relationships | `REST`, `WSS`, `HTTPS` in the relationship technology field |
+| Supporting diagrams for flows | Sequence diagram for a turn; flowchart for REST ownership |
+| Progressive disclosure | Polly/S3 kept out of L1/L2 boxes (see tables below) so links stay readable |
+
+Mermaid’s C4 renderer is experimental; these diagrams were **rendered to PNG and visually
+checked** so arrows do not cross through unrelated boxes.
+
 ## Control plane vs data plane (lab taxonomy)
 
 Same AWS deploy (one SAM stack, one HTTP API, one WebSocket API). Separate **packages** so the
-concept is visible in code and C4:
+concept is visible in code and at C4 L3:
 
 | Plane | Question it answers | Package |
 |---|---|---|
@@ -23,35 +41,47 @@ concept is visible in code and C4:
 **Mnemonic:** control plane *sets up* the game; data plane *runs* the game loop.
 
 Composition root (Lambda handlers) stays at `control_plane.runtime` for stable SAM `Handler:` paths;
-it wires both planes.
+it wires both planes. Source of truth for REST ownership: `ROUTE_PLANE` in
+`plane_shared/http/api_gateway.py`.
 
 ### REST endpoints by plane
 
-| Plane | Method | Path |
-|---|---|---|
-| **Control** | `POST` | `/campaigns` |
-| **Control** | `GET` | `/campaigns` |
-| **Control** | `GET` | `/campaigns/{id}` |
-| **Control** | `GET` | `/campaigns/{id}/events` |
-| **Control** | `GET` | `/campaigns/{id}/opening` |
-| **Control** | `POST` | `/sessions` |
-| **Control** | `GET` | `/sessions` |
-| **Control** | `GET` | `/sessions/{id}` |
-| **Control** | `POST` | `/sessions/{id}/abandon` |
-| **Data** | `POST` | `/sessions/{id}/actions` |
-| **Data** | `GET` | `/sessions/{id}/events` |
-| **Data** | `POST` | `/speech` |
+```mermaid
+flowchart LR
+  subgraph CONTROL["Control plane REST"]
+    direction TB
+    C1["POST/GET /campaigns*"]
+    C2["GET /campaigns/{id}/opening"]
+    C3["POST/GET /sessions"]
+    C4["GET /sessions/{id}"]
+    C5["POST /sessions/{id}/abandon"]
+  end
 
-Source of truth in code: `ROUTE_PLANE` in `plane_shared/http/api_gateway.py`.
+  subgraph DATA["Data plane REST"]
+    direction TB
+    D1["POST /sessions/{id}/actions"]
+    D2["GET /sessions/{id}/events"]
+    D3["POST /speech"]
+  end
+
+  SPA["Web SPA"] -->|HTTPS REST| CONTROL
+  SPA -->|HTTPS REST| DATA
+
+  classDef ctrl fill:#dbeafe,stroke:#1d4ed8,color:#0f172a
+  classDef data fill:#dcfce7,stroke:#15803d,color:#0f172a
+  classDef spa fill:#f1f5f9,stroke:#475569,color:#0f172a
+  class CONTROL,C1,C2,C3,C4,C5 ctrl
+  class DATA,D1,D2,D3 data
+  class SPA spa
+```
 
 ### WebSocket by plane
 
-Transport (`$connect` / `subscribe` / `ping` / `$disconnect`) is **shared**. Event *payloads* belong
-to a plane:
+Transport (`$connect` / `subscribe` / `ping` / `$disconnect`) is **shared**. Event *payloads*:
 
 | Plane | Pushed `type` values |
 |---|---|
-| **Control** | `campaign.*`, `session.creation.*`, `session.ready`, `session.phase.changed` (setup), `session.completed` (abandon/lifecycle) |
+| **Control** | `campaign.*`, `session.creation.*`, `session.ready`, setup `session.phase.changed`, abandon `session.completed` |
 | **Data** | `turn.started`, `dice.rolled`, `narration.delta`, `turn.completed` |
 
 Browser clients: REST → `web/src/net/api.ts`; WSS → `web/src/net/ws.ts`.
@@ -59,18 +89,11 @@ Browser clients: REST → `web/src/net/api.ts`; WSS → `web/src/net/ws.ts`.
 ## Trust boundary (orthogonal to CP/DP)
 
 Orchestration and model calls stay **outside** the MicroVM. The guest FastAPI process has no AWS
-credentials: it only validates and applies turn proposals (d20, inventory/location rules, win/lose).
-Sandbox auth today is `x-player-id` / WebSocket `playerId` (JWT later). See [security.md](security.md).
+credentials: it only validates and applies turn proposals. Sandbox auth today is `x-player-id` /
+WebSocket `playerId` (JWT later). See [security.md](security.md).
 
-**The browser never talks to the MicroVM.** It only talks to the HTTP + WS APIs. DynamoDB is the
-source of truth for events; WebSocket delivery is best-effort fan-out.
-
-### REST vs WebSocket (channel cheat sheet)
-
-| Channel | Direction | Job |
-|---|---|---|
-| **HTTPS REST** | Browser → API | Commands and reads |
-| **WSS** | Browser ↔ API | Live push of sequenced events |
+**The browser never talks to the MicroVM.** DynamoDB is the source of truth for events; WebSocket
+delivery is best-effort fan-out.
 
 Config: `VITE_HTTP_URL` / `VITE_WS_URL` ← CloudFormation `ApiUrl` / `WebSocketUrl`
 (`web/.env.example`).
@@ -79,60 +102,66 @@ Config: `VITE_HTTP_URL` / `VITE_WS_URL` ← CloudFormation `ApiUrl` / `WebSocket
 
 ## L1 — System context
 
+Audience: anyone. Shows people, the system, and important externals.
+
+*(Amazon Polly omitted here so Mermaid links stay clean; it is used for TTS from the data plane.)*
+
 ```mermaid
 C4Context
-title Dungeon Agent — L1 System Context
+title L1 System Context — Dungeon Agent
 
-Person(player, "Player", "Browser; sandbox x-player-id")
-System(da, "Dungeon Agent", "AI one-shot RPG: campaigns, play sessions, narration")
-System_Ext(bedrock, "Amazon Bedrock", "Adventure/character architects, DM, portraits")
-System_Ext(polly, "Amazon Polly", "Narration speech")
-System_Ext(microvm_platform, "AWS Lambda MicroVMs", "Isolated game runtime host")
+Person(player, "Player", "Browser")
+System(da, "Dungeon Agent", "AI one-shot RPG")
+System_Ext(bedrock, "Amazon Bedrock", "LLMs + images")
+System_Ext(microvms, "Lambda MicroVMs", "Isolated game host")
 
-Rel(player, da, "HTTPS REST + WSS")
-Rel(da, bedrock, "Converse / image")
-Rel(da, polly, "SynthesizeSpeech")
-Rel(da, microvm_platform, "Run / auth / terminate")
+Rel(player, da, "Uses", "REST + WSS")
+Rel(da, bedrock, "Calls", "LLM APIs")
+Rel(da, microvms, "Manages", "lifecycle")
+
+UpdateRelStyle(player, da, $textColor="#334155", $lineColor="#64748b", $offsetY="-40")
+UpdateRelStyle(da, bedrock, $textColor="#334155", $lineColor="#64748b", $offsetY="-30")
+UpdateRelStyle(da, microvms, $textColor="#334155", $lineColor="#64748b", $offsetY="30")
+UpdateLayoutConfig($c4ShapeInRow="2", $c4BoundaryInRow="1")
 ```
 
 ---
 
 ## L2 — Containers
 
-One deployable backend surface; two conceptual planes inside it.
+Audience: developers / ops. **Containers** here are separately runnable/deployable units
+([C4 container diagram](https://c4model.com/diagrams/container)). The Backend is one SAM deploy;
+control vs data plane packages appear at L3.
+
+*(S3 media cache and Polly omitted from the box diagram for link clarity; Backend uses both.)*
 
 ```mermaid
 C4Container
-title Dungeon Agent — L2 Containers
+title L2 Containers — deployable units
 
 Person(player, "Player", "Browser")
 
 System_Boundary(da, "Dungeon Agent") {
-  Container(web, "Web SPA", "React/Vite", "Play UI; ApiClient + RealtimeClient")
-  Container(cp, "Control Plane", "Python package", "Campaign/session lifecycle, SFN workflows")
-  Container(dp, "Data Plane", "Python package", "Actions, turn worker, speech, play events")
-  Container(shared, "Plane Shared", "Python package", "HTTP/WS adapters, DynamoDB, MicroVM client")
-  ContainerDb(ddb, "Session store", "DynamoDB", "Campaigns, sessions, events, snapshots, WS indexes")
-  ContainerDb(s3, "Media cache", "S3", "Speech + portrait objects")
-  Container(vm, "Game MicroVM", "FastAPI", "Dice, validate, apply world")
+  Container(web, "Web SPA", "React, Vite", "UI clients")
+  Container(backend, "Backend", "API GW, Lambda, SFN", "Orchestration and play APIs")
+  ContainerDb(ddb, "Session store", "DynamoDB", "Records and events")
+  Container(vm, "Game MicroVM", "FastAPI", "Dice and world rules")
 }
 
-System_Ext(bedrock, "Amazon Bedrock", "LLMs + image")
-System_Ext(polly, "Amazon Polly", "TTS")
+System_Ext(bedrock, "Amazon Bedrock", "LLMs + images")
 
 Rel(player, web, "Uses")
-Rel(web, shared, "HTTPS REST + WSS (edge)")
-Rel(shared, cp, "Dispatch control routes / workflows")
-Rel(shared, dp, "Dispatch data routes / turn worker")
-Rel(cp, ddb, "Lifecycle read/write")
-Rel(dp, ddb, "Play read/write")
-Rel(cp, s3, "Portraits")
-Rel(dp, s3, "Speech cache")
-Rel(cp, bedrock, "Generate campaign")
-Rel(dp, bedrock, "DM propose turn")
-Rel(dp, polly, "TTS")
-Rel(cp, vm, "Boot + PUT /v1/adventure")
-Rel(dp, vm, "POST /v1/turns")
+Rel(web, backend, "Calls", "REST + WSS")
+Rel(backend, ddb, "Reads/writes")
+Rel(backend, vm, "Init + turns", "HTTPS")
+Rel(backend, bedrock, "Generate + DM", "HTTPS")
+
+UpdateRelStyle(player, web, $textColor="#334155", $lineColor="#64748b", $offsetY="-30")
+UpdateRelStyle(web, backend, $textColor="#334155", $lineColor="#64748b", $offsetY="-45")
+UpdateRelStyle(backend, ddb, $textColor="#334155", $lineColor="#64748b", $offsetX="25")
+UpdateRelStyle(backend, vm, $textColor="#334155", $lineColor="#64748b", $offsetY="-20")
+UpdateRelStyle(backend, bedrock, $textColor="#334155", $lineColor="#64748b", $offsetY="20")
+UpdateLayoutConfig($c4ShapeInRow="2", $c4BoundaryInRow="1")
 ```
 
 ### Main flows
@@ -151,75 +180,83 @@ web play path.
 
 ---
 
-## L3 — Components (planes + edge)
+## L3 — Backend components (planes)
+
+Zoom into the **Backend** container. Packages are components, not separate deploys.
+
+### REST dispatch (control vs data)
 
 ```mermaid
 C4Component
-title Dungeon Agent — L3 Control vs Data Plane
+title L3 Backend — control vs data plane packages
 
-Container_Boundary(web, "Web SPA") {
-  Component(apiClient, "ApiClient", "fetch", "HTTPS REST")
-  Component(wsClient, "RealtimeClient", "WebSocket", "WSS")
+Container_Boundary(backend, "Backend (one SAM deploy)") {
+  Component(http, "HTTP edge", "API Gateway HTTP", "Dispatches by ROUTE_PLANE")
+  Component(cp, "Control plane", "Python package", "Campaigns, session lifecycle, SFN")
+  Component(dp, "Data plane", "Python package", "Actions, turns, speech")
+  Component(shared, "Plane shared", "Python package", "DDB, WS delivery, MicroVM client")
 }
 
-Container_Boundary(shared, "Plane Shared (edge + infra)") {
-  Component(httpApi, "HTTP API adapter", "API Gateway HTTP", "ROUTE_PLANE dispatch")
-  Component(wsApi, "WebSocket adapter", "API Gateway WS", "connect/subscribe/ping")
-  Component(deliver, "Event delivery", "ManageConnections", "Best-effort push")
-  Component(ddbAccess, "Repositories", "DynamoDB", "Records + event log")
-  Component(vmClient, "MicroVM manager", "HTTPS", "Launch / apply / terminate")
-}
+Rel(http, cp, "Control routes", "REST")
+Rel(http, dp, "Data routes", "REST")
+Rel(cp, shared, "Uses")
+Rel(dp, shared, "Uses")
 
-Container_Boundary(cp, "Control Plane") {
-  Component(campaignHttp, "Campaign HTTP", "handlers", "CRUD + opening + campaign events")
-  Component(sessionHttp, "Session lifecycle HTTP", "handlers", "Create/list/get/abandon")
-  Component(sfn, "Workflows", "Step Functions", "create-campaign, create-session")
-  Component(wfTasks, "Workflow tasks", "Lambda", "Bedrock generate + MicroVM boot")
-}
-
-Container_Boundary(dp, "Data Plane") {
-  Component(actionHttp, "Action HTTP", "handlers", "POST actions + GET session events")
-  Component(speechHttp, "Speech HTTP", "handlers", "POST /speech")
-  Component(turnFn, "Turn worker", "Lambda", "DM + MicroVM apply + emit")
-}
-
-Container(vm, "Game MicroVM", "FastAPI", "Authoritative world")
-System_Ext(bedrock, "Amazon Bedrock", "LLMs")
-System_Ext(polly, "Amazon Polly", "TTS")
-
-Rel(apiClient, httpApi, "HTTPS REST")
-Rel(wsClient, wsApi, "WSS")
-Rel(httpApi, campaignHttp, "control routes")
-Rel(httpApi, sessionHttp, "control routes")
-Rel(httpApi, actionHttp, "data routes")
-Rel(httpApi, speechHttp, "data routes")
-Rel(sessionHttp, sfn, "StartExecution")
-Rel(actionHttp, turnFn, "async Invoke")
-Rel(sfn, wfTasks, "task invoke")
-Rel(wfTasks, bedrock, "generate")
-Rel(wfTasks, vmClient, "boot adventure")
-Rel(turnFn, bedrock, "DM")
-Rel(turnFn, vmClient, "apply turn")
-Rel(vmClient, vm, "guest HTTPS")
-Rel(speechHttp, polly, "SynthesizeSpeech")
-Rel(campaignHttp, ddbAccess, "R/W")
-Rel(sessionHttp, ddbAccess, "R/W")
-Rel(actionHttp, ddbAccess, "R/W")
-Rel(turnFn, ddbAccess, "R/W")
-Rel(wfTasks, deliver, "emit control events")
-Rel(turnFn, deliver, "emit data events")
-Rel(deliver, wsApi, "post_to_connection")
+UpdateRelStyle(http, cp, $textColor="#334155", $lineColor="#64748b", $offsetX="-30", $offsetY="-20")
+UpdateRelStyle(http, dp, $textColor="#334155", $lineColor="#64748b", $offsetX="30", $offsetY="-20")
+UpdateRelStyle(cp, shared, $textColor="#334155", $lineColor="#64748b", $offsetX="-20")
+UpdateRelStyle(dp, shared, $textColor="#334155", $lineColor="#64748b", $offsetX="20")
+UpdateLayoutConfig($c4ShapeInRow="2", $c4BoundaryInRow="1")
 ```
 
-### How one turn uses both channels (data plane)
+### WebSocket fan-out
 
-```text
-1. REST  POST /sessions/{id}/actions     → 202 { turnId, status: "started" }   (data)
-2. WSS   turn.started                    → UI locks
-3. WSS   dice.rolled / narration.delta   → live feedback
-4. WSS   turn.completed                  → UI unlocks
-5. REST  GET …/events?after=N            → only if WS dropped frames            (data)
+```mermaid
+C4Component
+title L3 Backend — event fan-out over WebSocket
+
+Container_Boundary(backend, "Backend (one SAM deploy)") {
+  Component(cp, "Control plane", "Python package", "Campaign/session events")
+  Component(dp, "Data plane", "Python package", "Turn events")
+  Component(shared, "Plane shared", "Python package", "Connection index + delivery")
+  Component(ws, "WS edge", "API Gateway WS", "Browser connections")
+}
+
+Rel(cp, shared, "Emit control events")
+Rel(dp, shared, "Emit data events")
+Rel(shared, ws, "Push to browser", "WSS")
+
+UpdateRelStyle(cp, shared, $textColor="#334155", $lineColor="#64748b", $offsetX="-25")
+UpdateRelStyle(dp, shared, $textColor="#334155", $lineColor="#64748b", $offsetX="25")
+UpdateRelStyle(shared, ws, $textColor="#334155", $lineColor="#64748b", $offsetY="-25")
+UpdateLayoutConfig($c4ShapeInRow="2", $c4BoundaryInRow="1")
 ```
+
+### Dynamic — one player turn (data plane)
+
+Supporting diagram (sequence is clearer than Mermaid `C4Dynamic` for numbered steps):
+
+```mermaid
+sequenceDiagram
+  autonumber
+  actor Player
+  participant SPA as Web SPA
+  participant HTTP as HTTP API<br/>(data plane)
+  participant Worker as Turn worker
+  participant VM as Game MicroVM
+  participant WS as WebSocket API
+
+  Player->>SPA: Enter action
+  SPA->>HTTP: POST /sessions/{id}/actions<br/>(HTTPS REST)
+  HTTP-->>SPA: 202 accepted
+  HTTP->>Worker: async Invoke
+  Worker->>VM: POST /v1/turns (HTTPS)
+  VM-->>Worker: world result
+  Worker->>WS: post_to_connection
+  WS-->>SPA: turn.* / dice / narration (WSS)
+```
+
+Missed WS frames: REST `GET /sessions/{id}/events?after=N` (data plane).
 
 ---
 
