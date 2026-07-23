@@ -4,18 +4,18 @@ from typing import cast
 
 import pytest
 
-from dungeon_agent.control_plane.domain.enums import EventType, SessionPhase, SessionStatus
-from dungeon_agent.control_plane.domain.models import (
+from dungeon_agent.plane_shared.domain.enums import EventType, SessionPhase, SessionStatus
+from dungeon_agent.plane_shared.domain.models import (
     CreationStartedPayload,
     SessionEvent,
     SessionId,
     SessionRecord,
 )
-from dungeon_agent.control_plane.persistence.memory import InMemoryControlPlaneRepository
-from dungeon_agent.control_plane.realtime.delivery import BestEffortEventDelivery
-from dungeon_agent.control_plane.realtime.dynamodb import DynamoDbConnectionRepository
-from dungeon_agent.control_plane.realtime.memory import InMemoryConnectionRepository
-from dungeon_agent.control_plane.realtime.service import RealtimeSessionService
+from dungeon_agent.plane_shared.persistence.memory import InMemoryControlPlaneRepository
+from dungeon_agent.plane_shared.realtime.delivery import BestEffortEventDelivery
+from dungeon_agent.plane_shared.realtime.dynamodb import DynamoDbConnectionRepository
+from dungeon_agent.plane_shared.realtime.memory import InMemoryConnectionRepository
+from dungeon_agent.plane_shared.realtime.service import RealtimeSessionService
 
 NOW = datetime(2026, 7, 18, 21, 0, tzinfo=UTC)
 SESSION_ID: SessionId = "ses_01J00000000000000000000000"

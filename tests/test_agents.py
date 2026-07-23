@@ -3,9 +3,9 @@ from unittest.mock import Mock
 import pytest
 from pydantic import ValidationError
 
-from dungeon_agent.control_plane.agents.bedrock import StructuredBedrockAgent
 from dungeon_agent.control_plane.agents.roles import AdventureArchitect, CharacterArchitect
 from dungeon_agent.orchestrator.observability import SessionMetrics
+from dungeon_agent.plane_shared.agents.bedrock import StructuredBedrockAgent
 from tests.test_adventure import sample_plan, sample_player
 
 

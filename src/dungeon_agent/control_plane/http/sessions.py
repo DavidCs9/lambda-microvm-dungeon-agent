@@ -1,43 +1,39 @@
 from collections.abc import Callable
 from datetime import datetime
-from typing import Any, Literal
+from typing import Any
 
-from dungeon_agent.control_plane.domain import models as dm
-from dungeon_agent.control_plane.domain.enums import (
+from dungeon_agent.control_plane.http.workflows import ensure_workflow
+from dungeon_agent.plane_shared.domain import models as dm
+from dungeon_agent.plane_shared.domain.enums import (
     CampaignStatus,
     ErrorCode,
     EventType,
     SessionPhase,
     SessionStatus,
 )
-from dungeon_agent.control_plane.domain.models import (
+from dungeon_agent.plane_shared.domain.models import (
     CreateSessionWorkflowInput,
     SessionId,
     SessionRecord,
 )
-from dungeon_agent.control_plane.events import append_session_event
-from dungeon_agent.control_plane.http.errors import (
+from dungeon_agent.plane_shared.events import append_session_event
+from dungeon_agent.plane_shared.http.errors import (
     Clock,
     dependency_error,
     error_result,
     load_owned,
     owner_access_error,
-    replay_events,
     utc_now,
 )
-from dungeon_agent.control_plane.http.models import (
+from dungeon_agent.plane_shared.http.models import (
     AuthenticatedIdentity,
     CreateSessionRequest,
-    EventListEnvelope,
     HttpResult,
     SessionEnvelope,
     SessionListEnvelope,
-    SubmitActionRequest,
-    TurnAcceptedEnvelope,
 )
-from dungeon_agent.control_plane.http.workflows import ensure_workflow
-from dungeon_agent.control_plane.identifiers import new_session_id, new_turn_id
-from dungeon_agent.control_plane.persistence.errors import SessionRevisionConflictError
+from dungeon_agent.plane_shared.identifiers import new_session_id
+from dungeon_agent.plane_shared.persistence.errors import SessionRevisionConflictError
 
 SESSION_DEPENDENCY = "A session dependency is temporarily unavailable."
 
@@ -49,7 +45,6 @@ class SessionHttpHandlers:
         workflows: Any,
         campaigns: Any,
         *,
-        turns: Any | None = None,
         delivery: Any | None = None,
         microvms: Any | None = None,
         clock: Clock | None = None,
@@ -58,7 +53,7 @@ class SessionHttpHandlers:
         max_sessions_per_campaign: int = 10,
     ) -> None:
         self._store, self._workflows, self._campaigns = (store, workflows, campaigns)
-        self._turns, self._delivery, self._microvms = (turns, delivery, microvms)
+        self._delivery, self._microvms = (delivery, microvms)
         self._clock, self._session_id_factory = (clock or utc_now, session_id_factory)
         self._max_active = max_active_sessions_per_owner
         self._max_replays = max_sessions_per_campaign
@@ -121,69 +116,6 @@ class SessionHttpHandlers:
         except Exception:
             return self._dependency_error(correlation_id)
 
-    def submit_action(
-        self,
-        identity: AuthenticatedIdentity,
-        session_id: SessionId,
-        request: SubmitActionRequest,
-        *,
-        idempotency_key: str,
-        correlation_id: str,
-    ) -> HttpResult:
-        if self._turns is None:
-            return self._dependency_error(correlation_id)
-        session, error = self._load(identity, session_id, correlation_id)
-        if error is not None:
-            return error
-        assert session is not None
-        if session.last_action_idempotency_key == idempotency_key and session.last_turn_id:
-            return self._turn_accepted(
-                session_id, session.last_turn_id, "duplicate", correlation_id
-            )
-        if session.status is SessionStatus.ACTIVE:
-            return self._conflict("A turn is already in progress.", correlation_id)
-        if session.status is not SessionStatus.READY:
-            return self._conflict("The session is not awaiting a player action.", correlation_id)
-        if request.expected_revision != session.revision:
-            message = f"Stale session revision; the current revision is {session.revision}."
-            return self._conflict(message, correlation_id)
-        turn_id = new_turn_id()
-        try:
-            self._save(
-                session,
-                status=SessionStatus.ACTIVE,
-                phase=SessionPhase.PLAYING,
-                last_turn_id=turn_id,
-                last_action_idempotency_key=idempotency_key,
-            )
-        except SessionRevisionConflictError:
-            return self._conflict("The session changed while accepting the action.", correlation_id)
-        command = dm.SubmitTurnCommand(
-            session_id=session_id,
-            turn_id=turn_id,
-            owner_id=identity.owner_id,
-            action=request.action,
-            expected_revision=request.expected_revision,
-            idempotency_key=idempotency_key,
-            correlation_id=correlation_id,
-        )
-        try:
-            self._emit(
-                session_id,
-                EventType.TURN_STARTED,
-                dm.TurnStartedPayload(
-                    turn_id=turn_id,
-                    expected_revision=request.expected_revision,
-                    action=request.action,
-                ),
-                correlation_id,
-            )
-            self._turns.invoke_turn(command)
-        except Exception:
-            self._release_checkout(session_id, turn_id)
-            return self._dependency_error(correlation_id)
-        return self._turn_accepted(session_id, turn_id, "started", correlation_id)
-
     def get_session(
         self, identity: AuthenticatedIdentity, session_id: SessionId, *, correlation_id: str
     ) -> HttpResult:
@@ -192,28 +124,6 @@ class SessionHttpHandlers:
             return error
         assert session is not None
         return HttpResult(200, SessionEnvelope(session=session), correlation_id)
-
-    def list_events(
-        self,
-        identity: AuthenticatedIdentity,
-        session_id: SessionId,
-        *,
-        after: int,
-        correlation_id: str,
-    ) -> HttpResult:
-        _session, error = self._load(identity, session_id, correlation_id)
-        if error is not None:
-            return error
-        return replay_events(
-            self._store,
-            session_id,
-            after=after,
-            correlation_id=correlation_id,
-            dependency_message=SESSION_DEPENDENCY,
-            envelope=lambda events, next_sequence: EventListEnvelope(
-                session_id=session_id, events=events, next_sequence=next_sequence
-            ),
-        )
 
     def list_active_sessions(
         self, identity: AuthenticatedIdentity, *, correlation_id: str
@@ -352,20 +262,6 @@ class SessionHttpHandlers:
         )
         return SessionRecord.model_validate(saved)
 
-    def _release_checkout(self, session_id: SessionId, turn_id: dm.TurnId) -> None:
-        try:
-            current = self._store.get(session_id)
-            if current is None or current.status is not SessionStatus.ACTIVE:
-                return
-            if current.last_turn_id == turn_id:
-                self._save(
-                    SessionRecord.model_validate(current),
-                    status=SessionStatus.READY,
-                    phase=SessionPhase.READY,
-                )
-        except Exception:
-            print(f"checkout rollback failed: {session_id}")
-
     def _emit(
         self,
         session_id: SessionId,
@@ -389,16 +285,3 @@ class SessionHttpHandlers:
     @staticmethod
     def _conflict(message: str, correlation_id: str) -> HttpResult:
         return error_result(409, ErrorCode.SESSION_CONFLICT, message, False, correlation_id)
-
-    @staticmethod
-    def _turn_accepted(
-        session_id: SessionId,
-        turn_id: dm.TurnId,
-        status: Literal["started", "duplicate"],
-        correlation_id: str,
-    ) -> HttpResult:
-        return HttpResult(
-            202,
-            TurnAcceptedEnvelope(session_id=session_id, turn_id=turn_id, status=status),
-            correlation_id,
-        )

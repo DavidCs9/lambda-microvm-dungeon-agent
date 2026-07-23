@@ -4,36 +4,37 @@ from importlib import import_module
 from typing import Any, cast
 
 from dungeon_agent.audio.polly import DEFAULT_VOICES, S3PollySpeechSynthesizer
-from dungeon_agent.control_plane.agents.bedrock import StructuredBedrockAgent
 from dungeon_agent.control_plane.agents.portrait import (
     DEFAULT_IMAGE_MODEL_ID,
     DEFAULT_IMAGE_REGION,
     BedrockPortraitGenerator,
 )
 from dungeon_agent.control_plane.agents.roles import AdventureArchitect, CharacterArchitect
-from dungeon_agent.control_plane.domain.models import SubmitTurnCommand
-from dungeon_agent.control_plane.http.api_gateway import ApiGatewayHttpAdapter
 from dungeon_agent.control_plane.http.campaigns import CampaignHttpHandlers
 from dungeon_agent.control_plane.http.sessions import SessionHttpHandlers
-from dungeon_agent.control_plane.http.speech import SpeechHttpHandlers
-from dungeon_agent.control_plane.microvms.manager import LambdaMicrovmManager
-from dungeon_agent.control_plane.persistence.artifacts import (
-    ArtifactAggregate,
-    DynamoDbArtifactStore,
-)
-from dungeon_agent.control_plane.persistence.dynamodb import (
-    create_dynamodb_campaign_repository,
-    create_dynamodb_repository,
-)
-from dungeon_agent.control_plane.persistence.portraits import S3PortraitStore
-from dungeon_agent.control_plane.realtime.api_gateway import ApiGatewayWebSocketAdapter
-from dungeon_agent.control_plane.realtime.delivery import BestEffortEventDelivery
-from dungeon_agent.control_plane.realtime.dynamodb import DynamoDbConnectionRepository
-from dungeon_agent.control_plane.realtime.service import RealtimeSessionService
-from dungeon_agent.control_plane.turns import TurnWorker
 from dungeon_agent.control_plane.workflow.campaigns import DurableCampaignWorkflowStub
 from dungeon_agent.control_plane.workflow.step_functions import StepFunctionsWorkflowStarter
 from dungeon_agent.control_plane.workflow.stub import DurableSessionWorkflowStub
+from dungeon_agent.data_plane.http.actions import ActionHttpHandlers
+from dungeon_agent.data_plane.http.speech import SpeechHttpHandlers
+from dungeon_agent.data_plane.turns import TurnWorker
+from dungeon_agent.plane_shared.agents.bedrock import StructuredBedrockAgent
+from dungeon_agent.plane_shared.domain.models import SubmitTurnCommand
+from dungeon_agent.plane_shared.http.api_gateway import ApiGatewayHttpAdapter
+from dungeon_agent.plane_shared.microvms.manager import LambdaMicrovmManager
+from dungeon_agent.plane_shared.persistence.artifacts import (
+    ArtifactAggregate,
+    DynamoDbArtifactStore,
+)
+from dungeon_agent.plane_shared.persistence.dynamodb import (
+    create_dynamodb_campaign_repository,
+    create_dynamodb_repository,
+)
+from dungeon_agent.plane_shared.persistence.portraits import S3PortraitStore
+from dungeon_agent.plane_shared.realtime.api_gateway import ApiGatewayWebSocketAdapter
+from dungeon_agent.plane_shared.realtime.delivery import BestEffortEventDelivery
+from dungeon_agent.plane_shared.realtime.dynamodb import DynamoDbConnectionRepository
+from dungeon_agent.plane_shared.realtime.service import RealtimeSessionService
 
 
 def _boto3() -> Any:
@@ -167,13 +168,19 @@ def _build_http_adapter() -> ApiGatewayHttpAdapter:
         os.environ["STATE_MACHINE_ARN"],
         campaign_state_machine_arn=os.environ["CAMPAIGN_STATE_MACHINE_ARN"],
     )
+    delivery = _build_delivery()
     sessions = SessionHttpHandlers(
         _REPOSITORY,
         starter,
         _CAMPAIGN_REPOSITORY,
-        turns=_build_turn_invoker(),
-        delivery=_build_delivery(),
+        delivery=delivery,
         microvms=_microvm_manager() if "MICROVM_IMAGE_NAME" in os.environ else None,
+    )
+    turn_invoker = _build_turn_invoker()
+    actions = (
+        None
+        if turn_invoker is None
+        else ActionHttpHandlers(_REPOSITORY, turn_invoker, delivery=delivery)
     )
     return ApiGatewayHttpAdapter(
         sessions,
@@ -183,6 +190,7 @@ def _build_http_adapter() -> ApiGatewayHttpAdapter:
             openings=_artifacts(_CAMPAIGN_TABLE_NAME, "CAMPAIGN"),
             portrait_presigner=_build_portrait_store(),
         ),
+        actions=actions,
         speech=_build_speech_handlers(),
         allow_sandbox_identity=True,
     )

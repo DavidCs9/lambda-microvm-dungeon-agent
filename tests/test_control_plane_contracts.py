@@ -7,12 +7,14 @@ import pytest
 from pydantic import ValidationError
 
 from dungeon_agent.api import models as api_models
-from dungeon_agent.control_plane.domain.enums import (
+from dungeon_agent.domain.game import AdventurePlan
+from dungeon_agent.domain.views import OpeningView
+from dungeon_agent.plane_shared.domain.enums import (
     EventType,
     SessionPhase,
     SessionStatus,
 )
-from dungeon_agent.control_plane.domain.models import (
+from dungeon_agent.plane_shared.domain.models import (
     CreateSessionWorkflowInput,
     PhaseChangedPayload,
     SessionEvent,
@@ -20,8 +22,6 @@ from dungeon_agent.control_plane.domain.models import (
     SessionRecord,
     SubmitTurnCommand,
 )
-from dungeon_agent.domain.game import AdventurePlan
-from dungeon_agent.domain.views import OpeningView
 
 FIXTURES = Path(__file__).parent / "fixtures" / "control_plane"
 DOMAIN_ROOTS = (

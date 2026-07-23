@@ -1,7 +1,7 @@
 from collections.abc import Mapping
 from typing import Any, cast
 
-from dungeon_agent.control_plane.domain.models import (
+from dungeon_agent.plane_shared.domain.models import (
     CreateCampaignWorkflowInput,
     CreateSessionWorkflowInput,
 )

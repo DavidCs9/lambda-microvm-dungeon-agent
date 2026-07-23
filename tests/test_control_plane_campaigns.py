@@ -4,13 +4,14 @@ from datetime import UTC, datetime, timedelta
 import pytest
 from pydantic import ValidationError
 
-from dungeon_agent.control_plane.domain.enums import (
+from dungeon_agent.control_plane.workflow.campaigns import DurableCampaignWorkflowStub
+from dungeon_agent.plane_shared.domain.enums import (
     CampaignPhase,
     CampaignStatus,
     EventType,
     OpeningBlockKind,
 )
-from dungeon_agent.control_plane.domain.models import (
+from dungeon_agent.plane_shared.domain.models import (
     CampaignCreationStartedPayload,
     CampaignEvent,
     CampaignId,
@@ -18,14 +19,13 @@ from dungeon_agent.control_plane.domain.models import (
     OpeningBlock,
     OpeningDocument,
 )
-from dungeon_agent.control_plane.identifiers import new_campaign_id
-from dungeon_agent.control_plane.persistence.errors import (
+from dungeon_agent.plane_shared.identifiers import new_campaign_id
+from dungeon_agent.plane_shared.persistence.errors import (
     CampaignAlreadyExistsError,
     CampaignEventSequenceConflictError,
     CampaignRevisionConflictError,
 )
-from dungeon_agent.control_plane.persistence.memory import InMemoryCampaignRepository
-from dungeon_agent.control_plane.workflow.campaigns import DurableCampaignWorkflowStub
+from dungeon_agent.plane_shared.persistence.memory import InMemoryCampaignRepository
 
 NOW = datetime(2026, 7, 18, 21, 0, tzinfo=UTC)
 CAMPAIGN_ID: CampaignId = "cam_01J00000000000000000000000"

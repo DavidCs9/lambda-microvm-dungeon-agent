@@ -5,20 +5,20 @@ from typing import cast
 
 import pytest
 
-from dungeon_agent.control_plane.domain.enums import EventType, SessionPhase, SessionStatus
-from dungeon_agent.control_plane.domain.models import (
+from dungeon_agent.plane_shared.domain.enums import EventType, SessionPhase, SessionStatus
+from dungeon_agent.plane_shared.domain.models import (
     CreationStartedPayload,
     SessionEvent,
     SessionId,
     SessionRecord,
 )
-from dungeon_agent.control_plane.persistence.dynamodb import DynamoDbControlPlaneRepository
-from dungeon_agent.control_plane.persistence.errors import (
+from dungeon_agent.plane_shared.persistence.dynamodb import DynamoDbControlPlaneRepository
+from dungeon_agent.plane_shared.persistence.errors import (
     EventSequenceConflictError,
     SessionAlreadyExistsError,
     SessionRevisionConflictError,
 )
-from dungeon_agent.control_plane.persistence.memory import InMemoryControlPlaneRepository
+from dungeon_agent.plane_shared.persistence.memory import InMemoryControlPlaneRepository
 
 SESSION_ID: SessionId = "ses_01J00000000000000000000000"
 NOW = datetime(2026, 7, 18, 21, 0, tzinfo=UTC)

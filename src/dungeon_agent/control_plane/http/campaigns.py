@@ -3,17 +3,18 @@ from collections.abc import Callable
 from datetime import datetime
 from typing import Any, cast
 
-from dungeon_agent.control_plane.domain.enums import (
+from dungeon_agent.control_plane.http.workflows import ensure_workflow
+from dungeon_agent.plane_shared.domain.enums import (
     CampaignPhase,
     CampaignStatus,
     ErrorCode,
 )
-from dungeon_agent.control_plane.domain.models import (
+from dungeon_agent.plane_shared.domain.models import (
     CampaignId,
     CampaignRecord,
     CreateCampaignWorkflowInput,
 )
-from dungeon_agent.control_plane.http.errors import (
+from dungeon_agent.plane_shared.http.errors import (
     Clock,
     dependency_error,
     error_result,
@@ -21,7 +22,7 @@ from dungeon_agent.control_plane.http.errors import (
     replay_events,
     utc_now,
 )
-from dungeon_agent.control_plane.http.models import (
+from dungeon_agent.plane_shared.http.models import (
     AuthenticatedIdentity,
     CampaignEnvelope,
     CampaignEventListEnvelope,
@@ -30,8 +31,7 @@ from dungeon_agent.control_plane.http.models import (
     HttpResult,
     OpeningEnvelope,
 )
-from dungeon_agent.control_plane.http.workflows import ensure_workflow
-from dungeon_agent.control_plane.identifiers import new_campaign_id
+from dungeon_agent.plane_shared.identifiers import new_campaign_id
 
 CAMPAIGN_DEPENDENCY = "A campaign dependency is temporarily unavailable."
 LOGGER = logging.getLogger(__name__)

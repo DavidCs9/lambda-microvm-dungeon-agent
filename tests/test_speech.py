@@ -7,11 +7,11 @@ from dungeon_agent.audio.polly import (
     speech_cache_key,
     speech_content_digest,
 )
-from dungeon_agent.control_plane.http.api_gateway import ApiGatewayHttpAdapter
 from dungeon_agent.control_plane.http.campaigns import CampaignHttpHandlers
 from dungeon_agent.control_plane.http.sessions import SessionHttpHandlers
-from dungeon_agent.control_plane.http.speech import SpeechHttpHandlers
-from dungeon_agent.control_plane.persistence.memory import (
+from dungeon_agent.data_plane.http.speech import SpeechHttpHandlers
+from dungeon_agent.plane_shared.http.api_gateway import ApiGatewayHttpAdapter
+from dungeon_agent.plane_shared.persistence.memory import (
     InMemoryCampaignRepository,
     InMemoryControlPlaneRepository,
 )

@@ -2,26 +2,8 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 
-from dungeon_agent.control_plane.domain.enums import EventType, SessionPhase, SessionStatus
-from dungeon_agent.control_plane.domain.models import (
-    MicrovmLaunchResult,
-    SessionId,
-    SessionRecord,
-    SubmitTurnCommand,
-    TurnId,
-)
-from dungeon_agent.control_plane.http.models import (
-    AuthenticatedIdentity,
-    HttpResult,
-    SubmitActionRequest,
-)
-from dungeon_agent.control_plane.http.sessions import SessionHttpHandlers
-from dungeon_agent.control_plane.identifiers import new_turn_id
-from dungeon_agent.control_plane.persistence.memory import (
-    InMemoryCampaignRepository,
-    InMemoryControlPlaneRepository,
-)
-from dungeon_agent.control_plane.turns import TurnWorker
+from dungeon_agent.data_plane.http.actions import ActionHttpHandlers
+from dungeon_agent.data_plane.turns import TurnWorker
 from dungeon_agent.domain.game import (
     AdventurePlan,
     LanguageCode,
@@ -29,6 +11,23 @@ from dungeon_agent.domain.game import (
     TurnProposal,
     TurnResult,
     WorldState,
+)
+from dungeon_agent.plane_shared.domain.enums import EventType, SessionPhase, SessionStatus
+from dungeon_agent.plane_shared.domain.models import (
+    MicrovmLaunchResult,
+    SessionId,
+    SessionRecord,
+    SubmitTurnCommand,
+    TurnId,
+)
+from dungeon_agent.plane_shared.http.models import (
+    AuthenticatedIdentity,
+    HttpResult,
+    SubmitActionRequest,
+)
+from dungeon_agent.plane_shared.identifiers import new_turn_id
+from dungeon_agent.plane_shared.persistence.memory import (
+    InMemoryControlPlaneRepository,
 )
 from tests.test_adventure import proposal, sample_plan, sample_player
 
@@ -102,14 +101,6 @@ class FakeSnapshots:
         return self.world
 
 
-class FakeWorkflows:
-    def start_create_session(self, workflow_input: object) -> str:
-        raise AssertionError("not used in turn tests")
-
-    def start_create_campaign(self, workflow_input: object) -> str:
-        raise AssertionError("not used in turn tests")
-
-
 def _session(status: SessionStatus, phase: SessionPhase, revision: int = 3) -> SessionRecord:
     return SessionRecord(
         session_id=SESSION_ID,
@@ -133,17 +124,15 @@ def _repository() -> InMemoryControlPlaneRepository:
 
 def _handlers(
     repository: InMemoryControlPlaneRepository, invoker: FakeInvoker
-) -> SessionHttpHandlers:
-    return SessionHttpHandlers(
+) -> ActionHttpHandlers:
+    return ActionHttpHandlers(
         repository,
-        FakeWorkflows(),
-        InMemoryCampaignRepository(),
-        turns=invoker,
+        invoker,
         clock=lambda: NOW,
     )
 
 
-def _submit(handlers: SessionHttpHandlers, revision: int = 3, key: str = KEY) -> HttpResult:
+def _submit(handlers: ActionHttpHandlers, revision: int = 3, key: str = KEY) -> HttpResult:
     return handlers.submit_action(
         AuthenticatedIdentity(owner_id=OWNER),
         SESSION_ID,
