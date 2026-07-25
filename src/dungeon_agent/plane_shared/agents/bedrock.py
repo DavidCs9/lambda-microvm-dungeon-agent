@@ -34,7 +34,7 @@ class StructuredBedrockAgent:
     ) -> OutputModel:
         current_prompt = prompt
         current_temperature = temperature
-        for attempt in range(2):
+        for attempt in range(3):
             try:
                 return self._invoke_once(
                     system=system,
@@ -46,7 +46,7 @@ class StructuredBedrockAgent:
                     temperature=current_temperature,
                 )
             except ValidationError as error:
-                if attempt == 1:
+                if attempt == 2:
                     raise
                 current_prompt = (
                     f"{prompt}\n\nYour previous tool output failed validation. Correct every "

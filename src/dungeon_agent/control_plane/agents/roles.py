@@ -55,7 +55,9 @@ class CharacterArchitect:
                         f"Create one concise protagonist in {language_name}: identity, desire, "
                         "personal stake, known facts, and three ways to begin. "
                         f"Put exactly these pronouns in the pronouns field: {pronouns}. "
-                        "Align name, appearance, and grammar with that identity."
+                        "Align name, appearance, and grammar with that identity. "
+                        "Keep every string field short enough to satisfy the tool schema "
+                        "maxLength constraints (prefer punchy one-liners)."
                     ),
                     "adventure": adventure.model_dump(mode="json"),
                 },
@@ -68,7 +70,44 @@ class CharacterArchitect:
             max_tokens=2_000,
             temperature=0.85,
         )
-        return cast(PlayerCharacter, result)
+        # Clamp so persisted artifacts still load on MicroVM images with older caps.
+        return _clamp_player_character(cast(PlayerCharacter, result))
+
+
+_PLAYER_FIELD_CAPS = {
+    "name": 50,
+    "pronouns": 30,
+    "archetype": 80,
+    "appearance": 120,
+    "background": 200,
+    "desire": 120,
+    "need": 120,
+    "connection_to_adventure": 160,
+    "strength": 100,
+    "flaw": 100,
+    "contradiction": 160,
+    "npc_connection": 160,
+    "meaningful_item": 100,
+    "open_question": 160,
+}
+
+
+def _clamp_text(value: str, max_length: int) -> str:
+    if len(value) <= max_length:
+        return value
+    clipped = value[: max_length - 1].rstrip()
+    return f"{clipped}…"
+
+
+def _clamp_player_character(character: PlayerCharacter) -> PlayerCharacter:
+    payload = character.model_dump(mode="python")
+    for field, max_length in _PLAYER_FIELD_CAPS.items():
+        payload[field] = _clamp_text(str(payload[field]), max_length)
+    payload["known_facts"] = [_clamp_text(str(item), 160) for item in payload["known_facts"]]
+    payload["opening_choices"] = [
+        _clamp_text(str(item), 160) for item in payload["opening_choices"]
+    ]
+    return PlayerCharacter.model_validate(payload)
 
 
 def _pronoun_seed(language: LanguageCode) -> str:
