@@ -33,6 +33,34 @@ This is a contract/rubric eval, not exact string matching. A model can use diffe
 prose while still passing the behavioral checks. Add a case when a real failure is found; do not
 use generated samples as golden truth without human review.
 
+## Managed prompt baseline
+
+The three model roles are published as versioned Amazon Bedrock Prompt Management resources.
+Publish the current Sonnet baseline and write its candidate manifest with:
+
+```sh
+uv run --group tooling python scripts/publish_managed_prompts.py \
+  --profile personal \
+  --region us-east-2
+```
+
+Each immutable prompt version contains the system prompt, user template, model, inference
+configuration, required tool choice, and Pydantic-derived tool schema. Candidate manifests under
+`evals/candidates/` pin one version ARN per role.
+
+Run one or more candidate manifests against the golden set:
+
+```sh
+uv run --group tooling python evals/managed_prompt_benchmark.py \
+  --candidate evals/candidates/baseline-sonnet46.json \
+  --max-quality-drop 5 \
+  --output artifacts/managed-prompt-eval.json
+```
+
+The first candidate is the quality baseline. A candidate is eligible only when every critical
+safety check passes and its overall quality drop is within the configured tolerance. Eligible
+candidates are ranked by estimated token cost.
+
 ## Bedrock architect and Dungeon Master comparison
 
 The model evaluation generates an English and Spanish adventure per candidate, adjudicates the
