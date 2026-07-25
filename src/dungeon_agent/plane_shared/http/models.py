@@ -56,6 +56,12 @@ class CampaignListEnvelope(ContractModel):
     campaigns: tuple[CampaignRecord, ...]
 
 
+class CampaignDeletedEnvelope(ContractModel):
+    version: Literal[1] = 1
+    campaign_id: CampaignId
+    status: Literal["deleted"] = "deleted"
+
+
 class SessionListEnvelope(ContractModel):
     version: Literal[1] = 1
     sessions: tuple[SessionRecord, ...]
@@ -100,6 +106,7 @@ HttpBody = (
     SessionEnvelope
     | CampaignEnvelope
     | CampaignListEnvelope
+    | CampaignDeletedEnvelope
     | SessionListEnvelope
     | OpeningEnvelope
     | TurnAcceptedEnvelope

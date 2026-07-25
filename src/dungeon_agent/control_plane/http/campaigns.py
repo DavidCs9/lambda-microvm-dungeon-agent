@@ -23,6 +23,7 @@ from dungeon_agent.plane_shared.http.errors import (
 )
 from dungeon_agent.plane_shared.http.models import (
     AuthenticatedIdentity,
+    CampaignDeletedEnvelope,
     CampaignEnvelope,
     CampaignEventListEnvelope,
     CampaignListEnvelope,
@@ -141,6 +142,28 @@ class CampaignHttpHandlers:
         return HttpResult(
             status_code=200,
             body=CampaignEnvelope(campaign=campaign),
+            correlation_id=correlation_id,
+        )
+
+    def delete_campaign(
+        self,
+        identity: AuthenticatedIdentity,
+        campaign_id: CampaignId,
+        *,
+        correlation_id: str,
+    ) -> HttpResult:
+        campaign, error = self._load(identity, campaign_id, correlation_id)
+        if error is not None:
+            return error
+        assert campaign is not None
+        try:
+            self._store.delete(campaign_id)
+        except Exception:
+            logger.exception("dependency_unavailable", correlation_id=correlation_id)
+            return self._dependency_error(correlation_id)
+        return HttpResult(
+            status_code=200,
+            body=CampaignDeletedEnvelope(campaign_id=campaign_id),
             correlation_id=correlation_id,
         )
 

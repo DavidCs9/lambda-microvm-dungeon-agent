@@ -1,4 +1,5 @@
 import type {
+  CampaignDeletedEnvelope,
   CampaignEnvelope,
   CampaignListEnvelope,
   LanguageCode,
@@ -57,6 +58,10 @@ export class ApiClient {
 
   getCampaignOpening(campaignId: string): Promise<OpeningEnvelope> {
     return this.request<OpeningEnvelope>("GET", `/campaigns/${campaignId}/opening`);
+  }
+
+  deleteCampaign(campaignId: string): Promise<CampaignDeletedEnvelope> {
+    return this.request<CampaignDeletedEnvelope>("DELETE", `/campaigns/${campaignId}`);
   }
 
   createSession(campaignId: string, language: LanguageCode = "es"): Promise<SessionEnvelope> {

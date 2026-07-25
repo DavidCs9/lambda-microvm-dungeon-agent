@@ -35,6 +35,7 @@ ROUTE_PLANE: dict[str, Literal["control", "data"]] = {
     "POST /campaigns": "control",
     "GET /campaigns": "control",
     "GET /campaigns/{campaignId}": "control",
+    "DELETE /campaigns/{campaignId}": "control",
     "GET /campaigns/{campaignId}/events": "control",
     "GET /campaigns/{campaignId}/opening": "control",
     "POST /sessions": "control",
@@ -108,6 +109,9 @@ class ApiGatewayHttpAdapter:
                 i, status=_campaign_status_filter(e), correlation_id=c
             ),
             "GET /campaigns/{campaignId}": lambda e, _h, i, c: campaigns.get_campaign(
+                i, _campaign_id(e), correlation_id=c
+            ),
+            "DELETE /campaigns/{campaignId}": lambda e, _h, i, c: campaigns.delete_campaign(
                 i, _campaign_id(e), correlation_id=c
             ),
             "GET /campaigns/{campaignId}/events": lambda e, _h, i, c: campaigns.list_events(

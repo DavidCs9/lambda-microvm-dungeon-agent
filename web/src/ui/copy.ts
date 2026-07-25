@@ -71,6 +71,11 @@ export const MENU_COPY = {
   continueEmptyReason: "Sin partidas en curso",
   createCampaign: "Crear campaña",
   creatingCampaign: "Creando…",
+  manageCampaigns: "Gestionar campañas",
+  deleteCampaign: "Eliminar",
+  deleting: "Eliminando…",
+  confirmDelete: "¿Eliminar?",
+  cancel: "Cancelar",
   pickerTitle: "Elige tu partida",
   resuming: "Reanudando…",
   abandon: "Abandonar",
@@ -79,6 +84,20 @@ export const MENU_COPY = {
   backToCampaigns: "‹ Campañas",
   closePicker: "‹ Cerrar",
 } as const;
+
+const CAMPAIGN_STATUS_COPY: Record<string, string> = {
+  requested: "Forjando…",
+  creating: "Forjando…",
+  ready: "Lista",
+  failed: "Falló",
+};
+
+export function humanCampaignStatus(status: string | null | undefined): string {
+  if (!status) {
+    return "";
+  }
+  return CAMPAIGN_STATUS_COPY[status] ?? status;
+}
 
 const SESSION_STATUS_COPY: Record<string, string> = {
   requested: "Preparando la mesa…",
