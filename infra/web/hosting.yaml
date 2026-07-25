@@ -1,6 +1,20 @@
 AWSTemplateFormatVersion: "2010-09-09"
 Description: Private S3 and CloudFront hosting for the Dungeon Agent web client.
 
+Parameters:
+  DomainName:
+    Type: String
+    Default: dungeon.castrodavid.dev
+    AllowedPattern: ^[a-z0-9.-]+$
+    Description: Custom domain name for the CloudFront distribution.
+  CertificateArn:
+    Type: String
+    Default: ""
+    Description: ACM certificate ARN in us-east-1 for the CloudFront custom domain.
+
+Conditions:
+  HasCustomDomain: !Not [!Equals [!Ref CertificateArn, ""]]
+
 Resources:
   WebBucket:
     Type: AWS::S3::Bucket
@@ -35,6 +49,7 @@ Resources:
       DistributionConfig:
         Enabled: true
         Comment: Dungeon Agent live web client.
+        Aliases: !If [HasCustomDomain, [!Ref DomainName], !Ref AWS::NoValue]
         DefaultRootObject: index.html
         HttpVersion: http2
         PriceClass: PriceClass_100
@@ -60,8 +75,34 @@ Resources:
             ResponseCode: 200
             ResponsePagePath: /index.html
             ErrorCachingMinTTL: 0
-        ViewerCertificate:
-          CloudFrontDefaultCertificate: true
+        ViewerCertificate: !If
+          - HasCustomDomain
+          - AcmCertificateArn: !Ref CertificateArn
+            MinimumProtocolVersion: TLSv1.2_2021
+            SslSupportMethod: sni-only
+          - CloudFrontDefaultCertificate: true
+
+  WebDnsRecord:
+    Condition: HasCustomDomain
+    Type: AWS::Route53::RecordSet
+    Properties:
+      HostedZoneId: Z09057602V6K42SQPOMLC
+      Name: !Ref DomainName
+      Type: A
+      AliasTarget:
+        DNSName: !GetAtt WebDistribution.DomainName
+        HostedZoneId: Z2FDTNDATAQYW2
+
+  WebDnsIpv6Record:
+    Condition: HasCustomDomain
+    Type: AWS::Route53::RecordSet
+    Properties:
+      HostedZoneId: Z09057602V6K42SQPOMLC
+      Name: !Ref DomainName
+      Type: AAAA
+      AliasTarget:
+        DNSName: !GetAtt WebDistribution.DomainName
+        HostedZoneId: Z2FDTNDATAQYW2
 
   WebBucketPolicy:
     Type: AWS::S3::BucketPolicy
@@ -83,7 +124,10 @@ Resources:
 Outputs:
   WebUrl:
     Description: HTTPS URL for the live Dungeon Agent web client.
-    Value: !Sub "https://${WebDistribution.DomainName}"
+    Value: !If
+      - HasCustomDomain
+      - !Sub "https://${DomainName}"
+      - !Sub "https://${WebDistribution.DomainName}"
   WebBucketName:
     Description: Private S3 bucket containing the web build.
     Value: !Ref WebBucket
