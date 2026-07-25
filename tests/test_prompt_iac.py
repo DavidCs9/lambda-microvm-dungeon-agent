@@ -6,6 +6,18 @@ from dungeon_agent.domain.game import AdventurePlan, PlayerCharacter, TurnPropos
 TEMPLATE = Path(__file__).parents[1] / "infra" / "control-plane" / "workflow" / "template.yaml"
 
 
+def _without_null_defaults(value: object) -> object:
+    if isinstance(value, dict):
+        return {
+            key: _without_null_defaults(item)
+            for key, item in value.items()
+            if not (key == "default" and item is None)
+        }
+    if isinstance(value, list):
+        return [_without_null_defaults(item) for item in value]
+    return value
+
+
 def test_managed_prompts_and_versions_are_owned_by_cloudformation() -> None:
     template = TEMPLATE.read_text(encoding="utf-8")
 
@@ -31,7 +43,7 @@ def test_managed_prompt_tool_schemas_match_domain_contracts() -> None:
     ]
 
     assert embedded == [
-        AdventurePlan.model_json_schema(),
-        PlayerCharacter.model_json_schema(),
-        TurnProposal.model_json_schema(),
+        _without_null_defaults(AdventurePlan.model_json_schema()),
+        _without_null_defaults(PlayerCharacter.model_json_schema()),
+        _without_null_defaults(TurnProposal.model_json_schema()),
     ]
