@@ -37,6 +37,19 @@ wheels = [
 ]
 
 [[package]]
+name = "aws-lambda-powertools"
+version = "3.31.1"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "jmespath" },
+    { name = "typing-extensions" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/6b/77/8c74a558facb8bebdc6f3f0096ff5735b779d57c7bbdb7948f3e6d873504/aws_lambda_powertools-3.31.1.tar.gz", hash = "sha256:b46e575c7e290c55fe81ae4a38d8b5c91238242a4644438f8b858ce535a4125c", size = 800496, upload-time = "2026-07-13T09:22:11.16Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/9b/e1/67a119333cb3656b9b482a77bb4b25e0488ca969218b71479b4ecfc1a5e1/aws_lambda_powertools-3.31.1-py3-none-any.whl", hash = "sha256:cd03f824bc11b59df727744fa9a419a01772d85fd0b15a67eee07f5472b37c77", size = 957593, upload-time = "2026-07-13T09:22:09.354Z" },
+]
+
+[[package]]
 name = "awscrt"
 version = "0.36.0"
 source = { registry = "https://pypi.org/simple" }
@@ -328,6 +341,7 @@ dev = [
     { name = "ruff" },
 ]
 tooling = [
+    { name = "aws-lambda-powertools" },
     { name = "boto3" },
     { name = "boto3-stubs", extra = ["bedrock-runtime", "cloudformation", "lambda-microvms", "polly", "s3"] },
     { name = "botocore", extra = ["crt"] },
@@ -350,6 +364,7 @@ dev = [
     { name = "ruff", specifier = ">=0.12,<1" },
 ]
 tooling = [
+    { name = "aws-lambda-powertools", specifier = ">=3.20" },
     { name = "boto3", specifier = ">=1.43.51" },
     { name = "boto3-stubs", extras = ["bedrock-runtime", "cloudformation", "lambda-microvms", "polly", "s3"], specifier = ">=1.43.51" },
     { name = "botocore", extras = ["crt"], specifier = ">=1.43.51" },

@@ -8,6 +8,7 @@ import boto3
 from botocore.config import Config
 
 from dungeon_agent.audio.polly import DEFAULT_VOICES, S3PollySpeechSynthesizer
+from dungeon_agent.control_plane.logging import logger
 from dungeon_agent.control_plane.agents import (
     DEFAULT_IMAGE_MODEL_ID,
     DEFAULT_IMAGE_REGION,
@@ -375,24 +376,29 @@ def _build_websocket_adapter(endpoint: str) -> ApiGatewayWebSocketAdapter:
     return ApiGatewayWebSocketAdapter(service, _ApiGatewaySender(client, connections))
 
 
+@logger.inject_lambda_context(log_event=False)
 def http_handler(event: Mapping[str, Any], context: object) -> dict[str, Any]:
+    logger.info("http_invoked", route_key=event.get("routeKey"))
     if _HTTP_ADAPTER is None:
         raise RuntimeError("HTTP adapter is not configured in this function")
     return _HTTP_ADAPTER(event, context)
 
 
+@logger.inject_lambda_context(log_event=False)
 def workflow_handler(event: Mapping[str, object], _context: object) -> dict[str, object]:
     if event.get("operation") in _CAMPAIGN_OPERATIONS:
         return _CAMPAIGN_WORKFLOW.handle(event)
     return _WORKFLOW.handle(event)
 
 
+@logger.inject_lambda_context(log_event=False)
 def turn_handler(event: Mapping[str, object], _context: object) -> dict[str, object]:
     if _TURN_WORKER is None:
         raise RuntimeError("turn worker is not configured in this function")
     return _TURN_WORKER.handle(event)
 
 
+@logger.inject_lambda_context(log_event=False)
 def websocket_handler(event: Mapping[str, Any], context: object) -> dict[str, Any]:
     request_context = event.get("requestContext")
     if not isinstance(request_context, Mapping):

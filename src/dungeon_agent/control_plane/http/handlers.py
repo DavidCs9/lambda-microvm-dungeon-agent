@@ -1,12 +1,12 @@
 """Session and campaign HTTP use cases expressed only in terms of domain ports."""
 
-import logging
 import time
 from collections.abc import Callable
 from datetime import UTC, datetime
 from typing import Protocol
 
 from dungeon_agent.control_plane.application.events import append_session_event
+from dungeon_agent.control_plane.logging import logger
 from dungeon_agent.control_plane.application.turns import TurnWorkerInvoker
 from dungeon_agent.control_plane.domain.enums import (
     CampaignStatus,
@@ -64,7 +64,6 @@ from dungeon_agent.control_plane.persistence.errors import SessionRevisionConfli
 from dungeon_agent.domain.game import LanguageCode
 
 Clock = Callable[[], datetime]
-LOGGER = logging.getLogger(__name__)
 
 
 class SpeechSynthesizerPort(Protocol):
@@ -133,6 +132,7 @@ class SessionHttpHandlers:
                 return self._accepted(session, correlation_id)
             campaign = self._campaigns.get(request.campaign_id)
         except Exception:
+            logger.exception("dependency_unavailable", correlation_id=correlation_id)
             return self._dependency_error(correlation_id)
 
         campaign_error = self._campaign_access_error(identity, campaign, correlation_id)
@@ -162,6 +162,7 @@ class SessionHttpHandlers:
                 now=now,
             )
         except Exception:
+            logger.exception("dependency_unavailable", correlation_id=correlation_id)
             return self._dependency_error(correlation_id)
         return self._accepted(session, correlation_id)
 
@@ -215,6 +216,7 @@ class SessionHttpHandlers:
             active = self._sessions.count_active_by_owner(identity.owner_id)
             replays = self._sessions.count_by_campaign(campaign_id)
         except Exception:
+            logger.exception("dependency_unavailable", correlation_id=correlation_id)
             return self._dependency_error(correlation_id)
         if active >= self._max_active_sessions_per_owner:
             return self.error(
@@ -249,6 +251,7 @@ class SessionHttpHandlers:
         try:
             session = self._sessions.get(session_id)
         except Exception:
+            logger.exception("dependency_unavailable", correlation_id=correlation_id)
             return self._dependency_error(correlation_id)
         access_error = self._access_error(identity, session, correlation_id)
         if access_error is not None:
@@ -316,6 +319,7 @@ class SessionHttpHandlers:
             )
             self._turns.invoke_turn(command)
         except Exception:
+            logger.exception("dependency_unavailable", correlation_id=correlation_id)
             self._release_checkout(session_id, turn_id)
             return self._dependency_error(correlation_id)
 
@@ -366,7 +370,7 @@ class SessionHttpHandlers:
             )
             self._sessions.save(reverted, expected_revision=current.revision)
         except Exception:
-            print(f"checkout rollback failed: {session_id}")
+            logger.exception("checkout_rollback_failed", session_id=session_id)
 
     def _conflict(self, message: str, correlation_id: str) -> HttpResult:
         return self.error(
@@ -388,6 +392,7 @@ class SessionHttpHandlers:
         try:
             session = self._sessions.get(session_id)
         except Exception:
+            logger.exception("dependency_unavailable", correlation_id=correlation_id)
             return self._dependency_error(correlation_id)
         access_error = self._access_error(identity, session, correlation_id)
         if access_error is not None:
@@ -411,6 +416,7 @@ class SessionHttpHandlers:
         try:
             session = self._sessions.get(session_id)
         except Exception:
+            logger.exception("dependency_unavailable", correlation_id=correlation_id)
             return self._dependency_error(correlation_id)
         access_error = self._access_error(identity, session, correlation_id)
         if access_error is not None:
@@ -418,6 +424,7 @@ class SessionHttpHandlers:
         try:
             events = self._events.list_after(session_id, after)
         except Exception:
+            logger.exception("dependency_unavailable", correlation_id=correlation_id)
             return self._dependency_error(correlation_id)
         next_sequence = events[-1].sequence if events else after
         return HttpResult(
@@ -440,6 +447,7 @@ class SessionHttpHandlers:
         try:
             sessions = self._sessions.list_active_by_owner(identity.owner_id)
         except Exception:
+            logger.exception("dependency_unavailable", correlation_id=correlation_id)
             return self._dependency_error(correlation_id)
         return HttpResult(
             status_code=200,
@@ -458,6 +466,7 @@ class SessionHttpHandlers:
         try:
             session = self._sessions.get(session_id)
         except Exception:
+            logger.exception("dependency_unavailable", correlation_id=correlation_id)
             return self._dependency_error(correlation_id)
         access_error = self._access_error(identity, session, correlation_id)
         if access_error is not None:
@@ -495,6 +504,7 @@ class SessionHttpHandlers:
         except SessionRevisionConflictError:
             return self._conflict("The session changed while abandoning it.", correlation_id)
         except Exception:
+            logger.exception("dependency_unavailable", correlation_id=correlation_id)
             return self._dependency_error(correlation_id)
 
         if microvm_id is not None and self._microvms is not None:
@@ -576,6 +586,7 @@ class SessionHttpHandlers:
         try:
             return self._sessions.save(updated, expected_revision=session.revision)
         except Exception:
+            logger.exception("workflow_ensure_failed")
             current = self._sessions.get(session.session_id)
             if current is not None and current.workflow_execution_arn is not None:
                 return current
@@ -650,9 +661,10 @@ class SpeechHttpHandlers:
         try:
             url, cache_hit = self._synthesizer.synthesize(request.text, request.language)
         except Exception:
-            LOGGER.exception(
+            logger.exception(
                 "speech_synthesis_failed",
-                extra={"correlation_id": correlation_id, "owner_id": identity.owner_id},
+                correlation_id=correlation_id,
+                owner_id=identity.owner_id,
             )
             return self._dependency_error(correlation_id)
         return HttpResult(
@@ -749,6 +761,7 @@ class CampaignHttpHandlers:
                 return self._accepted(campaign, correlation_id)
             campaign_count = self._campaigns.count_by_owner(identity.owner_id)
         except Exception:
+            logger.exception("dependency_unavailable", correlation_id=correlation_id)
             return self._dependency_error(correlation_id)
 
         if campaign_count >= self._max_campaigns_per_owner:
@@ -776,6 +789,7 @@ class CampaignHttpHandlers:
                 now=now,
             )
         except Exception:
+            logger.exception("dependency_unavailable", correlation_id=correlation_id)
             return self._dependency_error(correlation_id)
         return self._accepted(campaign, correlation_id)
 
@@ -790,6 +804,7 @@ class CampaignHttpHandlers:
         try:
             campaigns = self._campaigns.list_by_owner(identity.owner_id, status=status)
         except Exception:
+            logger.exception("dependency_unavailable", correlation_id=correlation_id)
             return self._dependency_error(correlation_id)
         return HttpResult(
             status_code=200,
@@ -808,6 +823,7 @@ class CampaignHttpHandlers:
         try:
             campaign = self._campaigns.get(campaign_id)
         except Exception:
+            logger.exception("dependency_unavailable", correlation_id=correlation_id)
             return self._dependency_error(correlation_id)
         access_error = self._access_error(identity, campaign, correlation_id)
         if access_error is not None:
@@ -830,6 +846,7 @@ class CampaignHttpHandlers:
         try:
             campaign = self._campaigns.get(campaign_id)
         except Exception:
+            logger.exception("dependency_unavailable", correlation_id=correlation_id)
             return self._dependency_error(correlation_id)
         access_error = self._access_error(identity, campaign, correlation_id)
         if access_error is not None:
@@ -848,6 +865,7 @@ class CampaignHttpHandlers:
         try:
             opening = self._openings.load_opening(campaign.character_ref)
         except Exception:
+            logger.exception("dependency_unavailable", correlation_id=correlation_id)
             return self._dependency_error(correlation_id)
         return HttpResult(
             status_code=200,
@@ -869,7 +887,7 @@ class CampaignHttpHandlers:
                 return None
             return self._portrait_presigner.presigned_url(portrait_key)
         except Exception:
-            LOGGER.exception("portrait_presign_failed", extra={"correlation_id": correlation_id})
+            logger.exception("portrait_presign_failed", correlation_id=correlation_id)
             return None
 
     def list_events(
@@ -884,6 +902,7 @@ class CampaignHttpHandlers:
         try:
             campaign = self._campaigns.get(campaign_id)
         except Exception:
+            logger.exception("dependency_unavailable", correlation_id=correlation_id)
             return self._dependency_error(correlation_id)
         access_error = self._access_error(identity, campaign, correlation_id)
         if access_error is not None:
@@ -891,6 +910,7 @@ class CampaignHttpHandlers:
         try:
             events = self._events.list_after(campaign_id, after)
         except Exception:
+            logger.exception("dependency_unavailable", correlation_id=correlation_id)
             return self._dependency_error(correlation_id)
         next_sequence = events[-1].sequence if events else after
         return HttpResult(
@@ -960,6 +980,7 @@ class CampaignHttpHandlers:
         try:
             return self._campaigns.save(updated, expected_revision=campaign.revision)
         except Exception:
+            logger.exception("workflow_ensure_failed")
             current = self._campaigns.get(campaign.campaign_id)
             if current is not None and current.workflow_execution_arn is not None:
                 return current

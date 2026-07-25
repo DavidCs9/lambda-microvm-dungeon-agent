@@ -1,6 +1,5 @@
 """Generate a protagonist and a presentation-neutral opening document."""
 
-import logging
 import time
 from collections.abc import Callable, Mapping
 from typing import Literal, Protocol
@@ -8,6 +7,7 @@ from typing import Literal, Protocol
 from pydantic import Field
 
 from dungeon_agent.control_plane.domain.base import ContractModel
+from dungeon_agent.control_plane.logging import logger
 from dungeon_agent.control_plane.domain.enums import OpeningBlockKind
 from dungeon_agent.control_plane.domain.models import (
     ArtifactRef,
@@ -18,8 +18,6 @@ from dungeon_agent.control_plane.domain.models import (
 )
 from dungeon_agent.control_plane.domain.ports import CharacterArchitectPort
 from dungeon_agent.domain.game import AdventurePlan, LanguageCode, PlayerCharacter
-
-LOGGER = logging.getLogger(__name__)
 
 
 class AdventurePlanLoader(Protocol):
@@ -133,7 +131,7 @@ class CharacterStep:
             image = self._portrait_generator.generate(character)
             return self._portrait_store.save(campaign_id, image)
         except Exception:
-            LOGGER.exception("portrait_generation_failed", extra={"campaign_id": campaign_id})
+            logger.exception("portrait_generation_failed", campaign_id=campaign_id)
             return None
 
 
