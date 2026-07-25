@@ -18,6 +18,7 @@ export function PlayTableScreen() {
   const opening = useGameStore((s) => s.opening);
   const portraitUrl = useGameStore((s) => s.portraitUrl);
   const inventory = useGameStore((s) => s.inventory);
+  const stats = useGameStore((s) => s.stats);
   const campaign = useGameStore((s) => s.campaign);
   const narrationStream = useGameStore((s) => s.narrationStream);
   const turnLog = useGameStore((s) => s.turnLog);
@@ -102,6 +103,7 @@ export function PlayTableScreen() {
           opening={opening}
           portraitUrl={portraitUrl}
           inventory={inventory}
+          stats={stats}
         />
       }
       footer={
@@ -136,7 +138,12 @@ export function PlayTableScreen() {
           {turnLog.map((entry) => (
             <TranscriptEntry key={entry.turnId} action={entry.action} narration={entry.narration}>
               {typeof entry.roll === "number" && (
-                <DiceChip roll={entry.roll} success={entry.success} />
+                <DiceChip
+                  roll={entry.roll}
+                  success={entry.success}
+                  modifier={entry.modifier}
+                  stat={entry.stat}
+                />
               )}
             </TranscriptEntry>
           ))}

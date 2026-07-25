@@ -1,6 +1,6 @@
 import type { KeyboardEvent, ReactNode } from "react";
 import { useEffect, useRef, useState } from "react";
-import { MENU_COPY, voiceLabel } from "./copy";
+import { MENU_COPY, statLabel, voiceLabel } from "./copy";
 
 export type WsStatus = "disconnected" | "connecting" | "connected" | "error";
 
@@ -345,18 +345,33 @@ export function TranscriptEntry({
   );
 }
 
-export function DiceChip({ roll, success }: { roll: number; success?: boolean }) {
+export function DiceChip({
+  roll,
+  success,
+  modifier,
+  stat,
+}: {
+  roll: number;
+  success?: boolean;
+  modifier?: number;
+  stat?: string;
+}) {
   const color =
     success === true
       ? "text-[var(--success)] border-[var(--success)]/40"
       : success === false
         ? "text-[var(--danger)] border-[var(--danger)]/40"
         : "text-[var(--muted)] border-[var(--line)]";
+  const hasModifier = typeof modifier === "number";
+  const modifierText = hasModifier
+    ? ` +${modifier}${stat ? ` ${statLabel(stat)}` : ""} = ${roll + modifier}`
+    : "";
   return (
     <span
       className={`mb-2 inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-xs tracking-wide [font-family:var(--font-ui)] ${color}`}
     >
       d20 · {roll}
+      {modifierText}
       {typeof success === "boolean" ? ` — ${success ? "éxito" : "fallo"}` : ""}
     </span>
   );

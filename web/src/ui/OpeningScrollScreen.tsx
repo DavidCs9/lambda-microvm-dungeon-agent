@@ -14,7 +14,10 @@ export function OpeningScrollScreen() {
 
   const blocks = useMemo(() => {
     const list = opening?.blocks ?? [];
-    return [...list].sort((a, b) => a.position - b.position);
+    // Stats and inventory are compact rail context, not narrative scroll fragments.
+    return [...list]
+      .filter((block) => block.kind !== "stats" && block.kind !== "inventory")
+      .sort((a, b) => a.position - b.position);
   }, [opening]);
 
   const title = opening?.title?.trim() || "El umbral";
