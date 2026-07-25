@@ -40,7 +40,10 @@ PROMPTS = (
         description="Creates a compact validated one-shot campaign.",
         system=(
             "Design a compact fantasy one-shot with declared exits, snake_case IDs, at least "
-            "three solution paths, no commercial-fiction copies, and no silent bell/tower."
+            "three solution paths, no commercial-fiction copies, and no silent bell/tower. "
+            "All IDs must use lowercase ASCII letters, digits, and underscores only. Treat every "
+            "tool-schema maxLength as a hard limit. Use one short sentence per field: premise at "
+            "most 120 characters, objective 70, opening 100, and every description 90."
         ),
         user_template=(
             "Create a 10-15 minute {{language_name}} adventure inspired by {{theme}}: objective, "
@@ -229,13 +232,33 @@ def publish_prompt(client: Any, definition: PromptDefinition, model_id: str) -> 
     }
 
 
-def publish_all(client: Any, model_id: str) -> dict[str, Any]:
-    prompts = {
-        definition.role: publish_prompt(client, definition, model_id) for definition in PROMPTS
-    }
+def publish_all(
+    client: Any,
+    model_id: str,
+    candidate: str,
+    selected_roles: set[str] | None = None,
+    base_manifest: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    prompts = dict(base_manifest["prompts"]) if base_manifest else {}
+    definitions = [
+        definition
+        for definition in PROMPTS
+        if selected_roles is None or definition.role in selected_roles
+    ]
+    prompts.update(
+        {
+            definition.role: publish_prompt(client, definition, model_id)
+            for definition in definitions
+        }
+    )
+    missing = {"campaign", "character", "master"} - set(prompts)
+    if missing:
+        raise ValueError(
+            f"candidate manifest is incomplete; missing roles: {', '.join(sorted(missing))}"
+        )
     return {
         "schemaVersion": 1,
-        "candidate": "baseline-sonnet46",
+        "candidate": candidate,
         "prompts": prompts,
     }
 
@@ -245,6 +268,9 @@ def main() -> int:
     parser.add_argument("--profile", default="personal")
     parser.add_argument("--region", default=DEFAULT_REGION)
     parser.add_argument("--model-id", default=DEFAULT_MODEL_ID)
+    parser.add_argument("--role", action="append", choices=("campaign", "character", "master"))
+    parser.add_argument("--candidate-name", default="baseline-sonnet46")
+    parser.add_argument("--base-manifest", type=Path)
     parser.add_argument(
         "--output",
         type=Path,
@@ -252,7 +278,18 @@ def main() -> int:
     )
     args = parser.parse_args()
     try:
-        manifest = publish_all(create_client(args.profile, args.region), args.model_id)
+        base_manifest = (
+            json.loads(args.base_manifest.read_text(encoding="utf-8"))
+            if args.base_manifest
+            else None
+        )
+        manifest = publish_all(
+            create_client(args.profile, args.region),
+            args.model_id,
+            args.candidate_name,
+            set(args.role) if args.role else None,
+            base_manifest,
+        )
         args.output.parent.mkdir(parents=True, exist_ok=True)
         args.output.write_text(
             json.dumps(manifest, indent=2, ensure_ascii=False, sort_keys=True) + "\n",

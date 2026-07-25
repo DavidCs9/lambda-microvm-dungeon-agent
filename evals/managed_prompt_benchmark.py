@@ -47,46 +47,28 @@ def invoke_managed(
     tool_name: str,
     metrics: SessionMetrics,
 ) -> BaseModel:
-    feedback = "No previous validation error."
-    last_validation_error: ValidationError | None = None
-    for attempt in range(3):
-        current = {**variables, "repair_feedback": feedback}
-        started = time.perf_counter()
-        response = client.converse(
-            modelId=prompt["promptArn"],
-            promptVariables={name: {"text": value} for name, value in current.items()},
-            requestMetadata={
-                "project": "lambda-microvm-dungeon-agent",
-                "eval": "golden",
-                "role": prompt["role"],
-            },
-        )
-        usage = response["usage"]
-        metrics.record(
-            input_tokens=usage["inputTokens"],
-            output_tokens=usage["outputTokens"],
-            latency_ms=(time.perf_counter() - started) * 1_000,
-        )
-        for block in response["output"]["message"]["content"]:
-            tool_use = block.get("toolUse")
-            if tool_use is not None and tool_use["name"] == tool_name:
-                try:
-                    return output_model.model_validate(tool_use["input"])
-                except ValidationError as error:
-                    last_validation_error = error
-                    feedback = (
-                        "The previous tool output failed validation. Correct every error:\n"
-                        f"{str(error)[:1_500]}"
-                    )
-                    break
-        else:
-            raise RuntimeError(f"managed prompt did not call required tool {tool_name}")
-        if attempt == 2:
-            raise RuntimeError(
-                "managed prompt structured output repair exhausted: "
-                f"{str(last_validation_error)[:1_500]}"
-            )
-    raise RuntimeError("managed prompt invocation exhausted")
+    current = {**variables, "repair_feedback": "No repair is available in evaluation."}
+    started = time.perf_counter()
+    response = client.converse(
+        modelId=prompt["promptArn"],
+        promptVariables={name: {"text": value} for name, value in current.items()},
+        requestMetadata={
+            "project": "lambda-microvm-dungeon-agent",
+            "eval": "golden-first-pass",
+            "role": prompt["role"],
+        },
+    )
+    usage = response["usage"]
+    metrics.record(
+        input_tokens=usage["inputTokens"],
+        output_tokens=usage["outputTokens"],
+        latency_ms=(time.perf_counter() - started) * 1_000,
+    )
+    for block in response["output"]["message"]["content"]:
+        tool_use = block.get("toolUse")
+        if tool_use is not None and tool_use["name"] == tool_name:
+            return output_model.model_validate(tool_use["input"])
+    raise RuntimeError(f"managed prompt did not call required tool {tool_name}")
 
 
 def _sample(
@@ -268,28 +250,37 @@ def _master_case(client: Any, prompt: dict[str, str], case: dict[str, Any]) -> d
         )
 
 
-def evaluate_candidate(client: Any, manifest: dict[str, Any]) -> dict[str, Any]:
+def evaluate_candidate(
+    client: Any,
+    manifest: dict[str, Any],
+    case_ids: set[str] | None = None,
+) -> dict[str, Any]:
     prompts = manifest["prompts"]
-    campaigns = {
-        case["id"]: AdventurePlan.model_validate(case["golden"])
-        for case in _records("campaigns.jsonl")
-    }
-    samples = [
-        _campaign_case(client, prompts["campaign"], case) for case in _records("campaigns.jsonl")
-    ]
+    campaign_cases = _records("campaigns.jsonl")
+    character_cases = _records("characters.jsonl")
+    master_cases = _records("master.jsonl")
+    if case_ids:
+        campaign_cases = [case for case in campaign_cases if case["id"] in case_ids]
+        character_cases = [case for case in character_cases if case["id"] in case_ids]
+        master_cases = [case for case in master_cases if case["id"] in case_ids]
+        found = {case["id"] for case in campaign_cases + character_cases + master_cases}
+        missing = case_ids - found
+        if missing:
+            raise ValueError(f"unknown case ids: {', '.join(sorted(missing))}")
+    all_campaigns = _records("campaigns.jsonl")
+    campaigns = {case["id"]: AdventurePlan.model_validate(case["golden"]) for case in all_campaigns}
+    samples = [_campaign_case(client, prompts["campaign"], case) for case in campaign_cases]
     samples.extend(
-        _character_case(client, prompts["character"], case, campaigns)
-        for case in _records("characters.jsonl")
+        _character_case(client, prompts["character"], case, campaigns) for case in character_cases
     )
-    samples.extend(
-        _master_case(client, prompts["master"], case) for case in _records("master.jsonl")
-    )
+    samples.extend(_master_case(client, prompts["master"], case) for case in master_cases)
     role_scores = {
         role: round(
             statistics.mean(sample["score"] for sample in samples if sample["role"] == role),
             1,
         )
         for role in ("campaign", "character", "master")
+        if any(sample["role"] == role for sample in samples)
     }
     costs = [
         float(sample["metrics"]["estimated_cost_usd"])
@@ -335,6 +326,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("--profile", default="personal")
     parser.add_argument("--region", default=DEFAULT_REGION)
     parser.add_argument("--candidate", action="append", type=Path, required=True)
+    parser.add_argument("--case-id", action="append")
     parser.add_argument("--max-quality-drop", type=float, default=5.0)
     parser.add_argument("--output", type=Path)
     args = parser.parse_args(argv)
@@ -342,7 +334,14 @@ def main(argv: Sequence[str] | None = None) -> int:
         client = create_client(args.profile, args.region)
         manifests = [json.loads(path.read_text(encoding="utf-8")) for path in args.candidate]
         report = compare(
-            [evaluate_candidate(client, manifest) for manifest in manifests],
+            [
+                evaluate_candidate(
+                    client,
+                    manifest,
+                    set(args.case_id) if args.case_id else None,
+                )
+                for manifest in manifests
+            ],
             args.max_quality_drop,
         )
     except (BotoCoreError, ClientError, OSError, RuntimeError, ValueError) as error:

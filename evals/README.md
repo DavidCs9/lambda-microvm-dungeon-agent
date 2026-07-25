@@ -59,7 +59,17 @@ uv run --group tooling python evals/managed_prompt_benchmark.py \
 
 The first candidate is the quality baseline. A candidate is eligible only when every critical
 safety check passes and its overall quality drop is within the configured tolerance. Eligible
-candidates are ranked by estimated token cost.
+candidates are ranked by estimated token cost. Model quality is always measured first-pass: the
+evaluator makes one invocation per case and never repairs invalid output.
+
+During prompt development, run only the affected cases to avoid paying for unchanged roles:
+
+```sh
+uv run --group tooling python evals/managed_prompt_benchmark.py \
+  --candidate evals/candidates/baseline-sonnet46-campaign-v3.json \
+  --case-id campaign-bells-es \
+  --case-id campaign-lantern-en
+```
 
 ## Bedrock architect and Dungeon Master comparison
 
