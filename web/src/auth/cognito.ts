@@ -10,6 +10,7 @@ export interface AuthSession {
   idToken: string;
   userSub: string;
   username: string;
+  displayName: string;
 }
 
 export interface NewPasswordChallenge {
@@ -41,7 +42,17 @@ function sessionOf(user: CognitoUser, session: CognitoUserSession): AuthSession 
     idToken: session.getIdToken().getJwtToken(),
     userSub: idPayload.sub,
     username: user.getUsername(),
+    displayName: displayNameFromEmail(user.getUsername()),
   };
+}
+
+export function displayNameFromEmail(email: string): string {
+  const localPart = email.split("@", 1)[0] ?? email;
+  return localPart
+    .split(/[._+-]+/)
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1).toLowerCase())
+    .join(" ");
 }
 
 function sessionForUser(user: CognitoUser): Promise<AuthSession | null> {

@@ -12,7 +12,7 @@ function formatDate(value: string | undefined): string {
 }
 
 export function CampaignsScreen() {
-  const playerId = useGameStore((s) => s.playerId);
+  const playerName = useGameStore((s) => s.playerName);
   const wsStatus = useGameStore((s) => s.wsStatus);
   const errorMessage = useGameStore((s) => s.errorMessage);
   const campaigns = useGameStore((s) => s.campaigns);
@@ -161,7 +161,7 @@ export function CampaignsScreen() {
         </div>
 
         <QuietMeta>
-          {playerId} · {wsStatusLabel(wsStatus)}
+          {playerName} · {wsStatusLabel(wsStatus)}
         </QuietMeta>
       </motion.div>
     </ScreenShell>
