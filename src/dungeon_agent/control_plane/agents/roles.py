@@ -58,6 +58,10 @@ class CharacterArchitect:
                         "personal stake, known facts, and three ways to begin. "
                         f"Put exactly these pronouns in the pronouns field: {pronouns}. "
                         "Align name, appearance, and grammar with that identity. "
+                        "Set stats (might, agility, wits, charm, resolve) to a value of 1-3 each, "
+                        "chosen freely and independently to fit the archetype. Do not balance "
+                        "them: some heroes are broadly weak (mostly 1s), others exceptional "
+                        "(mostly 3s). "
                         "Keep every string field short enough to satisfy the tool schema "
                         "maxLength constraints (prefer punchy one-liners)."
                     ),

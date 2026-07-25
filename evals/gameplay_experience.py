@@ -86,6 +86,7 @@ def _proposal(*, success: StateChanges, failure: StateChanges) -> TurnProposal:
         intent="Attempt a creative solution",
         requires_roll=True,
         difficulty=12,
+        stat="might",
         success_narration="The improvised solution works and changes the situation.",
         failure_narration="The attempt fails, but reveals useful information.",
         success_changes=success,

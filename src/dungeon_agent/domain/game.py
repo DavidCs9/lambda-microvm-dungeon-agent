@@ -6,6 +6,23 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 GameStatus = Literal["planning", "active", "won", "lost"]
 LanguageCode = Literal["es", "en"]
+StatName = Literal["might", "agility", "wits", "charm", "resolve"]
+
+
+class CharacterStats(BaseModel):
+    """Five simple attributes (1-3). The value is the roll modifier it grants."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    might: int = Field(ge=1, le=3)
+    agility: int = Field(ge=1, le=3)
+    wits: int = Field(ge=1, le=3)
+    charm: int = Field(ge=1, le=3)
+    resolve: int = Field(ge=1, le=3)
+
+    def modifier(self, stat: StatName) -> int:
+        value: int = getattr(self, stat)
+        return value
 
 
 class Location(BaseModel):
@@ -55,6 +72,15 @@ class PlayerCharacter(BaseModel):
     open_question: str = Field(min_length=10, max_length=300)
     known_facts: list[str] = Field(min_length=2, max_length=3)
     opening_choices: list[str] = Field(min_length=3, max_length=3)
+    stats: CharacterStats = Field(
+        # Average default keeps older persisted characters loadable; new characters
+        # are generated with varied values for weak/strong variety.
+        default_factory=lambda: CharacterStats(might=2, agility=2, wits=2, charm=2, resolve=2),
+        description=(
+            "Five attributes (1-3 each), chosen freely to fit the archetype. Each value is the "
+            "modifier added to the d20 when that attribute governs a risky action."
+        ),
+    )
 
 
 class AdventurePlan(BaseModel):
@@ -118,6 +144,7 @@ class TurnProposal(BaseModel):
     intent: str = Field(min_length=2, max_length=300)
     requires_roll: bool
     difficulty: int | None = Field(default=None, ge=5, le=20)
+    stat: StatName | None = None
     success_narration: str = Field(min_length=10, max_length=500)
     failure_narration: str = Field(min_length=10, max_length=500)
     success_changes: StateChanges
@@ -128,6 +155,8 @@ class TurnProposal(BaseModel):
     def validate_difficulty(self) -> TurnProposal:
         if self.requires_roll != (self.difficulty is not None):
             raise ValueError("difficulty is required exactly when a roll is required")
+        if self.requires_roll != (self.stat is not None):
+            raise ValueError("a governing stat is required exactly when a roll is required")
         return self
 
 
@@ -140,6 +169,8 @@ class TurnResult(BaseModel):
     narration: str
     roll: int | None = Field(default=None, ge=1, le=20)
     difficulty: int | None = Field(default=None, ge=5, le=20)
+    stat: StatName | None = None
+    modifier: int | None = Field(default=None, ge=0, le=3)
     suggestions: list[str] = Field(min_length=1, max_length=3)
 
 
