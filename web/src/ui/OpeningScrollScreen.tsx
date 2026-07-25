@@ -1,5 +1,5 @@
 import { motion } from "framer-motion";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { isVoiceEnabled } from "../game/audio";
 import { toggleVoice } from "../game/narrationVoice";
 import { gameActions, useGameStore } from "../state/store";
@@ -11,6 +11,10 @@ export function OpeningScrollScreen() {
   const portraitUrl = useGameStore((s) => s.portraitUrl);
   const errorMessage = useGameStore((s) => s.errorMessage);
   const [voiceOn, setVoiceOn] = useState(isVoiceEnabled);
+
+  useEffect(() => {
+    gameActions.ensurePortrait();
+  }, []);
 
   const blocks = useMemo(() => {
     const list = opening?.blocks ?? [];

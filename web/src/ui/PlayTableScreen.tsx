@@ -67,6 +67,10 @@ export function PlayTableScreen() {
   }, [confirmExit]);
 
   useEffect(() => {
+    gameActions.ensurePortrait();
+  }, []);
+
+  useEffect(() => {
     if (!followBottom) return;
     bottomRef.current?.scrollIntoView({ block: "end" });
   }, [turnLog, narrationStream, followBottom]);
