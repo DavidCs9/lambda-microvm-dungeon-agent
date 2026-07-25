@@ -71,7 +71,7 @@ def test_structured_agent_rejects_invalid_model_output() -> None:
             max_tokens=2_000,
             temperature=0.9,
         )
-    assert client.converse.call_count == 2
+    assert client.converse.call_count == 3
 
 
 def test_structured_agent_repairs_invalid_output_once() -> None:
