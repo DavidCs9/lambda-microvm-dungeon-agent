@@ -14,7 +14,7 @@ from pydantic import BaseModel
 
 from dungeon_agent.domain.game import AdventurePlan, PlayerCharacter, TurnProposal
 
-DEFAULT_MODEL_ID = "us.anthropic.claude-sonnet-4-6"
+DEFAULT_MODEL_ID = "us.anthropic.claude-haiku-4-5-20251001-v1:0"
 DEFAULT_REGION = "us-east-2"
 
 
@@ -42,8 +42,15 @@ PROMPTS = (
             "Design a compact fantasy one-shot with declared exits, snake_case IDs, at least "
             "three solution paths, no commercial-fiction copies, and no silent bell/tower. "
             "All IDs must use lowercase ASCII letters, digits, and underscores only. Treat every "
-            "tool-schema maxLength as a hard limit. Use one short sentence per field: premise at "
-            "most 120 characters, objective 70, opening 100, and every description 90."
+            "tool-schema maxLength as a hard limit, but stay well below it: premise <=140 "
+            "characters, objective <=80, opening <=120, and every description <=80. Before the "
+            "tool call, silently check every string length and shorten it if needed. Every "
+            "location must include id, name, description, and exits; never omit exits. Use only "
+            "declared location IDs in exits. Valid compact shapes include "
+            '{"objective":"Recover the moon key before dawn."} and '
+            '{"id":"mist_gate","name":"Mist Gate",'
+            '"description":"A stone arch hides the road.",'
+            '"exits":["market","crypt"]}. These are examples only; create fresh content.'
         ),
         user_template=(
             "Create a 10-15 minute {{language_name}} adventure inspired by {{theme}}: objective, "
@@ -66,6 +73,11 @@ PROMPTS = (
         system=(
             "Design one concise protagonist tied to the adventure, vary gender/presentation, "
             "hide secrets, and make choices investigative, social, and risky."
+            " Keep every string comfortably below its schema maxLength. Return exactly 3 "
+            "opening_choices and at least 2 known_facts. A valid compact shape is "
+            '{"known_facts":["The bell rings at dusk.","Mara hides the key."], '
+            '"opening_choices":["Question Mara.","Search the bell tower.",'
+            '"Follow the footprints."]}. This is an example only; create fresh content.'
         ),
         user_template=(
             "Create one concise protagonist in {{language_name}}: identity, desire, personal "
@@ -95,7 +107,13 @@ PROMPTS = (
             "never remove an item the player is not carrying, and reference carried items "
             "naturally in the narration. When a roll is required, set stat to the attribute that "
             "governs the action (might, agility, wits, charm, or resolve); the hero's stat value "
-            "in player_character.stats is added to the d20, so weigh it when setting difficulty."
+            "in player_character.stats is added to the d20, so weigh it when setting difficulty. "
+            "Always return both success_changes and failure_changes. For a risky action, a valid "
+            'compact shape is {"requires_roll":true,"stat":"agility",'
+            '"difficulty":12,"success_changes":{"add_facts":["The bridge holds."]},'
+            '"failure_changes":{"add_facts":["The guard notices the noise."]}}. '
+            "For a safe action, use requires_roll=false and stat=null. These are examples only; "
+            "use the actual world IDs and inventory."
         ),
         user_template=(
             "Resolve this turn entirely in {{language_name}}.\nPlayer action:\n{{action}}\n"
@@ -269,12 +287,12 @@ def main() -> int:
     parser.add_argument("--region", default=DEFAULT_REGION)
     parser.add_argument("--model-id", default=DEFAULT_MODEL_ID)
     parser.add_argument("--role", action="append", choices=("campaign", "character", "master"))
-    parser.add_argument("--candidate-name", default="baseline-sonnet46")
+    parser.add_argument("--candidate-name", default="haiku-candidate")
     parser.add_argument("--base-manifest", type=Path)
     parser.add_argument(
         "--output",
         type=Path,
-        default=Path("evals/candidates/baseline-sonnet46.json"),
+        default=Path("artifacts/haiku-candidate.json"),
     )
     args = parser.parse_args()
     try:

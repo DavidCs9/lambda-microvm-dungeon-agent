@@ -12,13 +12,16 @@ from dungeon_agent.control_plane.agents.portrait import (
 from dungeon_agent.control_plane.agents.roles import AdventureArchitect, CharacterArchitect
 from dungeon_agent.control_plane.http.campaigns import CampaignHttpHandlers
 from dungeon_agent.control_plane.http.sessions import SessionHttpHandlers
+from dungeon_agent.control_plane.runtime_config import (
+    RuntimeConfigProvider,
+    RuntimeConfiguredBedrockAgent,
+)
 from dungeon_agent.control_plane.workflow.campaigns import DurableCampaignWorkflowStub
 from dungeon_agent.control_plane.workflow.step_functions import StepFunctionsWorkflowStarter
 from dungeon_agent.control_plane.workflow.stub import DurableSessionWorkflowStub
 from dungeon_agent.data_plane.http.actions import ActionHttpHandlers
 from dungeon_agent.data_plane.http.speech import SpeechHttpHandlers
 from dungeon_agent.data_plane.turns import TurnWorker
-from dungeon_agent.plane_shared.agents.bedrock import StructuredBedrockAgent
 from dungeon_agent.plane_shared.domain.models import SubmitTurnCommand
 from dungeon_agent.plane_shared.http.api_gateway import ApiGatewayHttpAdapter
 from dungeon_agent.plane_shared.logging import logger
@@ -65,6 +68,12 @@ _REPOSITORY = create_dynamodb_repository(_TABLE_NAME)
 _CAMPAIGN_TABLE_NAME = os.environ["CAMPAIGN_TABLE_NAME"]
 _CAMPAIGN_REPOSITORY = create_dynamodb_campaign_repository(_CAMPAIGN_TABLE_NAME)
 _REGION = os.environ.get("AWS_REGION", "us-east-2")
+_RUNTIME_CONFIG_PARAMETER = os.environ.get("BEDROCK_RUNTIME_CONFIG_PARAMETER")
+_RUNTIME_CONFIG = RuntimeConfigProvider(
+    None if _RUNTIME_CONFIG_PARAMETER is None else _client("ssm"),
+    _RUNTIME_CONFIG_PARAMETER,
+    {},
+)
 _CAMPAIGN_OPERATIONS = {
     "ValidateCampaign",
     "CreateCampaignRecord",
@@ -211,10 +220,9 @@ _HTTP_ADAPTER = (
 )
 
 
-def _structured_agent(prompt_env: str) -> StructuredBedrockAgent:
+def _structured_agent(role: str) -> RuntimeConfiguredBedrockAgent:
     bedrock = cast(Any, _client("bedrock-runtime", config=_BEDROCK_CONFIG))
-    target = os.environ.get(prompt_env, os.environ["BEDROCK_MODEL_ID"])
-    return StructuredBedrockAgent(bedrock, target)
+    return RuntimeConfiguredBedrockAgent(bedrock, _RUNTIME_CONFIG, role)
 
 
 def _build_workflow() -> DurableSessionWorkflowStub:
@@ -239,14 +247,13 @@ _WORKFLOW = _build_workflow()
 
 
 def _build_campaign_workflow() -> DurableCampaignWorkflowStub:
-    model_id = os.environ.get("BEDROCK_MODEL_ID")
-    if model_id is None:
+    if _RUNTIME_CONFIG_PARAMETER is None:
         return DurableCampaignWorkflowStub(_CAMPAIGN_REPOSITORY, delivery=_build_delivery())
     artifacts = _artifacts(_CAMPAIGN_TABLE_NAME, "CAMPAIGN")
     return DurableCampaignWorkflowStub(
         _CAMPAIGN_REPOSITORY,
-        adventure_architect=AdventureArchitect(_structured_agent("CAMPAIGN_PROMPT_ARN")),
-        character_architect=CharacterArchitect(_structured_agent("CHARACTER_PROMPT_ARN")),
+        adventure_architect=AdventureArchitect(_structured_agent("campaign")),
+        character_architect=CharacterArchitect(_structured_agent("character")),
         adventures=artifacts,
         characters=artifacts,
         openings=artifacts,
@@ -263,13 +270,13 @@ def _build_turn_worker() -> TurnWorker:
     return TurnWorker(
         _REPOSITORY,
         _artifacts(_TABLE_NAME),
-        _structured_agent("MASTER_PROMPT_ARN"),
+        _structured_agent("master"),
         _microvm_manager(),
         delivery=_build_delivery(),
     )
 
 
-_TURN_WORKER = _build_turn_worker() if "BEDROCK_MODEL_ID" in os.environ else None
+_TURN_WORKER = _build_turn_worker() if _RUNTIME_CONFIG_PARAMETER is not None else None
 
 
 def _build_websocket_adapter(endpoint: str) -> ApiGatewayWebSocketAdapter:
