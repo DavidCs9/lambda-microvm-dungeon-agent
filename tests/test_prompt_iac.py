@@ -21,15 +21,16 @@ def _without_null_defaults(value: object) -> object:
 def test_managed_prompts_and_versions_are_owned_by_cloudformation() -> None:
     template = TEMPLATE.read_text(encoding="utf-8")
 
-    assert template.count("Type: AWS::Bedrock::Prompt\n") == 3
-    assert template.count("Type: AWS::Bedrock::PromptVersion\n") == 3
+    assert template.count("Type: Custom::BedrockManagedPrompt\n") == 3
+    assert "Type: AWS::Lambda::Function\n" in template
+    assert "bedrock:CreatePromptVersion" in template
     assert "CampaignPromptArn:" not in template
     assert "CharacterPromptArn:" not in template
     assert "MasterPromptArn:" not in template
     assert "225989371926:prompt/" not in template
-    assert "CAMPAIGN_PROMPT_ARN: !Ref CampaignPromptVersion" in template
-    assert "CHARACTER_PROMPT_ARN: !Ref CharacterPromptVersion" in template
-    assert "MASTER_PROMPT_ARN: !Ref MasterPromptVersion" in template
+    assert "CAMPAIGN_PROMPT_ARN: !GetAtt CampaignManagedPrompt.Arn" in template
+    assert "CHARACTER_PROMPT_ARN: !GetAtt CharacterManagedPrompt.Arn" in template
+    assert "MASTER_PROMPT_ARN: !GetAtt MasterManagedPrompt.Arn" in template
     assert "ModelId: !Ref CampaignModelId" in template
     assert "ModelId: !Ref CharacterModelId" in template
     assert "ModelId: !Ref MasterModelId" in template

@@ -26,10 +26,148 @@ Parameters:
     Description: Image name resolved to its latest active version at runtime.
 
 Resources:
-  CampaignPrompt:
-    Type: AWS::Bedrock::Prompt
+  ManagedPromptProviderRole:
+    Type: AWS::IAM::Role
     Properties:
-      Name: !Sub "${AWS::StackName}-campaign"
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      Policies:
+        - PolicyName: ManageBedrockPrompts
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - bedrock:CreatePrompt
+                  - bedrock:ListPrompts
+                Resource: "*"
+              - Effect: Allow
+                Action:
+                  - bedrock:CreatePromptVersion
+                  - bedrock:DeletePrompt
+                  - bedrock:TagResource
+                  - bedrock:UntagResource
+                  - bedrock:UpdatePrompt
+                Resource: !Sub "arn:${AWS::Partition}:bedrock:${AWS::Region}:${AWS::AccountId}:prompt/*"
+
+  ManagedPromptProvider:
+    Type: AWS::Lambda::Function
+    Properties:
+      Description: CloudFormation provider for typed Bedrock managed prompts.
+      Runtime: python3.13
+      Handler: index.handler
+      Role: !GetAtt ManagedPromptProviderRole.Arn
+      Timeout: 60
+      Code:
+        ZipFile: |
+          import boto3
+          import cfnresponse
+
+          client = boto3.client("bedrock-agent")
+
+          def api_value(value):
+              if isinstance(value, list):
+                  return [api_value(item) for item in value]
+              if not isinstance(value, dict):
+                  return value
+              converted = {}
+              for key, item in value.items():
+                  api_key = key[:1].lower() + key[1:]
+                  converted[api_key] = item if key in {"Json", "Tags"} else api_value(item)
+              return converted
+
+          def find_prompt(name):
+              token = None
+              while True:
+                  request = {"maxResults": 10}
+                  if token:
+                      request["nextToken"] = token
+                  response = client.list_prompts(**request)
+                  for prompt in response.get("promptSummaries", []):
+                      if prompt["name"] == name:
+                          return prompt
+                  token = response.get("nextToken")
+                  if not token:
+                      return None
+
+          def handler(event, context):
+              physical_id = event.get("PhysicalResourceId")
+              try:
+                  properties = dict(event["ResourceProperties"])
+                  properties.pop("ServiceToken", None)
+                  version_description = properties.pop("VersionDescription")
+                  definition = api_value(properties)
+                  tags = definition.pop("tags", {})
+
+                  if event["RequestType"] == "Delete":
+                      if physical_id:
+                          try:
+                              client.delete_prompt(promptIdentifier=physical_id)
+                          except client.exceptions.ResourceNotFoundException:
+                              pass
+                      cfnresponse.send(
+                          event, context, cfnresponse.SUCCESS, {}, physical_id
+                      )
+                      return
+
+                  if event["RequestType"] == "Create":
+                      existing = find_prompt(definition["name"])
+                      if existing:
+                          physical_id = existing["id"]
+                          draft = client.update_prompt(
+                              promptIdentifier=physical_id, **definition
+                          )
+                      else:
+                          draft = client.create_prompt(**definition, tags=tags)
+                          physical_id = draft["id"]
+                  else:
+                      draft = client.update_prompt(
+                          promptIdentifier=physical_id, **definition
+                      )
+
+                  version = client.create_prompt_version(
+                      promptIdentifier=physical_id,
+                      description=version_description,
+                      tags=tags,
+                  )
+                  version_number = str(version["version"])
+                  version_arn = str(version["arn"])
+                  if not version_arn.endswith(f":{version_number}"):
+                      version_arn = f"{version_arn}:{version_number}"
+                  cfnresponse.send(
+                      event,
+                      context,
+                      cfnresponse.SUCCESS,
+                      {
+                          "Arn": version_arn,
+                          "Id": physical_id,
+                          "Version": version_number,
+                      },
+                      physical_id,
+                  )
+              except Exception as error:
+                  cfnresponse.send(
+                      event,
+                      context,
+                      cfnresponse.FAILED,
+                      {"Error": str(error)},
+                      physical_id,
+                      reason=str(error),
+                  )
+
+  CampaignManagedPrompt:
+    Type: Custom::BedrockManagedPrompt
+    Properties:
+      ServiceToken: !GetAtt ManagedPromptProvider.Arn
+      VersionDescription: Campaign prompt definition revision 4
+      Name: !Sub "${AWS::StackName}-campaign-iac"
       Description: Creates a compact validated one-shot campaign.
       DefaultVariant: default
       Tags:
@@ -84,20 +222,12 @@ Resources:
                       InputSchema:
                         Json: {"$defs":{"Character":{"additionalProperties":false,"properties":{"id":{"pattern":"^[a-z][a-z0-9_]{1,31}$","title":"Id","type":"string"},"name":{"maxLength":50,"minLength":2,"title":"Name","type":"string"},"description":{"maxLength":160,"minLength":5,"title":"Description","type":"string"},"motivation":{"maxLength":300,"minLength":5,"title":"Motivation","type":"string"}},"required":["id","name","description","motivation"],"title":"Character","type":"object"},"Item":{"additionalProperties":false,"properties":{"id":{"pattern":"^[a-z][a-z0-9_]{1,31}$","title":"Id","type":"string"},"name":{"maxLength":50,"minLength":2,"title":"Name","type":"string"},"description":{"maxLength":160,"minLength":5,"title":"Description","type":"string"}},"required":["id","name","description"],"title":"Item","type":"object"},"Location":{"additionalProperties":false,"properties":{"id":{"pattern":"^[a-z][a-z0-9_]{1,31}$","title":"Id","type":"string"},"name":{"maxLength":60,"minLength":2,"title":"Name","type":"string"},"description":{"maxLength":160,"minLength":10,"title":"Description","type":"string"},"exits":{"items":{"type":"string"},"maxItems":4,"title":"Exits","type":"array"}},"required":["id","name","description","exits"],"title":"Location","type":"object"}},"additionalProperties":false,"properties":{"title":{"maxLength":70,"minLength":3,"title":"Title","type":"string"},"premise":{"maxLength":200,"minLength":20,"title":"Premise","type":"string"},"objective":{"maxLength":120,"minLength":10,"title":"Objective","type":"string"},"opening":{"maxLength":180,"minLength":20,"title":"Opening","type":"string"},"starting_location_id":{"title":"Starting Location Id","type":"string"},"locations":{"items":{"$ref":"#/$defs/Location"},"maxItems":5,"minItems":3,"title":"Locations","type":"array"},"characters":{"items":{"$ref":"#/$defs/Character"},"maxItems":2,"minItems":1,"title":"Characters","type":"array"},"items":{"items":{"$ref":"#/$defs/Item"},"maxItems":5,"minItems":2,"title":"Items","type":"array"},"starting_inventory":{"description":"Item ids (from items) the protagonist already carries at the start. Keep it small and coherent with the character and premise.","items":{"type":"string"},"maxItems":3,"title":"Starting Inventory","type":"array"},"secrets":{"items":{"type":"string"},"maxItems":3,"minItems":1,"title":"Secrets","type":"array"},"max_turns":{"maximum":15,"minimum":8,"title":"Max Turns","type":"integer"}},"required":["title","premise","objective","opening","starting_location_id","locations","characters","items","secrets","max_turns"],"title":"AdventurePlan","type":"object"}
 
-  CampaignPromptVersion:
-    Type: AWS::Bedrock::PromptVersion
+  CharacterManagedPrompt:
+    Type: Custom::BedrockManagedPrompt
     Properties:
-      # Bump this literal whenever CampaignPrompt changes so CloudFormation snapshots a new version.
-      Description: Campaign prompt definition revision 3
-      PromptArn: !Ref CampaignPrompt
-      Tags:
-        project: lambda-microvm-dungeon-agent
-        role: campaign
-
-  CharacterPrompt:
-    Type: AWS::Bedrock::Prompt
-    Properties:
-      Name: !Sub "${AWS::StackName}-character"
+      ServiceToken: !GetAtt ManagedPromptProvider.Arn
+      VersionDescription: Character prompt definition revision 2
+      Name: !Sub "${AWS::StackName}-character-iac"
       Description: Creates a protagonist grounded in a supplied campaign.
       DefaultVariant: default
       Tags:
@@ -156,20 +286,12 @@ Resources:
                       InputSchema:
                         Json: {"$defs":{"CharacterStats":{"additionalProperties":false,"description":"Five simple attributes (1-3). The value is the roll modifier it grants.","properties":{"might":{"maximum":3,"minimum":1,"title":"Might","type":"integer"},"agility":{"maximum":3,"minimum":1,"title":"Agility","type":"integer"},"wits":{"maximum":3,"minimum":1,"title":"Wits","type":"integer"},"charm":{"maximum":3,"minimum":1,"title":"Charm","type":"integer"},"resolve":{"maximum":3,"minimum":1,"title":"Resolve","type":"integer"}},"required":["might","agility","wits","charm","resolve"],"title":"CharacterStats","type":"object"}},"additionalProperties":false,"description":"A playable identity deliberately connected to one adventure.","properties":{"name":{"maxLength":50,"minLength":2,"title":"Name","type":"string"},"pronouns":{"maxLength":30,"minLength":2,"title":"Pronouns","type":"string"},"archetype":{"maxLength":80,"minLength":3,"title":"Archetype","type":"string"},"appearance":{"maxLength":300,"minLength":10,"title":"Appearance","type":"string"},"background":{"maxLength":500,"minLength":30,"title":"Background","type":"string"},"desire":{"maxLength":240,"minLength":10,"title":"Desire","type":"string"},"need":{"maxLength":240,"minLength":10,"title":"Need","type":"string"},"connection_to_adventure":{"maxLength":300,"minLength":20,"title":"Connection To Adventure","type":"string"},"strength":{"maxLength":200,"minLength":5,"title":"Strength","type":"string"},"flaw":{"maxLength":200,"minLength":5,"title":"Flaw","type":"string"},"contradiction":{"maxLength":300,"minLength":10,"title":"Contradiction","type":"string"},"npc_connection":{"maxLength":300,"minLength":10,"title":"Npc Connection","type":"string"},"meaningful_item":{"maxLength":200,"minLength":5,"title":"Meaningful Item","type":"string"},"open_question":{"maxLength":300,"minLength":10,"title":"Open Question","type":"string"},"known_facts":{"items":{"type":"string"},"maxItems":3,"minItems":2,"title":"Known Facts","type":"array"},"opening_choices":{"items":{"type":"string"},"maxItems":3,"minItems":3,"title":"Opening Choices","type":"array"},"stats":{"$ref":"#/$defs/CharacterStats","description":"Five attributes (1-3 each), chosen freely to fit the archetype. Each value is the modifier added to the d20 when that attribute governs a risky action."}},"required":["name","pronouns","archetype","appearance","background","desire","need","connection_to_adventure","strength","flaw","contradiction","npc_connection","meaningful_item","open_question","known_facts","opening_choices"],"title":"PlayerCharacter","type":"object"}
 
-  CharacterPromptVersion:
-    Type: AWS::Bedrock::PromptVersion
+  MasterManagedPrompt:
+    Type: Custom::BedrockManagedPrompt
     Properties:
-      # Bump this literal whenever CharacterPrompt changes so CloudFormation snapshots a new version.
-      Description: Character prompt definition revision 1
-      PromptArn: !Ref CharacterPrompt
-      Tags:
-        project: lambda-microvm-dungeon-agent
-        role: character
-
-  MasterPrompt:
-    Type: AWS::Bedrock::Prompt
-    Properties:
-      Name: !Sub "${AWS::StackName}-master"
+      ServiceToken: !GetAtt ManagedPromptProvider.Arn
+      VersionDescription: Master prompt definition revision 2
+      Name: !Sub "${AWS::StackName}-master-iac"
       Description: Adjudicates one turn against the authoritative world state.
       DefaultVariant: default
       Tags:
@@ -235,16 +357,6 @@ Resources:
                       Description: Return the success and failure branches for this player action.
                       InputSchema:
                         Json: {"$defs":{"StateChanges":{"additionalProperties":false,"properties":{"location_id":{"anyOf":[{"type":"string"},{"type":"null"}],"title":"Location Id"},"add_items":{"items":{"type":"string"},"maxItems":2,"title":"Add Items","type":"array"},"remove_items":{"items":{"type":"string"},"maxItems":2,"title":"Remove Items","type":"array"},"add_facts":{"items":{"type":"string"},"maxItems":3,"title":"Add Facts","type":"array"},"health_delta":{"default":0,"maximum":1,"minimum":-2,"title":"Health Delta","type":"integer"},"objective_complete":{"default":false,"title":"Objective Complete","type":"boolean"}},"title":"StateChanges","type":"object"}},"additionalProperties":false,"properties":{"intent":{"maxLength":300,"minLength":2,"title":"Intent","type":"string"},"requires_roll":{"title":"Requires Roll","type":"boolean"},"difficulty":{"anyOf":[{"maximum":20,"minimum":5,"type":"integer"},{"type":"null"}],"title":"Difficulty"},"stat":{"anyOf":[{"enum":["might","agility","wits","charm","resolve"],"type":"string"},{"type":"null"}],"title":"Stat"},"success_narration":{"maxLength":500,"minLength":10,"title":"Success Narration","type":"string"},"failure_narration":{"maxLength":500,"minLength":10,"title":"Failure Narration","type":"string"},"success_changes":{"$ref":"#/$defs/StateChanges"},"failure_changes":{"$ref":"#/$defs/StateChanges"},"suggestions":{"items":{"type":"string"},"maxItems":3,"minItems":2,"title":"Suggestions","type":"array"}},"required":["intent","requires_roll","success_narration","failure_narration","success_changes","failure_changes","suggestions"],"title":"TurnProposal","type":"object"}
-
-  MasterPromptVersion:
-    Type: AWS::Bedrock::PromptVersion
-    Properties:
-      # Bump this literal whenever MasterPrompt changes so CloudFormation snapshots a new version.
-      Description: Master prompt definition revision 1
-      PromptArn: !Ref MasterPrompt
-      Tags:
-        project: lambda-microvm-dungeon-agent
-        role: master
 
   SessionTable:
     Type: AWS::DynamoDB::Table
@@ -591,8 +703,8 @@ Resources:
           TABLE_NAME: !Ref SessionTable
           CAMPAIGN_TABLE_NAME: !Ref CampaignTable
           BEDROCK_MODEL_ID: !Ref CampaignModelId
-          CAMPAIGN_PROMPT_ARN: !Ref CampaignPromptVersion
-          CHARACTER_PROMPT_ARN: !Ref CharacterPromptVersion
+          CAMPAIGN_PROMPT_ARN: !GetAtt CampaignManagedPrompt.Arn
+          CHARACTER_PROMPT_ARN: !GetAtt CharacterManagedPrompt.Arn
           MICROVM_IMAGE_NAME: !Ref MicrovmImageName
           WS_MANAGEMENT_ENDPOINT: !Sub "https://${ControlPlaneWebSocketApi}.execute-api.${AWS::Region}.${AWS::URLSuffix}/prod"
           SPEECH_CACHE_BUCKET: !Ref SpeechCacheBucket
@@ -626,7 +738,7 @@ Resources:
           TABLE_NAME: !Ref SessionTable
           CAMPAIGN_TABLE_NAME: !Ref CampaignTable
           BEDROCK_MODEL_ID: !Ref MasterModelId
-          MASTER_PROMPT_ARN: !Ref MasterPromptVersion
+          MASTER_PROMPT_ARN: !GetAtt MasterManagedPrompt.Arn
           MICROVM_IMAGE_NAME: !Ref MicrovmImageName
           WS_MANAGEMENT_ENDPOINT: !Sub "https://${ControlPlaneWebSocketApi}.execute-api.${AWS::Region}.${AWS::URLSuffix}/prod"
           POWERTOOLS_SERVICE_NAME: dungeon-agent-control-plane
@@ -1784,10 +1896,10 @@ Outputs:
     Value: !Ref WorkflowMonitorDeadLetterQueue
   CampaignPromptVersionArn:
     Description: Versioned campaign prompt ARN used by the runtime and evaluator.
-    Value: !Ref CampaignPromptVersion
+    Value: !GetAtt CampaignManagedPrompt.Arn
   CharacterPromptVersionArn:
     Description: Versioned character prompt ARN used by the runtime and evaluator.
-    Value: !Ref CharacterPromptVersion
+    Value: !GetAtt CharacterManagedPrompt.Arn
   MasterPromptVersionArn:
     Description: Versioned Dungeon Master prompt ARN used by the runtime and evaluator.
-    Value: !Ref MasterPromptVersion
+    Value: !GetAtt MasterManagedPrompt.Arn
