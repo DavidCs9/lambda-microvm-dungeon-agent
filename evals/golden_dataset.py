@@ -1,7 +1,4 @@
 """Rubric evaluation for the versioned campaign, character, and DM golden sets."""
-# The rubric keeps compact one-line predicates readable; the data files remain the primary
-# long-form artifact, so only the evaluator's E501 checks are relaxed.
-# ruff: noqa: E501
 
 import argparse
 import json
