@@ -17,6 +17,7 @@ import {
 export function PlayTableScreen() {
   const opening = useGameStore((s) => s.opening);
   const portraitUrl = useGameStore((s) => s.portraitUrl);
+  const inventory = useGameStore((s) => s.inventory);
   const campaign = useGameStore((s) => s.campaign);
   const narrationStream = useGameStore((s) => s.narrationStream);
   const turnLog = useGameStore((s) => s.turnLog);
@@ -96,7 +97,13 @@ export function PlayTableScreen() {
         />
       }
       leftRail={<CampaignContextPanel opening={opening} />}
-      rightRail={<CharacterContextPanel opening={opening} portraitUrl={portraitUrl} />}
+      rightRail={
+        <CharacterContextPanel
+          opening={opening}
+          portraitUrl={portraitUrl}
+          inventory={inventory}
+        />
+      }
       footer={
         <Composer
           value={action}

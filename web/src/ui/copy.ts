@@ -107,6 +107,7 @@ const OPENING_KIND_COPY: Record<string, string> = {
   knowledge: "Saber",
   situation: "Situación",
   possible_action: "Posible acción",
+  inventory: "Inventario",
 };
 
 export function openingKindLabel(kind: string): string {

@@ -120,9 +120,11 @@ export function CampaignContextPanel({
 export function CharacterContextPanel({
   opening,
   portraitUrl,
+  inventory = [],
 }: {
   opening: OpeningDocument | null | undefined;
   portraitUrl?: string | null;
+  inventory?: string[];
 }) {
   const identity = useMemo(() => {
     const [block] = blocksOfKind(opening, "identity");
@@ -134,7 +136,12 @@ export function CharacterContextPanel({
     return block ? truncate(block.text, 160) : null;
   }, [opening]);
 
-  if (!portraitUrl && !identity && !motivation) return null;
+  const items = useMemo(
+    () => inventory.map((name) => name.trim()).filter((name) => name.length > 0),
+    [inventory],
+  );
+
+  if (!portraitUrl && !identity && !motivation && items.length === 0) return null;
 
   return (
     <RailShell align="right">
@@ -160,6 +167,28 @@ export function CharacterContextPanel({
               Motivación
             </p>
             <p className="text-sm leading-relaxed text-[var(--ink)]/85">{motivation}</p>
+          </section>
+        )}
+
+        {(identity || portraitUrl) && (
+          <section>
+            <p className="mb-1.5 text-[0.65rem] tracking-[0.2em] text-[var(--muted)] uppercase [font-family:var(--font-ui)]">
+              Inventario
+            </p>
+            {items.length > 0 ? (
+              <ul className="flex flex-wrap gap-1.5">
+                {items.map((name, index) => (
+                  <li
+                    key={`${name}-${index}`}
+                    className="rounded border border-[var(--line)] bg-[var(--surface-2)]/60 px-2 py-1 text-xs leading-snug text-[var(--ink)]/85"
+                  >
+                    {truncate(name, 60)}
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p className="text-xs text-[var(--muted)] italic">Sin objetos todavía.</p>
+            )}
           </section>
         )}
       </div>

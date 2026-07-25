@@ -41,6 +41,7 @@ export interface GameState {
   activeSessionsLoading: boolean;
   session: SessionRecord | null;
   opening: OpeningDocument | null;
+  inventory: string[];
   portraitUrl: string | null;
   expectedRevision: number;
   phaseLabel: string | null;
@@ -95,6 +96,7 @@ function createInitialState(playerId: string): GameState {
     activeSessionsLoading: false,
     session: null,
     opening: null,
+    inventory: [],
     portraitUrl: null,
     expectedRevision: 0,
     phaseLabel: null,
@@ -188,7 +190,26 @@ const OPENING_KINDS = new Set<OpeningBlockKind>([
   "knowledge",
   "situation",
   "possible_action",
+  "inventory",
 ]);
+
+function inventoryFromOpening(opening: OpeningDocument | null): string[] {
+  if (!opening) {
+    return [];
+  }
+  return opening.blocks
+    .filter((block) => block.kind === "inventory")
+    .sort((a, b) => a.position - b.position)
+    .map((block) => block.text.trim())
+    .filter((text) => text.length > 0);
+}
+
+function parseInventoryNames(value: unknown): string[] | null {
+  if (!Array.isArray(value)) {
+    return null;
+  }
+  return value.filter((item): item is string => typeof item === "string");
+}
 
 function parseOpening(value: unknown): OpeningDocument | null {
   if (typeof value !== "object" || value === null) {
@@ -296,6 +317,7 @@ function applyEvent(event: ControlPlaneEvent): void {
           lastEventSequence: Math.max(campaign.lastEventSequence, event.sequence),
         },
         opening,
+        inventory: inventoryFromOpening(opening),
         portraitUrl,
         phaseLabel: null,
         phaseKind: null,
@@ -376,6 +398,7 @@ function applyEvent(event: ControlPlaneEvent): void {
           lastEventSequence: Math.max(session.lastEventSequence, event.sequence),
         },
         opening,
+        inventory: inventoryFromOpening(opening),
         portraitUrl,
         expectedRevision: revision,
         phaseLabel: null,
@@ -478,6 +501,7 @@ function applyEvent(event: ControlPlaneEvent): void {
       };
       pendingActionText = "";
       onTurnCompleted(narration);
+      const nextInventory = parseInventoryNames(payload.inventory);
       setState({
         session: {
           ...session,
@@ -491,6 +515,7 @@ function applyEvent(event: ControlPlaneEvent): void {
         // text twice (turnLog entry + leftover Narración block).
         narrationStream: "",
         turnLog: [...state.turnLog, entry],
+        ...(nextInventory ? { inventory: nextInventory } : {}),
       });
       return;
     }
@@ -590,6 +615,7 @@ export const gameActions = {
         campaigns: [],
         session: null,
         opening: null,
+        inventory: [],
         portraitUrl: null,
         turnLog: [],
         narrationStream: "",
@@ -680,6 +706,7 @@ export const gameActions = {
       setState({
         campaign,
         opening,
+        inventory: inventoryFromOpening(opening),
         portraitUrl,
         screen: "opening",
         phaseLabel: null,
@@ -720,6 +747,7 @@ export const gameActions = {
         phaseKind: "session",
         phaseLabel: "requested",
         errorMessage: null,
+        inventory: inventoryFromOpening(state.opening),
         turnLog: [],
         narrationStream: "",
         turnPending: false,
@@ -831,6 +859,7 @@ export const gameActions = {
       }
 
       const turnLog: GameState["turnLog"] = [];
+      let replayedInventory: string[] | null = null;
       if (session.revision > 0) {
         const eventsEnvelope = await api.getSessionEvents(sessionId, 0);
         const diceByTurn = new Map<string, { roll: number; success: boolean }>();
@@ -864,6 +893,10 @@ export const gameActions = {
           const narration = typeof payload.narration === "string" ? payload.narration : "";
           const dice = diceByTurn.get(turnId);
           const action = actionByTurn.get(turnId);
+          const eventInventory = parseInventoryNames(payload.inventory);
+          if (eventInventory) {
+            replayedInventory = eventInventory;
+          }
           turnLog.push({
             turnId,
             narration,
@@ -877,6 +910,7 @@ export const gameActions = {
         session,
         campaign,
         opening,
+        inventory: replayedInventory ?? inventoryFromOpening(opening),
         portraitUrl,
         expectedRevision: session.revision,
         turnLog,
