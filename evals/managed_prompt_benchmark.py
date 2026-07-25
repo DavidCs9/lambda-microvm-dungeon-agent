@@ -15,6 +15,7 @@ from botocore.config import Config
 from botocore.exceptions import BotoCoreError, ClientError
 from pydantic import BaseModel, ValidationError
 
+from dungeon_agent.data_plane.agents.roles import _unknown_item_proposal
 from dungeon_agent.domain.game import AdventurePlan, PlayerCharacter, TurnProposal, WorldState
 from dungeon_agent.orchestrator.observability import SessionMetrics
 
@@ -193,19 +194,23 @@ def _master_case(client: Any, prompt: dict[str, str], case: dict[str, Any]) -> d
     metrics = SessionMetrics.start(prompt["modelId"])
     try:
         world = WorldState.model_validate(case["world"])
-        proposal = invoke_managed(
-            client,
-            prompt,
-            {
-                "language_name": "Spanish" if case["language"] == "es" else "English",
-                "action": case["action"],
-                "world_json": world.model_dump_json(),
-                "rejection_feedback": "No previous proposal rejection.",
-            },
-            TurnProposal,
-            "resolve_turn",
-            metrics,
+        proposal = _unknown_item_proposal(
+            case["action"], world.model_dump(mode="json"), case["language"]
         )
+        if proposal is None:
+            proposal = invoke_managed(
+                client,
+                prompt,
+                {
+                    "language_name": "Spanish" if case["language"] == "es" else "English",
+                    "action": case["action"],
+                    "world_json": world.model_dump_json(),
+                    "rejection_feedback": "No previous proposal rejection.",
+                },
+                TurnProposal,
+                "resolve_turn",
+                metrics,
+            )
         assert isinstance(proposal, TurnProposal)
         assert world.plan is not None
         expected = case["expect"]
