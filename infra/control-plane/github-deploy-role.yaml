@@ -1,5 +1,5 @@
 AWSTemplateFormatVersion: "2010-09-09"
-Description: Least-privilege GitHub OIDC role that deploys the control-plane sandbox stack.
+Description: Least-privilege GitHub OIDC role that deploys the control-plane and web sandbox stacks.
 
 Parameters:
   GitHubOidcProviderArn:
@@ -15,6 +15,11 @@ Parameters:
     Default: dungeon-agent-control-plane-sandbox
     AllowedPattern: ^[A-Za-z][A-Za-z0-9-]*$
     Description: CloudFormation stack name the workflow is allowed to deploy.
+  WebHostingStackName:
+    Type: String
+    Default: dungeon-agent-web-sandbox
+    AllowedPattern: ^[A-Za-z][A-Za-z0-9-]*$
+    Description: CloudFormation stack name for the web hosting resources.
   GitHubOwner:
     Type: String
     Default: DavidCs9
@@ -91,6 +96,58 @@ Resources:
                   - s3:GetObject
                   - s3:AbortMultipartUpload
                 Resource: !Sub "arn:${AWS::Partition}:s3:::${ArtifactBucketName}/artifacts/control-plane/*"
+              - Sid: ManageWebHostingStack
+                Effect: Allow
+                Action:
+                  - cloudformation:CreateChangeSet
+                  - cloudformation:CreateStack
+                  - cloudformation:DeleteChangeSet
+                  - cloudformation:DescribeChangeSet
+                  - cloudformation:DescribeStackEvents
+                  - cloudformation:DescribeStackResource
+                  - cloudformation:DescribeStackResources
+                  - cloudformation:ExecuteChangeSet
+                  - cloudformation:GetTemplate
+                  - cloudformation:GetTemplateSummary
+                  - cloudformation:ListChangeSets
+                  - cloudformation:ListStackResources
+                  - cloudformation:UpdateStack
+                Resource:
+                  - !Sub >-
+                    arn:${AWS::Partition}:cloudformation:${AWS::Region}:${AWS::AccountId}:stack/${WebHostingStackName}/*
+                  - !Sub >-
+                    arn:${AWS::Partition}:cloudformation:${AWS::Region}:${AWS::AccountId}:stack/${WebHostingStackName}
+              - Sid: ProvisionWebHostingServices
+                Effect: Allow
+                Action:
+                  - cloudfront:CreateDistribution
+                  - cloudfront:CreateInvalidation
+                  - cloudfront:CreateOriginAccessControl
+                  - cloudfront:DeleteDistribution
+                  - cloudfront:DeleteOriginAccessControl
+                  - cloudfront:GetDistribution
+                  - cloudfront:GetInvalidation
+                  - cloudfront:GetOriginAccessControl
+                  - cloudfront:ListTagsForResource
+                  - cloudfront:TagResource
+                  - cloudfront:UntagResource
+                  - cloudfront:UpdateDistribution
+                  - cloudfront:UpdateOriginAccessControl
+                  - s3:CreateBucket
+                  - s3:DeleteBucketPolicy
+                  - s3:GetBucketLocation
+                  - s3:GetBucketPolicy
+                  - s3:GetObject
+                  - s3:ListBucket
+                  - s3:PutBucketPolicy
+                  - s3:PutBucketPublicAccessBlock
+                  - s3:PutBucketTagging
+                  - s3:PutBucketVersioning
+                  - s3:PutEncryptionConfiguration
+                  - s3:PutObject
+                  - s3:DeleteObject
+                  - s3:DeleteObjectVersion
+                Resource: "*"
               - Sid: ListArtifactBucket
                 Effect: Allow
                 Action:
@@ -120,6 +177,17 @@ Resources:
                   - cloudwatch:PutMetricAlarm
                   - cloudwatch:TagResource
                   - cloudwatch:UntagResource
+                  - cognito-idp:CreateUserPool
+                  - cognito-idp:CreateUserPoolClient
+                  - cognito-idp:DeleteUserPool
+                  - cognito-idp:DeleteUserPoolClient
+                  - cognito-idp:DescribeUserPool
+                  - cognito-idp:DescribeUserPoolClient
+                  - cognito-idp:ListTagsForResource
+                  - cognito-idp:TagResource
+                  - cognito-idp:UntagResource
+                  - cognito-idp:UpdateUserPool
+                  - cognito-idp:UpdateUserPoolClient
                   - dynamodb:CreateTable
                   - dynamodb:DeleteTable
                   - dynamodb:DescribeTable
