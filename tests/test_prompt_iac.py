@@ -28,9 +28,11 @@ def test_managed_prompts_and_versions_are_owned_by_cloudformation() -> None:
     assert "CharacterPromptArn:" not in template
     assert "MasterPromptArn:" not in template
     assert "225989371926:prompt/" not in template
-    assert "CAMPAIGN_PROMPT_ARN: !GetAtt CampaignManagedPrompt.Arn" in template
-    assert "CHARACTER_PROMPT_ARN: !GetAtt CharacterManagedPrompt.Arn" in template
-    assert "MASTER_PROMPT_ARN: !GetAtt MasterManagedPrompt.Arn" in template
+    assert "BEDROCK_RUNTIME_CONFIG_PARAMETER: !Ref RuntimeConfigParameterName" in template
+    assert "ssm:GetParameter" in template
+    assert "CAMPAIGN_PROMPT_ARN: !GetAtt CampaignManagedPrompt.Arn" not in template
+    assert "CHARACTER_PROMPT_ARN: !GetAtt CharacterManagedPrompt.Arn" not in template
+    assert "MASTER_PROMPT_ARN: !GetAtt MasterManagedPrompt.Arn" not in template
     assert "ModelId: !Ref CampaignModelId" in template
     assert "ModelId: !Ref CharacterModelId" in template
     assert "ModelId: !Ref MasterModelId" in template

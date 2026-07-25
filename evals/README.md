@@ -64,8 +64,20 @@ Cases run concurrently per candidate by default (`--max-workers 6`). Lower the v
 throttling becomes a problem, or raise it for short, isolated experiments.
 
 `scripts/publish_managed_prompts.py` is only for temporary model/prompt candidates during
-experimentation. A winner is promoted by updating the CloudFormation prompt definition and its
-version revision, so production never depends on resources created by the script.
+experimentation. It creates immutable prompt versions but does not activate them. After a
+candidate passes all evals, activate its runtime pointer explicitly:
+
+```sh
+uv run --group tooling python scripts/activate_runtime_config.py \
+  --profile personal \
+  --region us-east-2 \
+  --parameter-name /dungeon-agent/bedrock-runtime-config \
+  --manifest artifacts/haiku-candidate.json
+```
+
+The Lambda workers read the active model and prompt ARN for each role from that SSM parameter at
+runtime, so prompt/model experiments and promotion do not require a control-plane deploy. The
+CloudFormation stack only bootstraps the parameter name and IAM permission.
 
 During prompt development, run only the affected cases to avoid paying for unchanged roles:
 
