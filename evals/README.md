@@ -35,14 +35,12 @@ use generated samples as golden truth without human review.
 
 ## Managed prompt baseline
 
-The three model roles are published as versioned Amazon Bedrock Prompt Management resources.
-Publish the current Sonnet baseline and write its candidate manifest with:
-
-```sh
-uv run --group tooling python scripts/publish_managed_prompts.py \
-  --profile personal \
-  --region us-east-2
-```
+The production Sonnet baseline is declared in
+`infra/control-plane/workflow/template.yaml` as three `AWS::Bedrock::Prompt` resources and three
+immutable `AWS::Bedrock::PromptVersion` snapshots. Deploying the control-plane stack publishes the
+prompts and exposes each version ARN as a stack output. The committed candidate manifests record
+the exact versions used for historical eval runs; refresh a baseline manifest from those outputs
+after deploying a new prompt revision.
 
 Each immutable prompt version contains the system prompt, user template, model, inference
 configuration, required tool choice, and Pydantic-derived tool schema. Candidate manifests under
@@ -61,6 +59,10 @@ The first candidate is the quality baseline. A candidate is eligible only when e
 safety check passes and its overall quality drop is within the configured tolerance. Eligible
 candidates are ranked by estimated token cost. Model quality is always measured first-pass: the
 evaluator makes one invocation per case and never repairs invalid output.
+
+`scripts/publish_managed_prompts.py` is only for temporary model/prompt candidates during
+experimentation. A winner is promoted by updating the CloudFormation prompt definition and its
+version revision, so production never depends on resources created by the script.
 
 During prompt development, run only the affected cases to avoid paying for unchanged roles:
 

@@ -1,4 +1,4 @@
-"""Publish the current role prompts as versioned Bedrock Prompt Management resources."""
+"""Publish temporary Bedrock Prompt Management candidates for evaluation."""
 
 import argparse
 import json
@@ -211,7 +211,7 @@ def publish_prompt(client: Any, definition: PromptDefinition, model_id: str) -> 
         )
     version = client.create_prompt_version(
         promptIdentifier=draft["id"],
-        description=f"Baseline production prompt using {model_id}",
+        description=f"Evaluation candidate prompt using {model_id}",
         tags={
             "project": "lambda-microvm-dungeon-agent",
             "role": definition.role,
@@ -264,7 +264,7 @@ def publish_all(
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Publish managed prompt baseline versions.")
+    parser = argparse.ArgumentParser(description="Publish temporary managed prompt candidates.")
     parser.add_argument("--profile", default="personal")
     parser.add_argument("--region", default=DEFAULT_REGION)
     parser.add_argument("--model-id", default=DEFAULT_MODEL_ID)

@@ -8,28 +8,244 @@ Parameters:
     Default: 30
     AllowedValues: [7, 14, 30, 60, 90]
     Description: Retention period for workflow and Lambda operational logs.
-  BedrockModelId:
+  CampaignModelId:
     Type: String
     Default: us.anthropic.claude-sonnet-4-6
-    Description: Fallback Bedrock inference profile when managed prompt ARNs are not configured.
-  CampaignPromptArn:
+    Description: Bedrock inference profile baked into the campaign prompt version.
+  CharacterModelId:
     Type: String
-    Default: arn:aws:bedrock:us-east-2:225989371926:prompt/I2POVLPWJA:3
-    Description: Evaluated versioned managed prompt for campaign generation.
-  CharacterPromptArn:
+    Default: us.anthropic.claude-sonnet-4-6
+    Description: Bedrock inference profile baked into the character prompt version.
+  MasterModelId:
     Type: String
-    Default: arn:aws:bedrock:us-east-2:225989371926:prompt/ZVZRKZEO6B:1
-    Description: Evaluated versioned managed prompt for character generation.
-  MasterPromptArn:
-    Type: String
-    Default: arn:aws:bedrock:us-east-2:225989371926:prompt/9WAKWCNVEO:1
-    Description: Evaluated versioned managed prompt for turn adjudication.
+    Default: us.anthropic.claude-sonnet-4-6
+    Description: Bedrock inference profile baked into the Dungeon Master prompt version.
   MicrovmImageName:
     Type: String
     Default: dungeon-agent-fastapi
     Description: Image name resolved to its latest active version at runtime.
 
 Resources:
+  CampaignPrompt:
+    Type: AWS::Bedrock::Prompt
+    Properties:
+      Name: !Sub "${AWS::StackName}-campaign"
+      Description: Creates a compact validated one-shot campaign.
+      DefaultVariant: default
+      Tags:
+        project: lambda-microvm-dungeon-agent
+        role: campaign
+      Variants:
+        - Name: default
+          ModelId: !Ref CampaignModelId
+          TemplateType: CHAT
+          InferenceConfiguration:
+            Text:
+              MaxTokens: 3000
+              Temperature: 0.9
+          Metadata:
+            - Key: project
+              Value: lambda-microvm-dungeon-agent
+            - Key: role
+              Value: campaign
+          TemplateConfiguration:
+            Chat:
+              System:
+                - Text: >-
+                    Design a compact fantasy one-shot with declared exits, snake_case IDs, at
+                    least three solution paths, no commercial-fiction copies, and no silent
+                    bell/tower. All IDs must use lowercase ASCII letters, digits, and underscores
+                    only. Treat every tool-schema maxLength as a hard limit. Use one short
+                    sentence per field: premise at most 120 characters, objective 70, opening
+                    100, and every description 90.
+              Messages:
+                - Role: user
+                  Content:
+                    - Text: >-
+                        Create a 10-15 minute {{language_name}} adventure inspired by {{theme}}:
+                        objective, 3-5 locations, 1-2 NPCs, useful items, secrets, max_turns, and
+                        short opening. Also pick a small, coherent starting_inventory (0-2 item
+                        ids from items) that the protagonist plausibly already carries given the
+                        premise.
+
+                        {{repair_feedback}}
+              InputVariables:
+                - Name: language_name
+                - Name: theme
+                - Name: repair_feedback
+              ToolConfiguration:
+                ToolChoice:
+                  Tool:
+                    Name: create_adventure
+                Tools:
+                  - ToolSpec:
+                      Name: create_adventure
+                      Description: Return the complete validated adventure plan.
+                      InputSchema:
+                        Json: {"$defs":{"Character":{"additionalProperties":false,"properties":{"id":{"pattern":"^[a-z][a-z0-9_]{1,31}$","title":"Id","type":"string"},"name":{"maxLength":50,"minLength":2,"title":"Name","type":"string"},"description":{"maxLength":160,"minLength":5,"title":"Description","type":"string"},"motivation":{"maxLength":300,"minLength":5,"title":"Motivation","type":"string"}},"required":["id","name","description","motivation"],"title":"Character","type":"object"},"Item":{"additionalProperties":false,"properties":{"id":{"pattern":"^[a-z][a-z0-9_]{1,31}$","title":"Id","type":"string"},"name":{"maxLength":50,"minLength":2,"title":"Name","type":"string"},"description":{"maxLength":160,"minLength":5,"title":"Description","type":"string"}},"required":["id","name","description"],"title":"Item","type":"object"},"Location":{"additionalProperties":false,"properties":{"id":{"pattern":"^[a-z][a-z0-9_]{1,31}$","title":"Id","type":"string"},"name":{"maxLength":60,"minLength":2,"title":"Name","type":"string"},"description":{"maxLength":160,"minLength":10,"title":"Description","type":"string"},"exits":{"items":{"type":"string"},"maxItems":4,"title":"Exits","type":"array"}},"required":["id","name","description","exits"],"title":"Location","type":"object"}},"additionalProperties":false,"properties":{"title":{"maxLength":70,"minLength":3,"title":"Title","type":"string"},"premise":{"maxLength":200,"minLength":20,"title":"Premise","type":"string"},"objective":{"maxLength":120,"minLength":10,"title":"Objective","type":"string"},"opening":{"maxLength":180,"minLength":20,"title":"Opening","type":"string"},"starting_location_id":{"title":"Starting Location Id","type":"string"},"locations":{"items":{"$ref":"#/$defs/Location"},"maxItems":5,"minItems":3,"title":"Locations","type":"array"},"characters":{"items":{"$ref":"#/$defs/Character"},"maxItems":2,"minItems":1,"title":"Characters","type":"array"},"items":{"items":{"$ref":"#/$defs/Item"},"maxItems":5,"minItems":2,"title":"Items","type":"array"},"starting_inventory":{"description":"Item ids (from items) the protagonist already carries at the start. Keep it small and coherent with the character and premise.","items":{"type":"string"},"maxItems":3,"title":"Starting Inventory","type":"array"},"secrets":{"items":{"type":"string"},"maxItems":3,"minItems":1,"title":"Secrets","type":"array"},"max_turns":{"maximum":15,"minimum":8,"title":"Max Turns","type":"integer"}},"required":["title","premise","objective","opening","starting_location_id","locations","characters","items","secrets","max_turns"],"title":"AdventurePlan","type":"object"}
+
+  CampaignPromptVersion:
+    Type: AWS::Bedrock::PromptVersion
+    Properties:
+      # Bump this literal whenever CampaignPrompt changes so CloudFormation snapshots a new version.
+      Description: Campaign prompt definition revision 3
+      PromptArn: !Ref CampaignPrompt
+      Tags:
+        project: lambda-microvm-dungeon-agent
+        role: campaign
+
+  CharacterPrompt:
+    Type: AWS::Bedrock::Prompt
+    Properties:
+      Name: !Sub "${AWS::StackName}-character"
+      Description: Creates a protagonist grounded in a supplied campaign.
+      DefaultVariant: default
+      Tags:
+        project: lambda-microvm-dungeon-agent
+        role: character
+      Variants:
+        - Name: default
+          ModelId: !Ref CharacterModelId
+          TemplateType: CHAT
+          InferenceConfiguration:
+            Text:
+              MaxTokens: 2000
+              Temperature: 0.85
+          Metadata:
+            - Key: project
+              Value: lambda-microvm-dungeon-agent
+            - Key: role
+              Value: character
+          TemplateConfiguration:
+            Chat:
+              System:
+                - Text: >-
+                    Design one concise protagonist tied to the adventure, vary
+                    gender/presentation, hide secrets, and make choices investigative, social,
+                    and risky.
+              Messages:
+                - Role: user
+                  Content:
+                    - Text: >-
+                        Create one concise protagonist in {{language_name}}: identity, desire,
+                        personal stake, known facts, and three ways to begin. Put exactly these
+                        pronouns in the pronouns field: {{pronouns}}. Align name, appearance, and
+                        grammar with that identity. Set stats (might, agility, wits, charm,
+                        resolve) to a value of 1-3 each, chosen freely and independently to fit the
+                        archetype. Do not balance them. Keep every string field short enough for
+                        the tool schema.
+
+                        Adventure JSON:
+
+                        {{adventure_json}}
+
+                        {{repair_feedback}}
+              InputVariables:
+                - Name: language_name
+                - Name: pronouns
+                - Name: adventure_json
+                - Name: repair_feedback
+              ToolConfiguration:
+                ToolChoice:
+                  Tool:
+                    Name: create_player_character
+                Tools:
+                  - ToolSpec:
+                      Name: create_player_character
+                      Description: Return a complete protagonist grounded in the supplied adventure.
+                      InputSchema:
+                        Json: {"$defs":{"CharacterStats":{"additionalProperties":false,"description":"Five simple attributes (1-3). The value is the roll modifier it grants.","properties":{"might":{"maximum":3,"minimum":1,"title":"Might","type":"integer"},"agility":{"maximum":3,"minimum":1,"title":"Agility","type":"integer"},"wits":{"maximum":3,"minimum":1,"title":"Wits","type":"integer"},"charm":{"maximum":3,"minimum":1,"title":"Charm","type":"integer"},"resolve":{"maximum":3,"minimum":1,"title":"Resolve","type":"integer"}},"required":["might","agility","wits","charm","resolve"],"title":"CharacterStats","type":"object"}},"additionalProperties":false,"description":"A playable identity deliberately connected to one adventure.","properties":{"name":{"maxLength":50,"minLength":2,"title":"Name","type":"string"},"pronouns":{"maxLength":30,"minLength":2,"title":"Pronouns","type":"string"},"archetype":{"maxLength":80,"minLength":3,"title":"Archetype","type":"string"},"appearance":{"maxLength":300,"minLength":10,"title":"Appearance","type":"string"},"background":{"maxLength":500,"minLength":30,"title":"Background","type":"string"},"desire":{"maxLength":240,"minLength":10,"title":"Desire","type":"string"},"need":{"maxLength":240,"minLength":10,"title":"Need","type":"string"},"connection_to_adventure":{"maxLength":300,"minLength":20,"title":"Connection To Adventure","type":"string"},"strength":{"maxLength":200,"minLength":5,"title":"Strength","type":"string"},"flaw":{"maxLength":200,"minLength":5,"title":"Flaw","type":"string"},"contradiction":{"maxLength":300,"minLength":10,"title":"Contradiction","type":"string"},"npc_connection":{"maxLength":300,"minLength":10,"title":"Npc Connection","type":"string"},"meaningful_item":{"maxLength":200,"minLength":5,"title":"Meaningful Item","type":"string"},"open_question":{"maxLength":300,"minLength":10,"title":"Open Question","type":"string"},"known_facts":{"items":{"type":"string"},"maxItems":3,"minItems":2,"title":"Known Facts","type":"array"},"opening_choices":{"items":{"type":"string"},"maxItems":3,"minItems":3,"title":"Opening Choices","type":"array"},"stats":{"$ref":"#/$defs/CharacterStats","description":"Five attributes (1-3 each), chosen freely to fit the archetype. Each value is the modifier added to the d20 when that attribute governs a risky action."}},"required":["name","pronouns","archetype","appearance","background","desire","need","connection_to_adventure","strength","flaw","contradiction","npc_connection","meaningful_item","open_question","known_facts","opening_choices"],"title":"PlayerCharacter","type":"object"}
+
+  CharacterPromptVersion:
+    Type: AWS::Bedrock::PromptVersion
+    Properties:
+      # Bump this literal whenever CharacterPrompt changes so CloudFormation snapshots a new version.
+      Description: Character prompt definition revision 1
+      PromptArn: !Ref CharacterPrompt
+      Tags:
+        project: lambda-microvm-dungeon-agent
+        role: character
+
+  MasterPrompt:
+    Type: AWS::Bedrock::Prompt
+    Properties:
+      Name: !Sub "${AWS::StackName}-master"
+      Description: Adjudicates one turn against the authoritative world state.
+      DefaultVariant: default
+      Tags:
+        project: lambda-microvm-dungeon-agent
+        role: master
+      Variants:
+        - Name: default
+          ModelId: !Ref MasterModelId
+          TemplateType: CHAT
+          InferenceConfiguration:
+            Text:
+              MaxTokens: 1200
+              Temperature: 0.65
+          Metadata:
+            - Key: project
+              Value: lambda-microvm-dungeon-agent
+            - Key: role
+              Value: master
+          TemplateConfiguration:
+            Chat:
+              System:
+                - Text: >-
+                    Be a fair dungeon master. Roll only for risk, use declared IDs in changes,
+                    move failures forward, set earned victory only, and narrate in 1-3 vivid
+                    sentences. Respect the current inventory: only add_items/remove_items that
+                    exist in plan.items, never remove an item the player is not carrying, and
+                    reference carried items naturally in the narration. When a roll is required,
+                    set stat to the attribute that governs the action (might, agility, wits,
+                    charm, or resolve); the hero's stat value in player_character.stats is added
+                    to the d20, so weigh it when setting difficulty.
+              Messages:
+                - Role: user
+                  Content:
+                    - Text: >-
+                        Resolve this turn entirely in {{language_name}}.
+
+                        Player action:
+
+                        {{action}}
+
+                        World JSON:
+
+                        {{world_json}}
+
+                        Previous proposal rejection:
+
+                        {{rejection_feedback}}
+
+                        {{repair_feedback}}
+              InputVariables:
+                - Name: language_name
+                - Name: action
+                - Name: world_json
+                - Name: rejection_feedback
+                - Name: repair_feedback
+              ToolConfiguration:
+                ToolChoice:
+                  Tool:
+                    Name: resolve_turn
+                Tools:
+                  - ToolSpec:
+                      Name: resolve_turn
+                      Description: Return the success and failure branches for this player action.
+                      InputSchema:
+                        Json: {"$defs":{"StateChanges":{"additionalProperties":false,"properties":{"location_id":{"anyOf":[{"type":"string"},{"type":"null"}],"default":null,"title":"Location Id"},"add_items":{"items":{"type":"string"},"maxItems":2,"title":"Add Items","type":"array"},"remove_items":{"items":{"type":"string"},"maxItems":2,"title":"Remove Items","type":"array"},"add_facts":{"items":{"type":"string"},"maxItems":3,"title":"Add Facts","type":"array"},"health_delta":{"default":0,"maximum":1,"minimum":-2,"title":"Health Delta","type":"integer"},"objective_complete":{"default":false,"title":"Objective Complete","type":"boolean"}},"title":"StateChanges","type":"object"}},"additionalProperties":false,"properties":{"intent":{"maxLength":300,"minLength":2,"title":"Intent","type":"string"},"requires_roll":{"title":"Requires Roll","type":"boolean"},"difficulty":{"anyOf":[{"maximum":20,"minimum":5,"type":"integer"},{"type":"null"}],"default":null,"title":"Difficulty"},"stat":{"anyOf":[{"enum":["might","agility","wits","charm","resolve"],"type":"string"},{"type":"null"}],"default":null,"title":"Stat"},"success_narration":{"maxLength":500,"minLength":10,"title":"Success Narration","type":"string"},"failure_narration":{"maxLength":500,"minLength":10,"title":"Failure Narration","type":"string"},"success_changes":{"$ref":"#/$defs/StateChanges"},"failure_changes":{"$ref":"#/$defs/StateChanges"},"suggestions":{"items":{"type":"string"},"maxItems":3,"minItems":2,"title":"Suggestions","type":"array"}},"required":["intent","requires_roll","success_narration","failure_narration","success_changes","failure_changes","suggestions"],"title":"TurnProposal","type":"object"}
+
+  MasterPromptVersion:
+    Type: AWS::Bedrock::PromptVersion
+    Properties:
+      # Bump this literal whenever MasterPrompt changes so CloudFormation snapshots a new version.
+      Description: Master prompt definition revision 1
+      PromptArn: !Ref MasterPrompt
+      Tags:
+        project: lambda-microvm-dungeon-agent
+        role: master
+
   SessionTable:
     Type: AWS::DynamoDB::Table
     DeletionPolicy: Delete
@@ -373,9 +589,9 @@ Resources:
         Variables:
           TABLE_NAME: !Ref SessionTable
           CAMPAIGN_TABLE_NAME: !Ref CampaignTable
-          BEDROCK_MODEL_ID: !Ref BedrockModelId
-          CAMPAIGN_PROMPT_ARN: !Ref CampaignPromptArn
-          CHARACTER_PROMPT_ARN: !Ref CharacterPromptArn
+          BEDROCK_MODEL_ID: !Ref CampaignModelId
+          CAMPAIGN_PROMPT_ARN: !Ref CampaignPromptVersion
+          CHARACTER_PROMPT_ARN: !Ref CharacterPromptVersion
           MICROVM_IMAGE_NAME: !Ref MicrovmImageName
           WS_MANAGEMENT_ENDPOINT: !Sub "https://${ControlPlaneWebSocketApi}.execute-api.${AWS::Region}.${AWS::URLSuffix}/prod"
           SPEECH_CACHE_BUCKET: !Ref SpeechCacheBucket
@@ -408,8 +624,8 @@ Resources:
         Variables:
           TABLE_NAME: !Ref SessionTable
           CAMPAIGN_TABLE_NAME: !Ref CampaignTable
-          BEDROCK_MODEL_ID: !Ref BedrockModelId
-          MASTER_PROMPT_ARN: !Ref MasterPromptArn
+          BEDROCK_MODEL_ID: !Ref MasterModelId
+          MASTER_PROMPT_ARN: !Ref MasterPromptVersion
           MICROVM_IMAGE_NAME: !Ref MicrovmImageName
           WS_MANAGEMENT_ENDPOINT: !Sub "https://${ControlPlaneWebSocketApi}.execute-api.${AWS::Region}.${AWS::URLSuffix}/prod"
           POWERTOOLS_SERVICE_NAME: dungeon-agent-control-plane
@@ -1565,3 +1781,12 @@ Outputs:
   WorkflowMonitorDeadLetterQueueUrl:
     Description: Queue containing terminal workflow events that operational monitoring could not consume.
     Value: !Ref WorkflowMonitorDeadLetterQueue
+  CampaignPromptVersionArn:
+    Description: Versioned campaign prompt ARN used by the runtime and evaluator.
+    Value: !Ref CampaignPromptVersion
+  CharacterPromptVersionArn:
+    Description: Versioned character prompt ARN used by the runtime and evaluator.
+    Value: !Ref CharacterPromptVersion
+  MasterPromptVersionArn:
+    Description: Versioned Dungeon Master prompt ARN used by the runtime and evaluator.
+    Value: !Ref MasterPromptVersion
