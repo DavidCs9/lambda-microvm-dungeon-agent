@@ -29,7 +29,6 @@ export function MenuScreen() {
   const activeSessionsLoading = useGameStore((s) => s.activeSessionsLoading);
   const campaigns = useGameStore((s) => s.campaigns);
 
-  const [forging, setForging] = useState(false);
   const [resumingId, setResumingId] = useState<string | null>(null);
   const [abandoningId, setAbandoningId] = useState<string | null>(null);
   const [pickerOpen, setPickerOpen] = useState(false);
@@ -38,7 +37,7 @@ export function MenuScreen() {
   const wsUrl = (import.meta.env.VITE_WS_URL ?? "").trim();
   const missingEnv = !httpUrl || !wsUrl;
   const canAct = playerId.trim().length >= 3 && !missingEnv;
-  const busy = forging || !!resumingId || !!abandoningId;
+  const busy = !!resumingId || !!abandoningId;
 
   useEffect(() => {
     if (!missingEnv) {
@@ -51,16 +50,6 @@ export function MenuScreen() {
     if (!campaignId) return "Partida";
     const campaign = campaigns.find((c) => c.campaignId === campaignId);
     return campaign?.openingTitle?.trim() || `…${campaignId.slice(-8)}`;
-  }
-
-  async function onCreate() {
-    if (busy || !canAct) return;
-    setForging(true);
-    try {
-      await gameActions.createCampaign();
-    } finally {
-      setForging(false);
-    }
   }
 
   async function onResume(sessionId: string) {
@@ -157,10 +146,10 @@ export function MenuScreen() {
 
           <GhostButton
             disabled={!canAct || busy}
-            onClick={() => void onCreate()}
+            onClick={() => gameActions.goToCampaigns()}
             className="mt-0 w-full"
           >
-            {forging ? MENU_COPY.creatingCampaign : MENU_COPY.createCampaign}
+            {MENU_COPY.manageCampaigns}
           </GhostButton>
         </div>
 

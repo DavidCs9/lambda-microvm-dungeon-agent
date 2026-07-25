@@ -720,7 +720,8 @@ export const gameActions = {
     setState({ campaignsLoading: true, errorMessage: null });
     try {
       ensureConfigured();
-      const envelope = await api.listCampaigns("ready");
+      // Management view lists every campaign (any status), not just ready ones.
+      const envelope = await api.listCampaigns();
       setState({
         campaigns: envelope.campaigns,
         campaignsLoading: false,
@@ -732,6 +733,22 @@ export const gameActions = {
         errorMessage: errorMessageOf(error),
         screen: "campaigns",
       });
+    }
+  },
+
+  async deleteCampaign(campaignId: string): Promise<void> {
+    syncClients(state.playerId);
+    try {
+      ensureConfigured();
+      await api.deleteCampaign(campaignId);
+      setState((prev) => ({
+        ...prev,
+        campaigns: prev.campaigns.filter((c) => c.campaignId !== campaignId),
+        campaign: prev.campaign?.campaignId === campaignId ? null : prev.campaign,
+        errorMessage: null,
+      }));
+    } catch (error) {
+      setState({ errorMessage: errorMessageOf(error) });
     }
   },
 
