@@ -271,12 +271,23 @@ def _elapsed_ms(monotonic: Callable[[], float], started: float) -> int:
     return max(0, round((monotonic() - started) * 1000))
 
 
+# Spanish display labels for the five character stats (order is stable for the UI).
+_STAT_LABELS: dict[str, str] = {
+    "might": "Fuerza",
+    "agility": "Destreza",
+    "wits": "Astucia",
+    "charm": "Labia",
+    "resolve": "Temple",
+}
+
+
 def build_opening(
     language: LanguageCode, adventure: AdventurePlan, character: PlayerCharacter
 ) -> OpeningDocument:
     from dungeon_agent.plane_shared.domain.enums import OpeningBlockKind
     from dungeon_agent.plane_shared.domain.models import OpeningBlock
 
+    item_by_id = {item.id: item for item in adventure.items}
     content = [
         (
             "identity",
@@ -293,6 +304,25 @@ def build_opening(
         *(
             (f"action_{index}", OpeningBlockKind.POSSIBLE_ACTION, action, False)
             for index, action in enumerate(character.opening_choices, start=1)
+        ),
+        *(
+            (
+                f"inventory_{index}",
+                OpeningBlockKind.INVENTORY,
+                item_by_id[item_id].name,
+                False,
+            )
+            for index, item_id in enumerate(adventure.starting_inventory, start=1)
+            if item_id in item_by_id
+        ),
+        *(
+            (
+                f"stats_{stat_key}",
+                OpeningBlockKind.STATS,
+                f"{label} {getattr(character.stats, stat_key)}",
+                False,
+            )
+            for stat_key, label in _STAT_LABELS.items()
         ),
     ]
     return OpeningDocument(

@@ -107,8 +107,22 @@ const OPENING_KIND_COPY: Record<string, string> = {
   knowledge: "Saber",
   situation: "Situación",
   possible_action: "Posible acción",
+  inventory: "Inventario",
+  stats: "Atributos",
 };
 
 export function openingKindLabel(kind: string): string {
   return OPENING_KIND_COPY[kind] ?? kind.replace(/_/g, " ");
+}
+
+const STAT_LABEL_COPY: Record<string, string> = {
+  might: "Fuerza",
+  agility: "Destreza",
+  wits: "Astucia",
+  charm: "Labia",
+  resolve: "Temple",
+};
+
+export function statLabel(stat: string): string {
+  return STAT_LABEL_COPY[stat] ?? stat;
 }

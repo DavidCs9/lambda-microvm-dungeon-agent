@@ -384,6 +384,7 @@ def _proposal() -> TurnProposal:
         intent="Open the locked bell tower door.",
         requires_roll=True,
         difficulty=12,
+        stat="might",
         success_narration="The iron key turns and the door swings open.",
         failure_narration="The key jams and the noise echoes across the square.",
         success_changes=StateChanges(location_id="tower"),

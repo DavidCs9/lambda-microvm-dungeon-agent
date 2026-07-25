@@ -28,6 +28,8 @@ export type DiceBeat = {
   difficulty: number;
   success: boolean;
   turnId: string;
+  modifier?: number;
+  stat?: string;
 } | null;
 
 export interface GameState {
@@ -41,6 +43,8 @@ export interface GameState {
   activeSessionsLoading: boolean;
   session: SessionRecord | null;
   opening: OpeningDocument | null;
+  inventory: string[];
+  stats: Array<{ label: string; value: string }>;
   portraitUrl: string | null;
   expectedRevision: number;
   phaseLabel: string | null;
@@ -52,6 +56,8 @@ export interface GameState {
     narration: string;
     success?: boolean;
     roll?: number;
+    modifier?: number;
+    stat?: string;
     action?: string;
   }>;
   diceBeat: DiceBeat;
@@ -95,6 +101,8 @@ function createInitialState(playerId: string): GameState {
     activeSessionsLoading: false,
     session: null,
     opening: null,
+    inventory: [],
+    stats: [],
     portraitUrl: null,
     expectedRevision: 0,
     phaseLabel: null,
@@ -188,7 +196,48 @@ const OPENING_KINDS = new Set<OpeningBlockKind>([
   "knowledge",
   "situation",
   "possible_action",
+  "inventory",
+  "stats",
 ]);
+
+function inventoryFromOpening(opening: OpeningDocument | null): string[] {
+  if (!opening) {
+    return [];
+  }
+  return opening.blocks
+    .filter((block) => block.kind === "inventory")
+    .sort((a, b) => a.position - b.position)
+    .map((block) => block.text.trim())
+    .filter((text) => text.length > 0);
+}
+
+function statsFromOpening(
+  opening: OpeningDocument | null,
+): Array<{ label: string; value: string }> {
+  if (!opening) {
+    return [];
+  }
+  return opening.blocks
+    .filter((block) => block.kind === "stats")
+    .sort((a, b) => a.position - b.position)
+    .map((block) => {
+      // Stat blocks are formatted as "<Label> <value>", e.g. "Fuerza 3".
+      const text = block.text.trim();
+      const lastSpace = text.lastIndexOf(" ");
+      if (lastSpace <= 0) {
+        return { label: text, value: "" };
+      }
+      return { label: text.slice(0, lastSpace), value: text.slice(lastSpace + 1) };
+    })
+    .filter((stat) => stat.label.length > 0);
+}
+
+function parseInventoryNames(value: unknown): string[] | null {
+  if (!Array.isArray(value)) {
+    return null;
+  }
+  return value.filter((item): item is string => typeof item === "string");
+}
 
 function parseOpening(value: unknown): OpeningDocument | null {
   if (typeof value !== "object" || value === null) {
@@ -233,6 +282,27 @@ function parseOpening(value: unknown): OpeningDocument | null {
 
 function parsePortraitUrl(value: unknown): string | null {
   return typeof value === "string" && value.trim() ? value : null;
+}
+
+/** WS ready events carry opening text but not a portrait URL — fetch it from HTTP. */
+async function hydratePortrait(campaignId: string): Promise<void> {
+  try {
+    ensureConfigured();
+    const envelope = await api.getCampaignOpening(campaignId);
+    const portraitUrl = parsePortraitUrl(envelope.portraitUrl);
+    if (!portraitUrl) {
+      return;
+    }
+    if (state.campaign?.campaignId !== campaignId && state.session?.campaignId !== campaignId) {
+      return;
+    }
+    if (state.portraitUrl === portraitUrl) {
+      return;
+    }
+    setState({ portraitUrl });
+  } catch (error) {
+    console.warn("hydratePortrait failed", campaignId, error);
+  }
 }
 
 function applyEvent(event: ControlPlaneEvent): void {
@@ -296,12 +366,17 @@ function applyEvent(event: ControlPlaneEvent): void {
           lastEventSequence: Math.max(campaign.lastEventSequence, event.sequence),
         },
         opening,
+        inventory: inventoryFromOpening(opening),
+        stats: statsFromOpening(opening),
         portraitUrl,
         phaseLabel: null,
         phaseKind: null,
         screen: "opening",
         errorMessage: null,
       });
+      if (!portraitUrl) {
+        void hydratePortrait(campaign.campaignId);
+      }
       return;
     }
     case "campaign.creation.failed": {
@@ -376,6 +451,8 @@ function applyEvent(event: ControlPlaneEvent): void {
           lastEventSequence: Math.max(session.lastEventSequence, event.sequence),
         },
         opening,
+        inventory: inventoryFromOpening(opening),
+        stats: statsFromOpening(opening),
         portraitUrl,
         expectedRevision: revision,
         phaseLabel: null,
@@ -383,6 +460,10 @@ function applyEvent(event: ControlPlaneEvent): void {
         screen: "play",
         errorMessage: null,
       });
+      const campaignId = session.campaignId ?? state.campaign?.campaignId;
+      if (!portraitUrl && campaignId) {
+        void hydratePortrait(campaignId);
+      }
       return;
     }
     case "session.creation.failed": {
@@ -429,12 +510,21 @@ function applyEvent(event: ControlPlaneEvent): void {
       const roll = typeof payload.roll === "number" ? payload.roll : 0;
       const difficulty = typeof payload.difficulty === "number" ? payload.difficulty : 0;
       const success = payload.success === true;
+      const modifier = typeof payload.modifier === "number" ? payload.modifier : undefined;
+      const stat = typeof payload.stat === "string" ? payload.stat : undefined;
       setState({
         session: {
           ...session,
           lastEventSequence: Math.max(session.lastEventSequence, event.sequence),
         },
-        diceBeat: { turnId, roll, difficulty, success },
+        diceBeat: {
+          turnId,
+          roll,
+          difficulty,
+          success,
+          ...(modifier !== undefined ? { modifier } : {}),
+          ...(stat !== undefined ? { stat } : {}),
+        },
       });
       return;
     }
@@ -472,12 +562,18 @@ function applyEvent(event: ControlPlaneEvent): void {
         turnId,
         narration,
         ...(dice && dice.turnId === turnId
-          ? { success: dice.success, roll: dice.roll }
+          ? {
+              success: dice.success,
+              roll: dice.roll,
+              ...(dice.modifier !== undefined ? { modifier: dice.modifier } : {}),
+              ...(dice.stat !== undefined ? { stat: dice.stat } : {}),
+            }
           : {}),
         ...(action ? { action } : {}),
       };
       pendingActionText = "";
       onTurnCompleted(narration);
+      const nextInventory = parseInventoryNames(payload.inventory);
       setState({
         session: {
           ...session,
@@ -491,6 +587,7 @@ function applyEvent(event: ControlPlaneEvent): void {
         // text twice (turnLog entry + leftover Narración block).
         narrationStream: "",
         turnLog: [...state.turnLog, entry],
+        ...(nextInventory ? { inventory: nextInventory } : {}),
       });
       return;
     }
@@ -590,6 +687,8 @@ export const gameActions = {
         campaigns: [],
         session: null,
         opening: null,
+        inventory: [],
+        stats: [],
         portraitUrl: null,
         turnLog: [],
         narrationStream: "",
@@ -680,6 +779,8 @@ export const gameActions = {
       setState({
         campaign,
         opening,
+        inventory: inventoryFromOpening(opening),
+        stats: statsFromOpening(opening),
         portraitUrl,
         screen: "opening",
         phaseLabel: null,
@@ -720,6 +821,8 @@ export const gameActions = {
         phaseKind: "session",
         phaseLabel: "requested",
         errorMessage: null,
+        inventory: inventoryFromOpening(state.opening),
+        stats: statsFromOpening(state.opening),
         turnLog: [],
         narrationStream: "",
         turnPending: false,
@@ -786,9 +889,24 @@ export const gameActions = {
     const session = state.session;
     if (session && (session.status === "ready" || session.status === "active")) {
       setState({ screen: "play", errorMessage: null });
+      const campaignId = session.campaignId ?? state.campaign?.campaignId;
+      if (!state.portraitUrl && campaignId) {
+        void hydratePortrait(campaignId);
+      }
       return;
     }
     void gameActions.startSession();
+  },
+
+  ensurePortrait(): void {
+    if (state.portraitUrl) {
+      return;
+    }
+    const campaignId = state.campaign?.campaignId ?? state.session?.campaignId ?? null;
+    if (!campaignId) {
+      return;
+    }
+    void hydratePortrait(campaignId);
   },
 
   async resumeSession(sessionId: string): Promise<void> {
@@ -831,9 +949,13 @@ export const gameActions = {
       }
 
       const turnLog: GameState["turnLog"] = [];
+      let replayedInventory: string[] | null = null;
       if (session.revision > 0) {
         const eventsEnvelope = await api.getSessionEvents(sessionId, 0);
-        const diceByTurn = new Map<string, { roll: number; success: boolean }>();
+        const diceByTurn = new Map<
+          string,
+          { roll: number; success: boolean; modifier?: number; stat?: string }
+        >();
         const actionByTurn = new Map<string, string>();
         for (const event of eventsEnvelope.events) {
           const payload = event.payload ?? {};
@@ -845,6 +967,8 @@ export const gameActions = {
             diceByTurn.set(turnId, {
               roll: typeof payload.roll === "number" ? payload.roll : 0,
               success: payload.success === true,
+              ...(typeof payload.modifier === "number" ? { modifier: payload.modifier } : {}),
+              ...(typeof payload.stat === "string" ? { stat: payload.stat } : {}),
             });
           }
           if (
@@ -864,10 +988,21 @@ export const gameActions = {
           const narration = typeof payload.narration === "string" ? payload.narration : "";
           const dice = diceByTurn.get(turnId);
           const action = actionByTurn.get(turnId);
+          const eventInventory = parseInventoryNames(payload.inventory);
+          if (eventInventory) {
+            replayedInventory = eventInventory;
+          }
           turnLog.push({
             turnId,
             narration,
-            ...(dice ? { success: dice.success, roll: dice.roll } : {}),
+            ...(dice
+              ? {
+                  success: dice.success,
+                  roll: dice.roll,
+                  ...(dice.modifier !== undefined ? { modifier: dice.modifier } : {}),
+                  ...(dice.stat !== undefined ? { stat: dice.stat } : {}),
+                }
+              : {}),
             ...(action ? { action } : {}),
           });
         }
@@ -877,6 +1012,8 @@ export const gameActions = {
         session,
         campaign,
         opening,
+        inventory: replayedInventory ?? inventoryFromOpening(opening),
+        stats: statsFromOpening(opening),
         portraitUrl,
         expectedRevision: session.revision,
         turnLog,

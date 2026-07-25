@@ -17,6 +17,8 @@ import {
 export function PlayTableScreen() {
   const opening = useGameStore((s) => s.opening);
   const portraitUrl = useGameStore((s) => s.portraitUrl);
+  const inventory = useGameStore((s) => s.inventory);
+  const stats = useGameStore((s) => s.stats);
   const campaign = useGameStore((s) => s.campaign);
   const narrationStream = useGameStore((s) => s.narrationStream);
   const turnLog = useGameStore((s) => s.turnLog);
@@ -67,6 +69,10 @@ export function PlayTableScreen() {
   }, [confirmExit]);
 
   useEffect(() => {
+    gameActions.ensurePortrait();
+  }, []);
+
+  useEffect(() => {
     if (!followBottom) return;
     bottomRef.current?.scrollIntoView({ block: "end" });
   }, [turnLog, narrationStream, followBottom]);
@@ -96,7 +102,14 @@ export function PlayTableScreen() {
         />
       }
       leftRail={<CampaignContextPanel opening={opening} />}
-      rightRail={<CharacterContextPanel opening={opening} portraitUrl={portraitUrl} />}
+      rightRail={
+        <CharacterContextPanel
+          opening={opening}
+          portraitUrl={portraitUrl}
+          inventory={inventory}
+          stats={stats}
+        />
+      }
       footer={
         <Composer
           value={action}
@@ -129,7 +142,12 @@ export function PlayTableScreen() {
           {turnLog.map((entry) => (
             <TranscriptEntry key={entry.turnId} action={entry.action} narration={entry.narration}>
               {typeof entry.roll === "number" && (
-                <DiceChip roll={entry.roll} success={entry.success} />
+                <DiceChip
+                  roll={entry.roll}
+                  success={entry.success}
+                  modifier={entry.modifier}
+                  stat={entry.stat}
+                />
               )}
             </TranscriptEntry>
           ))}
