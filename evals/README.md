@@ -16,6 +16,23 @@ uv run python evals/gameplay_experience.py
 
 The score is an engineering safety proxy, not a replacement for playtesting.
 
+## Golden dataset
+
+`golden/` contains hand-authored reference cases for the three model roles: campaign architect,
+character architect, and Dungeon Master. The cases are intentionally small and cover the contracts
+that matter before comparing models: playable graph, secrets and agency, character grounding, roll
+calibration, inventory safety, and earned victory.
+
+Run the deterministic rubric with:
+
+```sh
+uv run python evals/golden_dataset.py
+```
+
+This is a contract/rubric eval, not exact string matching. A model can use different names and
+prose while still passing the behavioral checks. Add a case when a real failure is found; do not
+use generated samples as golden truth without human review.
+
 ## Bedrock architect and Dungeon Master comparison
 
 The model evaluation generates an English and Spanish adventure per candidate, adjudicates the
