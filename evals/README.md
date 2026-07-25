@@ -71,7 +71,7 @@ candidate passes all evals, activate its runtime pointer explicitly:
 uv run --group tooling python scripts/activate_runtime_config.py \
   --profile personal \
   --region us-east-2 \
-  --parameter-name dungeon-agent/bedrock-runtime-config \
+  --parameter-name /dungeon-agent/bedrock-runtime-config \
   --manifest artifacts/haiku-candidate.json
 ```
 

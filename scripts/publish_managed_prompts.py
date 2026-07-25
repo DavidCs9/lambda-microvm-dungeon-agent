@@ -43,14 +43,23 @@ PROMPTS = (
             "three solution paths, no commercial-fiction copies, and no silent bell/tower. "
             "All IDs must use lowercase ASCII letters, digits, and underscores only. Treat every "
             "tool-schema maxLength as a hard limit, but stay well below it: premise <=140 "
-            "characters, objective <=80, opening <=120, and every description <=80. Before the "
+            "characters, objective 6-10 words, opening 8-12 words, premise 10-15 words, and "
+            "every description 5-10 words. These word limits keep the character limits safe. "
+            "Before the "
             "tool call, silently check every string length and shorten it if needed. Every "
             "location must include id, name, description, and exits; never omit exits. Use only "
             "declared location IDs in exits. Valid compact shapes include "
             '{"objective":"Recover the moon key before dawn."} and '
             '{"id":"mist_gate","name":"Mist Gate",'
             '"description":"A stone arch hides the road.",'
-            '"exits":["market","crypt"]}. These are examples only; create fresh content.'
+            '"exits":["market","crypt"]}. Build a private registry of every location id '
+            "before writing exits, then copy exits only from that registry. A valid graph shape is "
+            '[{"id":"market","exits":["crypt"]},'
+            '{"id":"crypt","exits":["market","tower"]},'
+            '{"id":"tower","exits":["crypt"]}]. Never invent an exit id and never use a '
+            "location name unless it is exactly its id. These are examples only; create fresh "
+            "content. Create exactly 3 locations, exactly 1 NPC, exactly 2 items, exactly 2 "
+            "secrets, and max_turns 8-10; do not add extra locations or objects."
         ),
         user_template=(
             "Create a 10-15 minute {{language_name}} adventure inspired by {{theme}}: objective, "
