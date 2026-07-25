@@ -22,6 +22,7 @@ function formatDate(value: string | undefined): string {
 
 export function MenuScreen() {
   const playerId = useGameStore((s) => s.playerId);
+  const playerName = useGameStore((s) => s.playerName);
   const wsStatus = useGameStore((s) => s.wsStatus);
   const errorMessage = useGameStore((s) => s.errorMessage);
   const activeSessions = useGameStore((s) => s.activeSessions);
@@ -191,7 +192,7 @@ export function MenuScreen() {
         ) : null}
 
         <QuietMeta>
-          {playerId} · {wsStatusLabel(wsStatus)}
+          {playerName} · {wsStatusLabel(wsStatus)}
         </QuietMeta>
       </motion.div>
     </ScreenShell>
