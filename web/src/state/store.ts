@@ -256,6 +256,27 @@ function parsePortraitUrl(value: unknown): string | null {
   return typeof value === "string" && value.trim() ? value : null;
 }
 
+/** WS ready events carry opening text but not a portrait URL — fetch it from HTTP. */
+async function hydratePortrait(campaignId: string): Promise<void> {
+  try {
+    ensureConfigured();
+    const envelope = await api.getCampaignOpening(campaignId);
+    const portraitUrl = parsePortraitUrl(envelope.portraitUrl);
+    if (!portraitUrl) {
+      return;
+    }
+    if (state.campaign?.campaignId !== campaignId && state.session?.campaignId !== campaignId) {
+      return;
+    }
+    if (state.portraitUrl === portraitUrl) {
+      return;
+    }
+    setState({ portraitUrl });
+  } catch (error) {
+    console.warn("hydratePortrait failed", campaignId, error);
+  }
+}
+
 function applyEvent(event: ControlPlaneEvent): void {
   const campaign = state.campaign;
   const session = state.session;
@@ -324,6 +345,9 @@ function applyEvent(event: ControlPlaneEvent): void {
         screen: "opening",
         errorMessage: null,
       });
+      if (!portraitUrl) {
+        void hydratePortrait(campaign.campaignId);
+      }
       return;
     }
     case "campaign.creation.failed": {
@@ -406,6 +430,10 @@ function applyEvent(event: ControlPlaneEvent): void {
         screen: "play",
         errorMessage: null,
       });
+      const campaignId = session.campaignId ?? state.campaign?.campaignId;
+      if (!portraitUrl && campaignId) {
+        void hydratePortrait(campaignId);
+      }
       return;
     }
     case "session.creation.failed": {
@@ -814,9 +842,24 @@ export const gameActions = {
     const session = state.session;
     if (session && (session.status === "ready" || session.status === "active")) {
       setState({ screen: "play", errorMessage: null });
+      const campaignId = session.campaignId ?? state.campaign?.campaignId;
+      if (!state.portraitUrl && campaignId) {
+        void hydratePortrait(campaignId);
+      }
       return;
     }
     void gameActions.startSession();
+  },
+
+  ensurePortrait(): void {
+    if (state.portraitUrl) {
+      return;
+    }
+    const campaignId = state.campaign?.campaignId ?? state.session?.campaignId ?? null;
+    if (!campaignId) {
+      return;
+    }
+    void hydratePortrait(campaignId);
   },
 
   async resumeSession(sessionId: string): Promise<void> {
