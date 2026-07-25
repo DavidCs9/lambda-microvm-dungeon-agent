@@ -248,6 +248,9 @@ class DiceRolledPayload(ContractModel):
     roll: int = Field(ge=1, le=20)
     difficulty: int = Field(ge=5, le=20)
     success: bool
+    # Governing attribute and the modifier it added to the die (None on legacy events).
+    stat: str | None = Field(default=None, min_length=2, max_length=20)
+    modifier: int | None = Field(default=None, ge=0, le=3)
 
 
 class NarrationDeltaPayload(ContractModel):
@@ -261,6 +264,9 @@ class TurnCompletedPayload(ContractModel):
     revision: int = Field(ge=1)
     narration: str = Field(min_length=1, max_length=4000)
     action: str | None = Field(default=None, min_length=1, max_length=500)
+    # Resolved item names the protagonist carries after this turn. None on legacy
+    # events emitted before inventory delivery existed.
+    inventory: tuple[str, ...] | None = Field(default=None, max_length=8)
 
 
 class SessionCompletedPayload(ContractModel):

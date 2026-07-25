@@ -120,9 +120,13 @@ export function CampaignContextPanel({
 export function CharacterContextPanel({
   opening,
   portraitUrl,
+  inventory = [],
+  stats = [],
 }: {
   opening: OpeningDocument | null | undefined;
   portraitUrl?: string | null;
+  inventory?: string[];
+  stats?: Array<{ label: string; value: string }>;
 }) {
   const identity = useMemo(() => {
     const [block] = blocksOfKind(opening, "identity");
@@ -134,7 +138,13 @@ export function CharacterContextPanel({
     return block ? truncate(block.text, 160) : null;
   }, [opening]);
 
-  if (!portraitUrl && !identity && !motivation) return null;
+  const items = useMemo(
+    () => inventory.map((name) => name.trim()).filter((name) => name.length > 0),
+    [inventory],
+  );
+
+  if (!portraitUrl && !identity && !motivation && items.length === 0 && stats.length === 0)
+    return null;
 
   return (
     <RailShell align="right">
@@ -160,6 +170,49 @@ export function CharacterContextPanel({
               Motivación
             </p>
             <p className="text-sm leading-relaxed text-[var(--ink)]/85">{motivation}</p>
+          </section>
+        )}
+
+        {stats.length > 0 && (
+          <section>
+            <p className="mb-2 text-[0.65rem] tracking-[0.2em] text-[var(--muted)] uppercase [font-family:var(--font-ui)]">
+              Atributos
+            </p>
+            <ul className="space-y-1">
+              {stats.map((stat) => (
+                <li
+                  key={stat.label}
+                  className="flex items-center justify-between text-sm text-[var(--ink)]/85"
+                >
+                  <span>{stat.label}</span>
+                  <span className="ml-2 inline-flex h-5 min-w-5 items-center justify-center rounded border border-[var(--line)] bg-[var(--surface-2)]/60 px-1.5 text-xs font-semibold text-[var(--ember)] [font-family:var(--font-ui)]">
+                    {stat.value}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          </section>
+        )}
+
+        {(identity || portraitUrl) && (
+          <section>
+            <p className="mb-1.5 text-[0.65rem] tracking-[0.2em] text-[var(--muted)] uppercase [font-family:var(--font-ui)]">
+              Inventario
+            </p>
+            {items.length > 0 ? (
+              <ul className="flex flex-wrap gap-1.5">
+                {items.map((name, index) => (
+                  <li
+                    key={`${name}-${index}`}
+                    className="rounded border border-[var(--line)] bg-[var(--surface-2)]/60 px-2 py-1 text-xs leading-snug text-[var(--ink)]/85"
+                  >
+                    {truncate(name, 60)}
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p className="text-xs text-[var(--muted)] italic">Sin objetos todavía.</p>
+            )}
           </section>
         )}
       </div>

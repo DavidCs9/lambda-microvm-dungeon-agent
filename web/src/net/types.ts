@@ -8,7 +8,9 @@ export type OpeningBlockKind =
   | "motivation"
   | "knowledge"
   | "situation"
-  | "possible_action";
+  | "possible_action"
+  | "inventory"
+  | "stats";
 
 export interface OpeningBlock {
   id: string;

@@ -25,7 +25,13 @@ class DungeonMaster:
         result = self.agent.invoke(
             system=(
                 "Be a fair dungeon master. Roll only for risk, use declared IDs in changes, move "
-                "failures forward, set earned victory only, and narrate in 1-3 vivid sentences."
+                "failures forward, set earned victory only, and narrate in 1-3 vivid sentences. "
+                "Respect the current inventory: only add_items/remove_items that exist in "
+                "plan.items, never remove an item the player is not carrying, and reference "
+                "carried items naturally in the narration. "
+                "When a roll is required, set stat to the attribute that governs the action "
+                "(might, agility, wits, charm, or resolve); the hero's stat value in "
+                "player_character.stats is added to the d20, so weigh it when setting difficulty."
             ),
             prompt=json.dumps(
                 {

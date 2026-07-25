@@ -24,7 +24,9 @@ class AdventureArchitect:
             ),
             prompt=(
                 f"Create a 10-15 minute {language_name} adventure inspired by {theme}: objective, "
-                "3-5 locations, 1-2 NPCs, useful items, secrets, max_turns, and short opening."
+                "3-5 locations, 1-2 NPCs, useful items, secrets, max_turns, and short opening. "
+                "Also pick a small, coherent starting_inventory (0-2 item ids from items) that the "
+                "protagonist plausibly already carries given the premise."
             ),
             tool_name="create_adventure",
             tool_description="Return the complete validated adventure plan.",
@@ -56,6 +58,10 @@ class CharacterArchitect:
                         "personal stake, known facts, and three ways to begin. "
                         f"Put exactly these pronouns in the pronouns field: {pronouns}. "
                         "Align name, appearance, and grammar with that identity. "
+                        "Set stats (might, agility, wits, charm, resolve) to a value of 1-3 each, "
+                        "chosen freely and independently to fit the archetype. Do not balance "
+                        "them: some heroes are broadly weak (mostly 1s), others exceptional "
+                        "(mostly 3s). "
                         "Keep every string field short enough to satisfy the tool schema "
                         "maxLength constraints (prefer punchy one-liners)."
                     ),

@@ -33,7 +33,7 @@ def start_adventure(
         plan=plan,
         player_character=player_character,
         location_id=plan.starting_location_id,
-        inventory=[],
+        inventory=list(plan.starting_inventory),
         health=3,
         facts=[],
         status="active",
@@ -51,10 +51,17 @@ def resolve_turn(
         raise ValueError("adventure is not active")
 
     actual_roll = roll
+    modifier: int | None = None
     if proposal.requires_roll:
         actual_roll = actual_roll or secrets.randbelow(20) + 1
         assert proposal.difficulty is not None
-        success = actual_roll >= proposal.difficulty
+        assert proposal.stat is not None
+        modifier = (
+            state.player_character.stats.modifier(proposal.stat)
+            if state.player_character is not None
+            else 0
+        )
+        success = actual_roll + modifier >= proposal.difficulty
     else:
         if actual_roll is not None:
             raise ValueError("a roll cannot be supplied for an automatic action")
@@ -85,6 +92,8 @@ def resolve_turn(
                 narration=narration,
                 roll=actual_roll,
                 difficulty=proposal.difficulty,
+                stat=proposal.stat,
+                modifier=modifier,
                 suggestions=proposal.suggestions,
             ),
         }
