@@ -39,3 +39,10 @@ aws cloudformation deploy \
 ```
 
 The current sandbox is deployed in `us-east-2` as `dungeon-agent-control-plane-sandbox`.
+The template owns each Bedrock managed prompt and immutable version. A small custom resource is
+used because the native `AWS::Bedrock::Prompt` provider converts JSON Schema numeric and boolean
+values to strings. The workflow and turn-worker functions consume the resulting version ARNs
+directly. When changing a prompt definition, also increment its `VersionDescription` revision so
+CloudFormation records the intended snapshot. The three version ARNs are exposed as stack outputs
+for evals. Campaign, character, and Dungeon Master model IDs are independent template parameters
+so an eval winner can be promoted per role without changing runtime code.

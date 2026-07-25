@@ -1,0 +1,27 @@
+{
+  "candidate": "baseline-sonnet46-campaign-v3",
+  "prompts": {
+    "campaign": {
+      "modelId": "us.anthropic.claude-sonnet-4-6",
+      "promptArn": "arn:aws:bedrock:us-east-2:225989371926:prompt/I2POVLPWJA:3",
+      "promptId": "I2POVLPWJA",
+      "promptVersion": "3",
+      "role": "campaign"
+    },
+    "character": {
+      "modelId": "us.anthropic.claude-sonnet-4-6",
+      "promptArn": "arn:aws:bedrock:us-east-2:225989371926:prompt/ZVZRKZEO6B:1",
+      "promptId": "ZVZRKZEO6B",
+      "promptVersion": "1",
+      "role": "character"
+    },
+    "master": {
+      "modelId": "us.anthropic.claude-sonnet-4-6",
+      "promptArn": "arn:aws:bedrock:us-east-2:225989371926:prompt/9WAKWCNVEO:1",
+      "promptId": "9WAKWCNVEO",
+      "promptVersion": "1",
+      "role": "master"
+    }
+  },
+  "schemaVersion": 1
+}

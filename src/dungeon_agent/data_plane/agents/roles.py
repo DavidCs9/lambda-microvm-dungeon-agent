@@ -43,6 +43,20 @@ class DungeonMaster:
                 ensure_ascii=False,
                 separators=(",", ":"),
             ),
+            prompt_variables={
+                "language_name": language_name,
+                "action": action,
+                "world_json": json.dumps(
+                    world,
+                    ensure_ascii=False,
+                    separators=(",", ":"),
+                ),
+                "rejection_feedback": (
+                    rejection_feedback
+                    if rejection_feedback is not None
+                    else "No previous proposal rejection."
+                ),
+            },
             tool_name="resolve_turn",
             tool_description="Return the success and failure branches for this player action.",
             output_model=TurnProposal,

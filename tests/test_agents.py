@@ -101,6 +101,65 @@ def test_structured_agent_repairs_invalid_output_once() -> None:
     assert repaired_request["inferenceConfig"]["temperature"] == 0.3
 
 
+def test_structured_agent_invokes_versioned_managed_prompt() -> None:
+    client = Mock()
+    client.converse.return_value = response_for(
+        "create_adventure", sample_plan().model_dump(mode="json")
+    )
+    prompt_arn = "arn:aws:bedrock:us-east-2:123456789012:prompt/ABCDEFGHIJ:3"
+    agent = StructuredBedrockAgent(client, prompt_arn)
+
+    result = agent.invoke(
+        system="Ignored because it is managed",
+        prompt="Ignored because it is managed",
+        prompt_variables={"language_name": "Spanish", "theme": "a glass harbor"},
+        tool_name="create_adventure",
+        tool_description="Managed by the prompt",
+        output_model=type(sample_plan()),
+        max_tokens=2_000,
+        temperature=0.9,
+    )
+
+    assert result.title == "The Storm Bell"
+    request = client.converse.call_args.kwargs
+    assert request["modelId"] == prompt_arn
+    assert request["promptVariables"] == {
+        "language_name": {"text": "Spanish"},
+        "theme": {"text": "a glass harbor"},
+        "repair_feedback": {"text": "No previous validation failure."},
+    }
+    assert "system" not in request
+    assert "messages" not in request
+    assert "inferenceConfig" not in request
+    assert "toolConfig" not in request
+
+
+def test_structured_agent_repairs_managed_prompt_with_feedback_variable() -> None:
+    client = Mock()
+    client.converse.side_effect = [
+        response_for("create_adventure", {"title": "Incomplete"}),
+        response_for("create_adventure", sample_plan().model_dump(mode="json")),
+    ]
+    agent = StructuredBedrockAgent(
+        client,
+        "arn:aws:bedrock:us-east-2:123456789012:prompt/ABCDEFGHIJ:3",
+    )
+
+    agent.invoke(
+        system="ignored",
+        prompt="ignored",
+        prompt_variables={"language_name": "English", "theme": "a glass harbor"},
+        tool_name="create_adventure",
+        tool_description="managed",
+        output_model=type(sample_plan()),
+        max_tokens=2_000,
+        temperature=0.9,
+    )
+
+    repaired = client.converse.call_args_list[1].kwargs
+    assert "failed validation" in repaired["promptVariables"]["repair_feedback"]["text"]
+
+
 def test_character_architect_grounds_protagonist_in_adventure() -> None:
     client = Mock()
     client.converse.return_value = response_for(
