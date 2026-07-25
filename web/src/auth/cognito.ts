@@ -33,16 +33,20 @@ function pool(): CognitoUserPool {
 }
 
 function sessionOf(user: CognitoUser, session: CognitoUserSession): AuthSession {
-  const idPayload = session.getIdToken().decodePayload() as { sub?: unknown };
+  const idPayload = session.getIdToken().decodePayload() as {
+    email?: unknown;
+    sub?: unknown;
+  };
   if (typeof idPayload.sub !== "string") {
     throw new Error("Cognito session is missing the user subject.");
   }
+  const email = typeof idPayload.email === "string" ? idPayload.email : user.getUsername();
   return {
     accessToken: session.getAccessToken().getJwtToken(),
     idToken: session.getIdToken().getJwtToken(),
     userSub: idPayload.sub,
     username: user.getUsername(),
-    displayName: displayNameFromEmail(user.getUsername()),
+    displayName: displayNameFromEmail(email),
   };
 }
 
