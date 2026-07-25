@@ -1,0 +1,173 @@
+name: Deploy web sandbox
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - "web/**"
+      - "infra/web/**"
+      - ".github/workflows/deploy-web.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-web-sandbox
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Build and deploy web client
+    runs-on: ubuntu-latest
+    environment: sandbox
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      AWS_REGION: ${{ vars.AWS_REGION }}
+      CONTROL_PLANE_STACK: ${{ vars.AWS_CONTROL_PLANE_STACK }}
+      CERTIFICATE_REGION: us-east-1
+      CERTIFICATE_STACK: dungeon-agent-web-certificate-sandbox
+      WEB_STACK: dungeon-agent-web-sandbox
+    defaults:
+      run:
+        working-directory: web
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7.0.0
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4.4.0
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - name: Configure short-lived AWS credentials
+        uses: aws-actions/configure-aws-credentials@v6.2.2
+        with:
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
+
+      - name: Resolve control-plane outputs
+        id: control-plane
+        working-directory: .
+        run: |
+          set -euo pipefail
+          outputs="$(aws cloudformation describe-stacks \
+            --stack-name "${CONTROL_PLANE_STACK}" \
+            --query 'Stacks[0].Outputs' \
+            --output json)"
+          value() {
+            echo "${outputs}" | jq -r --arg key "$1" '.[] | select(.OutputKey == $key) | .OutputValue'
+          }
+          http_url="$(value ApiUrl)"
+          ws_url="$(value WebSocketUrl)"
+          user_pool_id="$(value CognitoUserPoolId)"
+          client_id="$(value CognitoUserPoolClientId)"
+          {
+            echo "VITE_HTTP_URL=${http_url}"
+            echo "VITE_WS_URL=${ws_url}"
+            echo "VITE_COGNITO_USER_POOL_ID=${user_pool_id}"
+            echo "VITE_COGNITO_CLIENT_ID=${client_id}"
+          } >> "${GITHUB_ENV}"
+          for pair in \
+            "VITE_HTTP_URL=${http_url}" \
+            "VITE_WS_URL=${ws_url}" \
+            "VITE_COGNITO_USER_POOL_ID=${user_pool_id}" \
+            "VITE_COGNITO_CLIENT_ID=${client_id}"; do
+            key="${pair%%=*}"
+            value="${pair#*=}"
+            if [[ -z "${value}" || "${value}" == "None" ]]; then
+              echo "Missing ${key} in ${CONTROL_PLANE_STACK} outputs" >&2
+              exit 1
+            fi
+          done
+
+      - name: Resolve custom domain inputs
+        id: domain
+        working-directory: .
+        run: |
+          set -euo pipefail
+          hosted_zone_id="$(aws route53 list-hosted-zones-by-name \
+            --dns-name castrodavid.dev \
+            --query 'HostedZones[?Name==`castrodavid.dev.` && Config.PrivateZone == `false`].Id | [0]' \
+            --output text)"
+          hosted_zone_id="${hosted_zone_id##*/}"
+          if [[ -z "${hosted_zone_id}" || "${hosted_zone_id}" == "None" ]]; then
+            echo "Public hosted zone for castrodavid.dev was not found" >&2
+            exit 1
+          fi
+          echo "hosted-zone-id=${hosted_zone_id}" >> "${GITHUB_OUTPUT}"
+
+      - name: Deploy ACM certificate stack
+        working-directory: .
+        run: |
+          aws cloudformation deploy \
+            --template-file infra/web/certificate.yaml \
+            --stack-name "${CERTIFICATE_STACK}" \
+            --region "${CERTIFICATE_REGION}" \
+            --parameter-overrides \
+              DomainName=dungeon.castrodavid.dev \
+              HostedZoneId="${{ steps.domain.outputs.hosted-zone-id }}" \
+            --no-fail-on-empty-changeset
+
+      - name: Resolve certificate output
+        id: certificate
+        working-directory: .
+        run: |
+          certificate_arn="$(aws cloudformation describe-stacks \
+            --stack-name "${CERTIFICATE_STACK}" \
+            --region "${CERTIFICATE_REGION}" \
+            --query 'Stacks[0].Outputs[?OutputKey==`CertificateArn`].OutputValue' \
+            --output text)"
+          if [[ -z "${certificate_arn}" || "${certificate_arn}" == "None" ]]; then
+            echo "Certificate ARN was not found" >&2
+            exit 1
+          fi
+          echo "arn=${certificate_arn}" >> "${GITHUB_OUTPUT}"
+
+      - name: Install dependencies and build
+        run: |
+          npm ci
+          npm run build
+
+      - name: Deploy hosting stack
+        working-directory: .
+        run: |
+          aws cloudformation deploy \
+            --template-file infra/web/hosting.yaml \
+            --stack-name "${WEB_STACK}" \
+            --region "${AWS_REGION}" \
+            --parameter-overrides \
+              DomainName=dungeon.castrodavid.dev \
+              CertificateArn="${{ steps.certificate.outputs.arn }}" \
+            --no-fail-on-empty-changeset
+
+      - name: Resolve hosting outputs
+        id: hosting
+        working-directory: .
+        run: |
+          set -euo pipefail
+          outputs="$(aws cloudformation describe-stacks \
+            --stack-name "${WEB_STACK}" \
+            --query 'Stacks[0].Outputs' \
+            --output json)"
+          bucket="$(echo "${outputs}" | jq -r '.[] | select(.OutputKey == "WebBucketName") | .OutputValue')"
+          distribution="$(echo "${outputs}" | jq -r '.[] | select(.OutputKey == "WebDistributionId") | .OutputValue')"
+          url="$(echo "${outputs}" | jq -r '.[] | select(.OutputKey == "WebUrl") | .OutputValue')"
+          echo "bucket=${bucket}" >> "${GITHUB_OUTPUT}"
+          echo "distribution=${distribution}" >> "${GITHUB_OUTPUT}"
+          echo "url=${url}" >> "${GITHUB_OUTPUT}"
+
+      - name: Publish static assets
+        run: aws s3 sync dist "s3://${{ steps.hosting.outputs.bucket }}" --delete --region "${AWS_REGION}"
+
+      - name: Invalidate CloudFront
+        working-directory: .
+        run: aws cloudfront create-invalidation --distribution-id "${{ steps.hosting.outputs.distribution }}" --paths '/*'
+
+      - name: Publish URL
+        run: |
+          echo "Live URL: ${{ steps.hosting.outputs.url }}" >> "${GITHUB_STEP_SUMMARY}"

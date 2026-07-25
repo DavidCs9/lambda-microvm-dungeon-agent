@@ -1,0 +1,31 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: ACM certificate for the Dungeon Agent web custom domain.
+
+Parameters:
+  DomainName:
+    Type: String
+    Default: dungeon.castrodavid.dev
+    AllowedPattern: ^[a-z0-9.-]+$
+    Description: Custom domain name for the CloudFront distribution.
+  HostedZoneId:
+    Type: String
+    AllowedPattern: ^Z[A-Z0-9]+$
+    Description: Public Route 53 hosted zone that owns the custom domain.
+
+Resources:
+  WebCertificate:
+    Type: AWS::CertificateManager::Certificate
+    Properties:
+      DomainName: !Ref DomainName
+      DomainValidationOptions:
+        - DomainName: !Ref DomainName
+          HostedZoneId: !Ref HostedZoneId
+      Tags:
+        - Key: Name
+          Value: !Sub "${AWS::StackName}-${DomainName}"
+      ValidationMethod: DNS
+
+Outputs:
+  CertificateArn:
+    Description: ACM certificate ARN for CloudFront.
+    Value: !Ref WebCertificate
