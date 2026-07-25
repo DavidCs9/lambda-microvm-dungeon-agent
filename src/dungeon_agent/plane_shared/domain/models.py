@@ -139,6 +139,22 @@ class SessionRecord(_AggregateRecord):
         return self
 
 
+class RoleGenerationMetrics(ContractModel):
+    """Recorded once per model role during campaign generation."""
+
+    model_id: str = Field(min_length=1, max_length=200)
+    calls: int = Field(ge=0)
+    input_tokens: int = Field(ge=0)
+    output_tokens: int = Field(ge=0)
+    latency_ms: int = Field(ge=0)
+    repairs: int = Field(ge=0)
+
+
+class CampaignGenerationMetrics(ContractModel):
+    adventure_architect: RoleGenerationMetrics | None = None
+    character_architect: RoleGenerationMetrics | None = None
+
+
 class CampaignRecord(_AggregateRecord):
     campaign_id: CampaignId
     status: CampaignStatus
@@ -146,6 +162,7 @@ class CampaignRecord(_AggregateRecord):
     adventure_ref: ArtifactRef | None = None
     character_ref: ArtifactRef | None = None
     opening_title: str | None = None
+    generation: CampaignGenerationMetrics | None = None
 
     @model_validator(mode="after")
     def validate_lifecycle(self) -> CampaignRecord:

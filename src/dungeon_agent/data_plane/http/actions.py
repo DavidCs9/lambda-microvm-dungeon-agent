@@ -27,6 +27,7 @@ from dungeon_agent.plane_shared.http.models import (
     TurnAcceptedEnvelope,
 )
 from dungeon_agent.plane_shared.identifiers import new_turn_id
+from dungeon_agent.plane_shared.logging import logger
 from dungeon_agent.plane_shared.persistence.errors import SessionRevisionConflictError
 
 SESSION_DEPENDENCY = "A session dependency is temporarily unavailable."
@@ -103,6 +104,7 @@ class ActionHttpHandlers:
             )
             self._turns.invoke_turn(command)
         except Exception:
+            logger.exception("dependency_unavailable", correlation_id=correlation_id)
             self._release_checkout(session_id, turn_id)
             return dependency_error(SESSION_DEPENDENCY, correlation_id)
         return self._turn_accepted(session_id, turn_id, "started", correlation_id)
@@ -162,7 +164,7 @@ class ActionHttpHandlers:
                     phase=SessionPhase.READY,
                 )
         except Exception:
-            print(f"checkout rollback failed: {session_id}")
+            logger.exception("checkout_rollback_failed", session_id=session_id)
 
     def _emit(
         self,

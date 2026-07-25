@@ -195,11 +195,9 @@ class DurableCampaignWorkflowStub:
             image = self._portrait_generator.generate(character)
             return cast(str, self._portrait_store.save(campaign_id, image))
         except Exception:
-            import logging
+            from dungeon_agent.plane_shared.logging import logger
 
-            logging.getLogger(__name__).exception(
-                "portrait_generation_failed", extra={"campaign_id": campaign_id}
-            )
+            logger.exception("portrait_generation_failed", campaign_id=campaign_id)
             return None
 
     def _load_opening(self, character_ref: str) -> OpeningDocument:

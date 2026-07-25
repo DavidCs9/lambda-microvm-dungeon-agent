@@ -33,6 +33,7 @@ from dungeon_agent.plane_shared.http.models import (
     SessionListEnvelope,
 )
 from dungeon_agent.plane_shared.identifiers import new_session_id
+from dungeon_agent.plane_shared.logging import logger
 from dungeon_agent.plane_shared.persistence.errors import SessionRevisionConflictError
 
 SESSION_DEPENDENCY = "A session dependency is temporarily unavailable."
@@ -76,6 +77,7 @@ class SessionHttpHandlers:
                 )
             campaign = self._campaigns.get(request.campaign_id)
         except Exception:
+            logger.exception("dependency_unavailable", correlation_id=correlation_id)
             return self._dependency_error(correlation_id)
         access_error = owner_access_error(
             identity, campaign, "campaign", ErrorCode.CAMPAIGN_NOT_FOUND, correlation_id
@@ -114,6 +116,7 @@ class SessionHttpHandlers:
                 self._ensure_workflow(session, idempotency_key, correlation_id, now), correlation_id
             )
         except Exception:
+            logger.exception("dependency_unavailable", correlation_id=correlation_id)
             return self._dependency_error(correlation_id)
 
     def get_session(
@@ -132,6 +135,7 @@ class SessionHttpHandlers:
             body = SessionListEnvelope(sessions=self._store.list_active_by_owner(identity.owner_id))
             return HttpResult(200, body, correlation_id)
         except Exception:
+            logger.exception("dependency_unavailable", correlation_id=correlation_id)
             return self._dependency_error(correlation_id)
 
     def abandon_session(
@@ -162,12 +166,13 @@ class SessionHttpHandlers:
         except SessionRevisionConflictError:
             return self._conflict("The session changed while abandoning it.", correlation_id)
         except Exception:
+            logger.exception("dependency_unavailable", correlation_id=correlation_id)
             return self._dependency_error(correlation_id)
         if microvm_id is not None and self._microvms is not None:
             try:
                 self._microvms.terminate(microvm_id)
-            except Exception as error:
-                print(f"microvm terminate failed on abandon: {type(error).__name__}")
+            except Exception:
+                logger.exception("microvm_terminate_failed_on_abandon")
         try:
             self._emit(
                 session_id,
@@ -175,8 +180,8 @@ class SessionHttpHandlers:
                 dm.SessionCompletedPayload(outcome="abandoned", revision=saved.revision),
                 correlation_id,
             )
-        except Exception as error:
-            print(f"session.completed emission failed on abandon: {type(error).__name__}")
+        except Exception:
+            logger.exception("session_completed_emission_failed_on_abandon")
         return HttpResult(200, SessionEnvelope(session=saved), correlation_id)
 
     def _quota_error(
@@ -186,6 +191,7 @@ class SessionHttpHandlers:
             active = self._store.count_active_by_owner(owner_id)
             replays = self._store.count_by_campaign(campaign_id)
         except Exception:
+            logger.exception("dependency_unavailable", correlation_id=correlation_id)
             return self._dependency_error(correlation_id)
         if active >= self._max_active:
             return error_result(

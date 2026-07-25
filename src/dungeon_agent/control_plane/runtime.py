@@ -21,6 +21,7 @@ from dungeon_agent.data_plane.turns import TurnWorker
 from dungeon_agent.plane_shared.agents.bedrock import StructuredBedrockAgent
 from dungeon_agent.plane_shared.domain.models import SubmitTurnCommand
 from dungeon_agent.plane_shared.http.api_gateway import ApiGatewayHttpAdapter
+from dungeon_agent.plane_shared.logging import logger
 from dungeon_agent.plane_shared.microvms.manager import LambdaMicrovmManager
 from dungeon_agent.plane_shared.persistence.artifacts import (
     ArtifactAggregate,
@@ -277,24 +278,29 @@ def _build_websocket_adapter(endpoint: str) -> ApiGatewayWebSocketAdapter:
     return ApiGatewayWebSocketAdapter(service, _ApiGatewaySender(client, connections))
 
 
+@logger.inject_lambda_context(log_event=False)
 def http_handler(event: Mapping[str, Any], context: object) -> dict[str, Any]:
+    logger.info("http_invoked", route_key=event.get("routeKey"))
     if _HTTP_ADAPTER is None:
         raise RuntimeError("HTTP adapter is not configured in this function")
     return _HTTP_ADAPTER(event, context)
 
 
+@logger.inject_lambda_context(log_event=False)
 def workflow_handler(event: Mapping[str, object], _context: object) -> dict[str, object]:
     if event.get("operation") in _CAMPAIGN_OPERATIONS:
         return _CAMPAIGN_WORKFLOW.handle(event)
     return _WORKFLOW.handle(event)
 
 
+@logger.inject_lambda_context(log_event=False)
 def turn_handler(event: Mapping[str, object], _context: object) -> dict[str, object]:
     if _TURN_WORKER is None:
         raise RuntimeError("turn worker is not configured in this function")
     return _TURN_WORKER.handle(event)
 
 
+@logger.inject_lambda_context(log_event=False)
 def websocket_handler(event: Mapping[str, Any], context: object) -> dict[str, Any]:
     request_context = event.get("requestContext")
     if not isinstance(request_context, Mapping):

@@ -1,4 +1,3 @@
-import logging
 from collections.abc import Callable
 from datetime import datetime
 from typing import Any, cast
@@ -32,9 +31,9 @@ from dungeon_agent.plane_shared.http.models import (
     OpeningEnvelope,
 )
 from dungeon_agent.plane_shared.identifiers import new_campaign_id
+from dungeon_agent.plane_shared.logging import logger
 
 CAMPAIGN_DEPENDENCY = "A campaign dependency is temporarily unavailable."
-LOGGER = logging.getLogger(__name__)
 
 
 class CampaignHttpHandlers:
@@ -76,6 +75,7 @@ class CampaignHttpHandlers:
                 return self._accepted(campaign, correlation_id)
             campaign_count = self._store.count_by_owner(identity.owner_id)
         except Exception:
+            logger.exception("dependency_unavailable", correlation_id=correlation_id)
             return self._dependency_error(correlation_id)
         if campaign_count >= self._max_campaigns_per_owner:
             return error_result(
@@ -105,6 +105,7 @@ class CampaignHttpHandlers:
                 now=now,
             )
         except Exception:
+            logger.exception("dependency_unavailable", correlation_id=correlation_id)
             return self._dependency_error(correlation_id)
         return self._accepted(campaign, correlation_id)
 
@@ -118,6 +119,7 @@ class CampaignHttpHandlers:
         try:
             campaigns = self._store.list_by_owner(identity.owner_id, status=status)
         except Exception:
+            logger.exception("dependency_unavailable", correlation_id=correlation_id)
             return self._dependency_error(correlation_id)
         return HttpResult(
             status_code=200,
@@ -166,6 +168,7 @@ class CampaignHttpHandlers:
         try:
             opening = self._openings.load_opening(campaign.character_ref)
         except Exception:
+            logger.exception("dependency_unavailable", correlation_id=correlation_id)
             return self._dependency_error(correlation_id)
         return HttpResult(
             status_code=200,
@@ -186,7 +189,7 @@ class CampaignHttpHandlers:
                 return None
             return cast(str, self._portrait_presigner.presigned_url(portrait_key))
         except Exception:
-            LOGGER.exception("portrait_presign_failed", extra={"correlation_id": correlation_id})
+            logger.exception("portrait_presign_failed", correlation_id=correlation_id)
             return None
 
     def list_events(

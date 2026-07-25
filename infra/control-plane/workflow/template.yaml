@@ -144,6 +144,8 @@ Resources:
           WS_MANAGEMENT_ENDPOINT: !Sub "https://${ControlPlaneWebSocketApi}.execute-api.${AWS::Region}.${AWS::URLSuffix}/prod"
           SPEECH_CACHE_BUCKET: !Ref SpeechCacheBucket
           POLLY_REGION: us-east-1
+          POWERTOOLS_SERVICE_NAME: dungeon-agent-control-plane
+          POWERTOOLS_LOG_LEVEL: INFO
       Policies:
         - DynamoDBCrudPolicy:
             TableName: !Ref SessionTable
@@ -365,6 +367,8 @@ Resources:
           SPEECH_CACHE_BUCKET: !Ref SpeechCacheBucket
           BEDROCK_IMAGE_MODEL_ID: stability.stable-image-core-v1:1
           BEDROCK_IMAGE_REGION: us-west-2
+          POWERTOOLS_SERVICE_NAME: dungeon-agent-control-plane
+          POWERTOOLS_LOG_LEVEL: INFO
 
   WorkflowTaskLogGroup:
     Type: AWS::Logs::LogGroup
@@ -393,6 +397,8 @@ Resources:
           BEDROCK_MODEL_ID: !Ref BedrockModelId
           MICROVM_IMAGE_NAME: !Ref MicrovmImageName
           WS_MANAGEMENT_ENDPOINT: !Sub "https://${ControlPlaneWebSocketApi}.execute-api.${AWS::Region}.${AWS::URLSuffix}/prod"
+          POWERTOOLS_SERVICE_NAME: dungeon-agent-control-plane
+          POWERTOOLS_LOG_LEVEL: INFO
 
   TurnWorkerLogGroup:
     Type: AWS::Logs::LogGroup
@@ -1493,6 +1499,8 @@ Resources:
         Variables:
           TABLE_NAME: !Ref SessionTable
           CAMPAIGN_TABLE_NAME: !Ref CampaignTable
+          POWERTOOLS_SERVICE_NAME: dungeon-agent-control-plane
+          POWERTOOLS_LOG_LEVEL: INFO
       Policies:
         - DynamoDBCrudPolicy:
             TableName: !Ref SessionTable

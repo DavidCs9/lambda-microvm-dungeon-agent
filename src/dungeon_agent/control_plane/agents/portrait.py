@@ -34,7 +34,6 @@ def generate_character_portrait(
         {
             "prompt": build_portrait_prompt(character),
             "negative_prompt": PORTRAIT_NEGATIVE_PROMPT,
-            "mode": "text-to-image",
             "aspect_ratio": "1:1",
             "output_format": "png",
         }

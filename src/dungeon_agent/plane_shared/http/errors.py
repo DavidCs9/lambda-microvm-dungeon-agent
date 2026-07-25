@@ -5,6 +5,7 @@ from typing import Any, Protocol
 from dungeon_agent.plane_shared.domain.enums import ErrorCode
 from dungeon_agent.plane_shared.domain.models import ErrorDetail, ErrorEnvelope
 from dungeon_agent.plane_shared.http.models import AuthenticatedIdentity, HttpResult
+from dungeon_agent.plane_shared.logging import logger
 
 Clock = Callable[[], datetime]
 
@@ -70,6 +71,11 @@ def load_owned(
     try:
         resource = store.get(resource_id)
     except Exception:
+        logger.exception(
+            "dependency_unavailable",
+            operation=f"get_{resource_name}",
+            correlation_id=correlation_id,
+        )
         return None, dependency_error(dependency_message, correlation_id)
     access_error = owner_access_error(
         identity,
@@ -93,6 +99,11 @@ def replay_events(
     try:
         events = store.list_after(aggregate_id, after)
     except Exception:
+        logger.exception(
+            "dependency_unavailable",
+            operation="list_events",
+            correlation_id=correlation_id,
+        )
         return dependency_error(dependency_message, correlation_id)
     return HttpResult(
         status_code=200,

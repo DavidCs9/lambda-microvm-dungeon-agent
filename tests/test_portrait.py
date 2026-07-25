@@ -53,7 +53,6 @@ def test_generate_character_portrait_decodes_base64_image() -> None:
     assert result == png
     assert client.calls[0]["modelId"] == "stability.stable-image-core-v1:1"
     body = json.loads(client.calls[0]["body"])
-    assert body["mode"] == "text-to-image"
     assert body["aspect_ratio"] == "1:1"
     assert body["output_format"] == "png"
     assert "Iria Vale" in body["prompt"]

@@ -1,4 +1,3 @@
-import logging
 import time
 from collections.abc import Callable
 from typing import Any
@@ -11,8 +10,7 @@ from dungeon_agent.plane_shared.http.models import (
     SpeechEnvelope,
     SpeechRequest,
 )
-
-LOGGER = logging.getLogger(__name__)
+from dungeon_agent.plane_shared.logging import logger
 
 
 class SpeechHttpHandlers:
@@ -48,7 +46,7 @@ class SpeechHttpHandlers:
         try:
             url, cache_hit = self._synthesizer.synthesize(request.text, request.language)
         except Exception:
-            LOGGER.exception(
+            logger.exception(
                 "speech_synthesis_failed",
                 extra={"correlation_id": correlation_id, "owner_id": identity.owner_id},
             )
