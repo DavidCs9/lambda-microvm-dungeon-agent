@@ -541,6 +541,7 @@ Resources:
               - Effect: Allow
                 Action:
                   - bedrock:InvokeModel
+                  - bedrock:RenderPrompt
                 Resource: "*"
               - Effect: Allow
                 Action:
