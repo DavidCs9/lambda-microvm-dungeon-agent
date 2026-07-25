@@ -103,6 +103,15 @@ class _InMemoryAggregateRepository:
                 update={"last_event_sequence": event.sequence}
             )
 
+    def delete(self, aggregate_id: str) -> None:
+        with self._lock:
+            self._records.pop(aggregate_id, None)
+            self._events.pop(aggregate_id, None)
+            for lookup_key in [
+                key for key, value in self._idempotency.items() if value == aggregate_id
+            ]:
+                del self._idempotency[lookup_key]
+
     def list_after(self, aggregate_id: str, sequence: int) -> tuple[Any, ...]:
         with self._lock:
             events = self._events.get(aggregate_id, {})

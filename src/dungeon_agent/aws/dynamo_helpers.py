@@ -164,6 +164,25 @@ class DynamoDbAggregateRepository:
                 f"event sequence conflict: {aggregate_id}/{event.sequence}"
             ) from error
 
+    def delete(self, aggregate_id: str) -> None:
+        """Remove every item in the aggregate partition (metadata + events).
+
+        The owner idempotency pointer lives in another partition and is left to
+        expire via TTL; a stale pointer resolves to a missing aggregate (None).
+        """
+        pk = self._pk(aggregate_id)
+        request = {
+            "TableName": self._table_name,
+            "KeyConditionExpression": "PK = :pk",
+            "ExpressionAttributeValues": {":pk": string(pk)},
+            "ConsistentRead": True,
+        }
+        for item in self._items_from_query(request, self._aggregate_name):
+            self._client.delete_item(
+                TableName=self._table_name,
+                Key={"PK": string(pk), "SK": string(attribute_string(item, "SK"))},
+            )
+
     def list_after(self, aggregate_id: str, sequence: int) -> tuple[Any, ...]:
         request = {
             "TableName": self._table_name,
