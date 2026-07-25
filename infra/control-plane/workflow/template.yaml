@@ -11,7 +11,19 @@ Parameters:
   BedrockModelId:
     Type: String
     Default: us.anthropic.claude-sonnet-4-6
-    Description: Bedrock inference profile used by both session architects.
+    Description: Fallback Bedrock inference profile when managed prompt ARNs are not configured.
+  CampaignPromptArn:
+    Type: String
+    Default: arn:aws:bedrock:us-east-2:225989371926:prompt/I2POVLPWJA:3
+    Description: Evaluated versioned managed prompt for campaign generation.
+  CharacterPromptArn:
+    Type: String
+    Default: arn:aws:bedrock:us-east-2:225989371926:prompt/ZVZRKZEO6B:1
+    Description: Evaluated versioned managed prompt for character generation.
+  MasterPromptArn:
+    Type: String
+    Default: arn:aws:bedrock:us-east-2:225989371926:prompt/9WAKWCNVEO:1
+    Description: Evaluated versioned managed prompt for turn adjudication.
   MicrovmImageName:
     Type: String
     Default: dungeon-agent-fastapi
@@ -362,6 +374,8 @@ Resources:
           TABLE_NAME: !Ref SessionTable
           CAMPAIGN_TABLE_NAME: !Ref CampaignTable
           BEDROCK_MODEL_ID: !Ref BedrockModelId
+          CAMPAIGN_PROMPT_ARN: !Ref CampaignPromptArn
+          CHARACTER_PROMPT_ARN: !Ref CharacterPromptArn
           MICROVM_IMAGE_NAME: !Ref MicrovmImageName
           WS_MANAGEMENT_ENDPOINT: !Sub "https://${ControlPlaneWebSocketApi}.execute-api.${AWS::Region}.${AWS::URLSuffix}/prod"
           SPEECH_CACHE_BUCKET: !Ref SpeechCacheBucket
@@ -395,6 +409,7 @@ Resources:
           TABLE_NAME: !Ref SessionTable
           CAMPAIGN_TABLE_NAME: !Ref CampaignTable
           BEDROCK_MODEL_ID: !Ref BedrockModelId
+          MASTER_PROMPT_ARN: !Ref MasterPromptArn
           MICROVM_IMAGE_NAME: !Ref MicrovmImageName
           WS_MANAGEMENT_ENDPOINT: !Sub "https://${ControlPlaneWebSocketApi}.execute-api.${AWS::Region}.${AWS::URLSuffix}/prod"
           POWERTOOLS_SERVICE_NAME: dungeon-agent-control-plane

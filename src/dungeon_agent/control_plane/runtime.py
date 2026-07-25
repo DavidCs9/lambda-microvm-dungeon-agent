@@ -211,9 +211,10 @@ _HTTP_ADAPTER = (
 )
 
 
-def _structured_agent() -> StructuredBedrockAgent:
+def _structured_agent(prompt_env: str) -> StructuredBedrockAgent:
     bedrock = cast(Any, _client("bedrock-runtime", config=_BEDROCK_CONFIG))
-    return StructuredBedrockAgent(bedrock, os.environ["BEDROCK_MODEL_ID"])
+    target = os.environ.get(prompt_env, os.environ["BEDROCK_MODEL_ID"])
+    return StructuredBedrockAgent(bedrock, target)
 
 
 def _build_workflow() -> DurableSessionWorkflowStub:
@@ -244,8 +245,8 @@ def _build_campaign_workflow() -> DurableCampaignWorkflowStub:
     artifacts = _artifacts(_CAMPAIGN_TABLE_NAME, "CAMPAIGN")
     return DurableCampaignWorkflowStub(
         _CAMPAIGN_REPOSITORY,
-        adventure_architect=AdventureArchitect(_structured_agent()),
-        character_architect=CharacterArchitect(_structured_agent()),
+        adventure_architect=AdventureArchitect(_structured_agent("CAMPAIGN_PROMPT_ARN")),
+        character_architect=CharacterArchitect(_structured_agent("CHARACTER_PROMPT_ARN")),
         adventures=artifacts,
         characters=artifacts,
         openings=artifacts,
@@ -262,7 +263,7 @@ def _build_turn_worker() -> TurnWorker:
     return TurnWorker(
         _REPOSITORY,
         _artifacts(_TABLE_NAME),
-        _structured_agent(),
+        _structured_agent("MASTER_PROMPT_ARN"),
         _microvm_manager(),
         delivery=_build_delivery(),
     )

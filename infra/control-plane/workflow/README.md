@@ -39,3 +39,6 @@ aws cloudformation deploy \
 ```
 
 The current sandbox is deployed in `us-east-2` as `dungeon-agent-control-plane-sandbox`.
+Its campaign, character, and Dungeon Master calls use the versioned Bedrock Prompt Management
+ARNs declared as template parameters. Updating a prompt draft does not change the app; deploy a
+new evaluated version ARN explicitly.
