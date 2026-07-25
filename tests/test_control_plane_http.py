@@ -609,6 +609,42 @@ def test_get_campaign_opening_unknown_campaign_returns_404() -> None:
     assert _body(response)["error"]["code"] == "campaign_not_found"
 
 
+def test_delete_campaign_removes_it_and_returns_200() -> None:
+    adapter, _, _, _, campaigns, _ = _adapter()
+
+    response = adapter(_event("DELETE /campaigns/{campaignId}", campaign_id=CAMPAIGN_ID))
+
+    assert response["statusCode"] == 200
+    body = _body(response)
+    assert body["campaignId"] == CAMPAIGN_ID
+    assert body["status"] == "deleted"
+    assert campaigns.get(CAMPAIGN_ID) is None
+    listed = adapter(_event("GET /campaigns"))
+    assert _body(listed)["campaigns"] == []
+
+
+def test_delete_campaign_unknown_returns_404() -> None:
+    adapter, _, _, _, _, _ = _adapter()
+    missing: CampaignId = "cam_01J00000000000000000000077"
+
+    response = adapter(_event("DELETE /campaigns/{campaignId}", campaign_id=missing))
+
+    assert response["statusCode"] == 404
+    assert _body(response)["error"]["code"] == "campaign_not_found"
+
+
+def test_delete_campaign_rejects_another_owner() -> None:
+    adapter, _, _, _, campaigns, _ = _adapter()
+
+    response = adapter(
+        _event("DELETE /campaigns/{campaignId}", owner="user_intruder", campaign_id=CAMPAIGN_ID)
+    )
+
+    assert response["statusCode"] == 403
+    assert _body(response)["error"]["code"] == "not_authorized"
+    assert campaigns.get(CAMPAIGN_ID) is not None
+
+
 _PHASE_BY_STATUS = {
     SessionStatus.REQUESTED: SessionPhase.REQUESTED,
     SessionStatus.CREATING: SessionPhase.STARTING_MICROVM,

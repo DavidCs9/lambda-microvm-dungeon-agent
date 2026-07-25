@@ -62,6 +62,12 @@ export interface CampaignListEnvelope {
   campaigns: CampaignRecord[];
 }
 
+export interface CampaignDeletedEnvelope {
+  version: 1;
+  campaignId: string;
+  status: "deleted";
+}
+
 export interface OpeningEnvelope {
   version: 1;
   campaignId: string;

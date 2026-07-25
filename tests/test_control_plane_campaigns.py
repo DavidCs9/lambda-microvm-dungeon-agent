@@ -53,6 +53,18 @@ def make_campaign(
     )
 
 
+def test_repository_delete_removes_the_campaign_and_its_events() -> None:
+    repository = InMemoryCampaignRepository()
+    repository.create(make_campaign(), "create-key-0001")
+    assert repository.get(CAMPAIGN_ID) is not None
+
+    repository.delete(CAMPAIGN_ID)
+
+    assert repository.get(CAMPAIGN_ID) is None
+    assert repository.list_by_owner("user_demo") == ()
+    assert repository.find_by_idempotency_key("user_demo", "create-key-0001") is None
+
+
 def test_campaign_ids_use_the_crockford_sortable_format() -> None:
     first, second = new_campaign_id(), new_campaign_id()
 

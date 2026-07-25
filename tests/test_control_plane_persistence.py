@@ -222,6 +222,10 @@ class FakeDynamoDbClient:
             raise FakeTransactionCanceled
         return {}
 
+    def delete_item(self, **kwargs: object) -> Mapping[str, object]:
+        self.calls.append(("delete_item", kwargs))
+        return {}
+
     def get_paginator(self, operation_name: str) -> FakeQueryPaginator:
         self.calls.append(("get_paginator", {"operation_name": operation_name}))
         return FakeQueryPaginator(self)
@@ -372,3 +376,24 @@ def test_dynamodb_list_active_by_owner_queries_the_by_owner_index() -> None:
         "ready",
         "active",
     }
+
+
+def test_dynamodb_delete_removes_every_item_in_the_partition() -> None:
+    client = FakeDynamoDbClient()
+    repository = DynamoDbControlPlaneRepository(client, "control-plane")
+    pk = f"SESSION#{SESSION_ID}"
+    client.query_responses = [
+        {
+            "Items": [
+                {"PK": {"S": pk}, "SK": {"S": "METADATA"}},
+                {"PK": {"S": pk}, "SK": {"S": "EVENT#00000000000000000001"}},
+            ]
+        }
+    ]
+
+    repository.delete(SESSION_ID)
+
+    deletes = [call for name, call in client.calls if name == "delete_item"]
+    keys = cast(list[dict[str, dict[str, str]]], [call["Key"] for call in deletes])
+    assert {key["SK"]["S"] for key in keys} == {"METADATA", "EVENT#00000000000000000001"}
+    assert all(key["PK"]["S"] == pk for key in keys)
