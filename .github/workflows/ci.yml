@@ -26,10 +26,11 @@ jobs:
         uses: dorny/paths-filter@v3.0.2
         id: filter
         with:
+          # Workflow-only changes keep the aggregate CI check green without
+          # activating application lanes that did not change.
           filters: |
             web:
               - 'web/**'
-              - '.github/workflows/ci.yml'
             python:
               - 'src/**'
               - 'tests/**'
@@ -37,7 +38,6 @@ jobs:
               - 'scripts/**'
               - 'pyproject.toml'
               - 'uv.lock'
-              - '.github/workflows/ci.yml'
             microvm:
               - 'Dockerfile'
               - 'pyproject.toml'
@@ -48,7 +48,6 @@ jobs:
               - '!src/dungeon_agent/plane_shared/**'
               - 'scripts/build_microvm_image.py'
               - 'src/dungeon_agent/operations/image_builder.py'
-              - '.github/workflows/ci.yml'
               - '.github/workflows/release.yml'
 
   web:
