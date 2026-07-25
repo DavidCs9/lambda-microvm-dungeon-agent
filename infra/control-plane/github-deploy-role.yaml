@@ -20,6 +20,16 @@ Parameters:
     Default: dungeon-agent-web-sandbox
     AllowedPattern: ^[A-Za-z][A-Za-z0-9-]*$
     Description: CloudFormation stack name for the web hosting resources.
+  CertificateStackName:
+    Type: String
+    Default: dungeon-agent-web-certificate-sandbox
+    AllowedPattern: ^[A-Za-z][A-Za-z0-9-]*$
+    Description: CloudFormation stack name for the CloudFront ACM certificate.
+  CertificateRegion:
+    Type: String
+    Default: us-east-1
+    AllowedPattern: ^[a-z]{2}-[a-z]+-[0-9]+$
+    Description: Region where the CloudFront ACM certificate stack is deployed.
   GitHubOwner:
     Type: String
     Default: DavidCs9
@@ -117,9 +127,36 @@ Resources:
                     arn:${AWS::Partition}:cloudformation:${AWS::Region}:${AWS::AccountId}:stack/${WebHostingStackName}/*
                   - !Sub >-
                     arn:${AWS::Partition}:cloudformation:${AWS::Region}:${AWS::AccountId}:stack/${WebHostingStackName}
+              - Sid: ManageWebCertificateStack
+                Effect: Allow
+                Action:
+                  - cloudformation:CreateChangeSet
+                  - cloudformation:CreateStack
+                  - cloudformation:DeleteChangeSet
+                  - cloudformation:DescribeChangeSet
+                  - cloudformation:DescribeStackEvents
+                  - cloudformation:DescribeStackResource
+                  - cloudformation:DescribeStackResources
+                  - cloudformation:ExecuteChangeSet
+                  - cloudformation:GetTemplate
+                  - cloudformation:GetTemplateSummary
+                  - cloudformation:ListChangeSets
+                  - cloudformation:ListStackResources
+                  - cloudformation:UpdateStack
+                Resource:
+                  - !Sub >-
+                    arn:${AWS::Partition}:cloudformation:${CertificateRegion}:${AWS::AccountId}:stack/${CertificateStackName}/*
+                  - !Sub >-
+                    arn:${AWS::Partition}:cloudformation:${CertificateRegion}:${AWS::AccountId}:stack/${CertificateStackName}
               - Sid: ProvisionWebHostingServices
                 Effect: Allow
                 Action:
+                  - acm:AddTagsToCertificate
+                  - acm:DeleteCertificate
+                  - acm:DescribeCertificate
+                  - acm:ListTagsForCertificate
+                  - acm:RemoveTagsFromCertificate
+                  - acm:RequestCertificate
                   - cloudfront:CreateDistribution
                   - cloudfront:CreateInvalidation
                   - cloudfront:CreateOriginAccessControl
@@ -133,6 +170,9 @@ Resources:
                   - cloudfront:UntagResource
                   - cloudfront:UpdateDistribution
                   - cloudfront:UpdateOriginAccessControl
+                  - route53:ChangeResourceRecordSets
+                  - route53:GetHostedZone
+                  - route53:ListHostedZonesByName
                   - s3:CreateBucket
                   - s3:DeleteBucketPolicy
                   - s3:GetBucketLocation

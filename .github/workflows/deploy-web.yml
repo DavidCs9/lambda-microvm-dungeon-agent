@@ -27,6 +27,8 @@ jobs:
     env:
       AWS_REGION: ${{ vars.AWS_REGION }}
       CONTROL_PLANE_STACK: ${{ vars.AWS_CONTROL_PLANE_STACK }}
+      CERTIFICATE_REGION: us-east-1
+      CERTIFICATE_STACK: dungeon-agent-web-certificate-sandbox
       WEB_STACK: dungeon-agent-web-sandbox
     defaults:
       run:
@@ -83,6 +85,49 @@ jobs:
             fi
           done
 
+      - name: Resolve custom domain inputs
+        id: domain
+        working-directory: .
+        run: |
+          set -euo pipefail
+          hosted_zone_id="$(aws route53 list-hosted-zones-by-name \
+            --dns-name castrodavid.dev \
+            --query 'HostedZones[?Name==`castrodavid.dev.` && Config.PrivateZone == `false`].Id | [0]' \
+            --output text)"
+          hosted_zone_id="${hosted_zone_id##*/}"
+          if [[ -z "${hosted_zone_id}" || "${hosted_zone_id}" == "None" ]]; then
+            echo "Public hosted zone for castrodavid.dev was not found" >&2
+            exit 1
+          fi
+          echo "hosted-zone-id=${hosted_zone_id}" >> "${GITHUB_OUTPUT}"
+
+      - name: Deploy ACM certificate stack
+        working-directory: .
+        run: |
+          aws cloudformation deploy \
+            --template-file infra/web/certificate.yaml \
+            --stack-name "${CERTIFICATE_STACK}" \
+            --region "${CERTIFICATE_REGION}" \
+            --parameter-overrides \
+              DomainName=dungeon.castrodavid.dev \
+              HostedZoneId="${{ steps.domain.outputs.hosted-zone-id }}" \
+            --no-fail-on-empty-changeset
+
+      - name: Resolve certificate output
+        id: certificate
+        working-directory: .
+        run: |
+          certificate_arn="$(aws cloudformation describe-stacks \
+            --stack-name "${CERTIFICATE_STACK}" \
+            --region "${CERTIFICATE_REGION}" \
+            --query 'Stacks[0].Outputs[?OutputKey==`CertificateArn`].OutputValue' \
+            --output text)"
+          if [[ -z "${certificate_arn}" || "${certificate_arn}" == "None" ]]; then
+            echo "Certificate ARN was not found" >&2
+            exit 1
+          fi
+          echo "arn=${certificate_arn}" >> "${GITHUB_OUTPUT}"
+
       - name: Install dependencies and build
         run: |
           npm ci
@@ -95,6 +140,9 @@ jobs:
             --template-file infra/web/hosting.yaml \
             --stack-name "${WEB_STACK}" \
             --region "${AWS_REGION}" \
+            --parameter-overrides \
+              DomainName=dungeon.castrodavid.dev \
+              CertificateArn="${{ steps.certificate.outputs.arn }}" \
             --no-fail-on-empty-changeset
 
       - name: Resolve hosting outputs
