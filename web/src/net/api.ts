@@ -23,7 +23,7 @@ export class ApiError extends Error {
 
 export interface ApiClientOptions {
   baseUrl: string;
-  playerId: string;
+  getAccessToken: () => Promise<string | null>;
 }
 
 function newIdempotencyKey(): string {
@@ -32,15 +32,11 @@ function newIdempotencyKey(): string {
 
 export class ApiClient {
   private readonly baseUrl: string;
-  private playerId: string;
+  private readonly getAccessToken: () => Promise<string | null>;
 
   constructor(options: ApiClientOptions) {
     this.baseUrl = options.baseUrl.replace(/\/$/, "");
-    this.playerId = options.playerId;
-  }
-
-  setPlayerId(playerId: string): void {
-    this.playerId = playerId;
+    this.getAccessToken = options.getAccessToken;
   }
 
   createCampaign(language: LanguageCode = "es"): Promise<CampaignEnvelope> {
@@ -116,12 +112,13 @@ export class ApiClient {
     path: string,
     options: { body?: unknown; idempotencyKey?: string } = {},
   ): Promise<T> {
-    if (!this.playerId || this.playerId.length < 3) {
-      throw new Error("playerId must be at least 3 characters");
+    const token = await this.getAccessToken();
+    if (!token) {
+      throw new Error("Authentication is required.");
     }
 
     const headers: Record<string, string> = {
-      "x-player-id": this.playerId,
+      Authorization: `Bearer ${token}`,
       accept: "application/json",
     };
     if (options.body !== undefined) {

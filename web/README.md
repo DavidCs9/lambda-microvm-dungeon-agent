@@ -1,8 +1,8 @@
 # Dungeon Agent — showcase client (RFC 0003)
 
 Cliente browser de demostración: atmósfera Pixi, menú principal en español,
-apertura en scroll, mesa de juego y beat de dados. Habla con el control plane
-sandbox vía HTTP + WebSocket (`x-player-id`).
+apertura en scroll, mesa de juego y beat de dados. El HTTP API usa Cognito; el
+WebSocket conserva temporalmente `playerId` como identidad de sandbox.
 
 ## Setup
 
@@ -25,8 +25,8 @@ npm install
 npm run dev
 ```
 
-Abre la URL local. Pon un `playerId` (mín. 3 caracteres) y elige **Nueva partida**,
-**Continuar**, o **Crear campaña**.
+Abre la URL local e inicia sesión con un usuario creado manualmente en el User Pool.
+Después elige **Nueva partida**, **Continuar**, o **Crear campaña**.
 
 ## Layout
 
@@ -41,4 +41,5 @@ src/
 
 Consola operador (JSON): abre `debug.html` en Vite (`/debug.html`).
 
-Auth sandbox: `x-player-id` / `playerId`. Sin Cognito. Idioma oficial de demo: `es`.
+Auth HTTP: Cognito User Pool, sin registro público. Los usuarios se crean manualmente
+después del despliegue. WebSocket: `playerId` temporal. Idioma oficial de demo: `es`.

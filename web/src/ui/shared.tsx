@@ -420,6 +420,7 @@ export function GhostField({
   onChange,
   minLength,
   placeholder,
+  type = "text",
 }: {
   id: string;
   label: string;
@@ -427,15 +428,17 @@ export function GhostField({
   onChange: (value: string) => void;
   minLength?: number;
   placeholder?: string;
+  type?: "text" | "password" | "email";
 }) {
   return (
     <label className="mt-10 flex w-full max-w-xs flex-col gap-2 text-left">
       <span className="text-xs tracking-[0.22em] text-[var(--muted)] uppercase">
         {label}
       </span>
-      <input
-        id={id}
-        value={value}
+        <input
+          id={id}
+          type={type}
+          value={value}
         minLength={minLength}
         placeholder={placeholder}
         onChange={(e) => onChange(e.target.value)}

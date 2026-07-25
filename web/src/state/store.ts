@@ -17,6 +17,7 @@ import {
   onTurnStarted,
   setSpeechLive,
 } from "../game/narrationVoice";
+import { accessToken } from "../auth/cognito";
 
 const PLAYER_KEY = "dungeon-agent.playerId";
 export const PLAYER_LANGUAGE = "es" as const;
@@ -636,7 +637,7 @@ function applyEvent(event: ControlPlaneEvent): void {
   }
 }
 
-const api = new ApiClient({ baseUrl: httpUrl, playerId: state.playerId });
+const api = new ApiClient({ baseUrl: httpUrl, getAccessToken: accessToken });
 const realtime = new RealtimeClient({
   wsUrl,
   playerId: state.playerId,
@@ -647,7 +648,6 @@ const realtime = new RealtimeClient({
 });
 
 function syncClients(playerId: string): void {
-  api.setPlayerId(playerId);
   realtime.setPlayerId(playerId);
 }
 

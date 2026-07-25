@@ -193,7 +193,7 @@ def _build_http_adapter() -> ApiGatewayHttpAdapter:
         ),
         actions=actions,
         speech=_build_speech_handlers(),
-        allow_sandbox_identity=True,
+        allow_sandbox_identity=os.environ.get("ALLOW_SANDBOX_IDENTITY", "true").lower() == "true",
     )
 
 
