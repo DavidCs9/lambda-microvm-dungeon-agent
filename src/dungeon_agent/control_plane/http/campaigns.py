@@ -3,7 +3,6 @@ from datetime import datetime
 from typing import Any, cast
 
 from dungeon_agent.control_plane.http.workflows import ensure_workflow
-from dungeon_agent.plane_shared.logging import logger
 from dungeon_agent.plane_shared.domain.enums import (
     CampaignPhase,
     CampaignStatus,
@@ -32,6 +31,7 @@ from dungeon_agent.plane_shared.http.models import (
     OpeningEnvelope,
 )
 from dungeon_agent.plane_shared.identifiers import new_campaign_id
+from dungeon_agent.plane_shared.logging import logger
 
 CAMPAIGN_DEPENDENCY = "A campaign dependency is temporarily unavailable."
 

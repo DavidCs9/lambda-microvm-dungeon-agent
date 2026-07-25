@@ -3,9 +3,9 @@ from datetime import UTC, datetime
 from typing import Any, Protocol
 
 from dungeon_agent.plane_shared.domain.enums import ErrorCode
-from dungeon_agent.plane_shared.logging import logger
 from dungeon_agent.plane_shared.domain.models import ErrorDetail, ErrorEnvelope
 from dungeon_agent.plane_shared.http.models import AuthenticatedIdentity, HttpResult
+from dungeon_agent.plane_shared.logging import logger
 
 Clock = Callable[[], datetime]
 

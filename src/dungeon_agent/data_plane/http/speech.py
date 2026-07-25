@@ -3,7 +3,6 @@ from collections.abc import Callable
 from typing import Any
 
 from dungeon_agent.plane_shared.domain.enums import ErrorCode
-from dungeon_agent.plane_shared.logging import logger
 from dungeon_agent.plane_shared.http.errors import dependency_error, error_result
 from dungeon_agent.plane_shared.http.models import (
     AuthenticatedIdentity,
@@ -11,6 +10,7 @@ from dungeon_agent.plane_shared.http.models import (
     SpeechEnvelope,
     SpeechRequest,
 )
+from dungeon_agent.plane_shared.logging import logger
 
 
 class SpeechHttpHandlers:

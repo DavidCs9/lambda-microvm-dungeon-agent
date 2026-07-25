@@ -3,7 +3,6 @@ from datetime import datetime
 from typing import Any
 
 from dungeon_agent.control_plane.http.workflows import ensure_workflow
-from dungeon_agent.plane_shared.logging import logger
 from dungeon_agent.plane_shared.domain import models as dm
 from dungeon_agent.plane_shared.domain.enums import (
     CampaignStatus,
@@ -34,6 +33,7 @@ from dungeon_agent.plane_shared.http.models import (
     SessionListEnvelope,
 )
 from dungeon_agent.plane_shared.identifiers import new_session_id
+from dungeon_agent.plane_shared.logging import logger
 from dungeon_agent.plane_shared.persistence.errors import SessionRevisionConflictError
 
 SESSION_DEPENDENCY = "A session dependency is temporarily unavailable."

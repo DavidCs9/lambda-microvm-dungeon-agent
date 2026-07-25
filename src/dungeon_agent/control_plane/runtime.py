@@ -4,7 +4,6 @@ from importlib import import_module
 from typing import Any, cast
 
 from dungeon_agent.audio.polly import DEFAULT_VOICES, S3PollySpeechSynthesizer
-from dungeon_agent.plane_shared.logging import logger
 from dungeon_agent.control_plane.agents.portrait import (
     DEFAULT_IMAGE_MODEL_ID,
     DEFAULT_IMAGE_REGION,
@@ -22,6 +21,7 @@ from dungeon_agent.data_plane.turns import TurnWorker
 from dungeon_agent.plane_shared.agents.bedrock import StructuredBedrockAgent
 from dungeon_agent.plane_shared.domain.models import SubmitTurnCommand
 from dungeon_agent.plane_shared.http.api_gateway import ApiGatewayHttpAdapter
+from dungeon_agent.plane_shared.logging import logger
 from dungeon_agent.plane_shared.microvms.manager import LambdaMicrovmManager
 from dungeon_agent.plane_shared.persistence.artifacts import (
     ArtifactAggregate,
