@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-labelledby="title">
+  <title>Dungeon Agent</title>
+  <rect width="64" height="64" rx="14" fill="#0c0a09"/>
+  <path d="M16 50V23l16-10 16 10v27H16Z" fill="#1c1714" stroke="#d9773a" stroke-width="3"/>
+  <path d="M24 50V35c0-4.4 3.6-8 8-8s8 3.6 8 8v15" fill="#0c0a09" stroke="#f3ebe0" stroke-width="3"/>
+  <path d="M32 19v7M28.5 22.5h7" stroke="#d9773a" stroke-width="3" stroke-linecap="round"/>
+</svg>

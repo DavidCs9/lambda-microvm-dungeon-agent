@@ -12,6 +12,14 @@ export interface AuthSession {
   username: string;
 }
 
+export interface NewPasswordChallenge {
+  kind: "new-password";
+  user: CognitoUser;
+  requiredAttributes: Record<string, string>;
+}
+
+export type SignInResult = AuthSession | NewPasswordChallenge;
+
 function pool(): CognitoUserPool {
   const UserPoolId = import.meta.env.VITE_COGNITO_USER_POOL_ID;
   const ClientId = import.meta.env.VITE_COGNITO_CLIENT_ID;
@@ -61,7 +69,7 @@ export async function accessToken(): Promise<string | null> {
   return (await currentAuthSession())?.accessToken ?? null;
 }
 
-export function signIn(email: string, password: string): Promise<AuthSession> {
+export function signIn(email: string, password: string): Promise<SignInResult> {
   const user = new CognitoUser({ Username: email, Pool: pool() });
   const details = new AuthenticationDetails({ Username: email, Password: password });
   return new Promise((resolve, reject) => {
@@ -74,8 +82,34 @@ export function signIn(email: string, password: string): Promise<AuthSession> {
         }
       },
       onFailure: (error) => reject(error),
-      newPasswordRequired: () =>
-        reject(new Error("Este usuario necesita una contraseña permanente configurada por un administrador.")),
+      newPasswordRequired: (userAttributes, requiredAttributes) => {
+        const attributes: Record<string, string> = {};
+        for (const name of requiredAttributes ?? []) {
+          const value = userAttributes?.[name];
+          if (typeof value === "string") {
+            attributes[name] = value;
+          }
+        }
+        resolve({ kind: "new-password", user, requiredAttributes: attributes });
+      },
+    });
+  });
+}
+
+export function completeNewPassword(
+  challenge: NewPasswordChallenge,
+  newPassword: string,
+): Promise<AuthSession> {
+  return new Promise((resolve, reject) => {
+    challenge.user.completeNewPasswordChallenge(newPassword, challenge.requiredAttributes, {
+      onSuccess: (session) => {
+        try {
+          resolve(sessionOf(challenge.user, session));
+        } catch (error) {
+          reject(error);
+        }
+      },
+      onFailure: (error) => reject(error),
     });
   });
 }
