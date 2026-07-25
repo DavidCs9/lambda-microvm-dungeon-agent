@@ -69,8 +69,22 @@ Resources:
         ZipFile: |
           import boto3
           import cfnresponse
+          import re
 
           client = boto3.client("bedrock-agent")
+
+          def schema_value(value):
+              if isinstance(value, list):
+                  return [schema_value(item) for item in value]
+              if isinstance(value, dict):
+                  return {key: schema_value(item) for key, item in value.items()}
+              if value == "true":
+                  return True
+              if value == "false":
+                  return False
+              if isinstance(value, str) and re.fullmatch(r"-?(0|[1-9]\d*)(\.\d+)?", value):
+                  return float(value) if "." in value else int(value)
+              return value
 
           def api_value(value):
               if isinstance(value, list):
@@ -80,7 +94,16 @@ Resources:
               converted = {}
               for key, item in value.items():
                   api_key = key[:1].lower() + key[1:]
-                  converted[api_key] = item if key in {"Json", "Tags"} else api_value(item)
+                  if key == "Json":
+                      converted[api_key] = schema_value(item)
+                  elif key == "Tags":
+                      converted[api_key] = item
+                  elif key == "MaxTokens":
+                      converted[api_key] = int(item)
+                  elif key == "Temperature":
+                      converted[api_key] = float(item)
+                  else:
+                      converted[api_key] = api_value(item)
               return converted
 
           def find_prompt(name):
@@ -107,7 +130,7 @@ Resources:
                   tags = definition.pop("tags", {})
 
                   if event["RequestType"] == "Delete":
-                      if physical_id:
+                      if physical_id and re.fullmatch(r"[A-Za-z0-9]{10}", physical_id):
                           try:
                               client.delete_prompt(promptIdentifier=physical_id)
                           except client.exceptions.ResourceNotFoundException:

@@ -35,6 +35,9 @@ def test_managed_prompts_and_versions_are_owned_by_cloudformation() -> None:
     assert "ModelId: !Ref CharacterModelId" in template
     assert "ModelId: !Ref MasterModelId" in template
     assert "bedrock:RenderPrompt" in template
+    assert "converted[api_key] = schema_value(item)" in template
+    assert "converted[api_key] = int(item)" in template
+    assert "converted[api_key] = float(item)" in template
 
 
 def test_managed_prompt_tool_schemas_match_domain_contracts() -> None:
