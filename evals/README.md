@@ -60,6 +60,9 @@ safety check passes and its overall quality drop is within the configured tolera
 candidates are ranked by estimated token cost. Model quality is always measured first-pass: the
 evaluator makes one invocation per case and never repairs invalid output.
 
+Cases run concurrently per candidate by default (`--max-workers 6`). Lower the value if Bedrock
+throttling becomes a problem, or raise it for short, isolated experiments.
+
 `scripts/publish_managed_prompts.py` is only for temporary model/prompt candidates during
 experimentation. A winner is promoted by updating the CloudFormation prompt definition and its
 version revision, so production never depends on resources created by the script.
@@ -83,7 +86,9 @@ same creative action, and records structure, agency, state safety, latency, and 
 uv run --group tooling python evals/narration_models.py \
   --profile personal \
   --region us-east-2 \
-  --model-id us.anthropic.claude-sonnet-4-6
+  --model-id us.anthropic.claude-sonnet-4-6 \
+  --model-id us.anthropic.claude-haiku-4-5-20251001-v1:0 \
+  --max-workers 4
 ```
 
 Final model selection should include blind human playtests.

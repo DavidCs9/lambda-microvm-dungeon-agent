@@ -6,6 +6,7 @@ import statistics
 import sys
 import time
 from collections.abc import Sequence
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import Any
 
@@ -250,11 +251,30 @@ def _master_case(client: Any, prompt: dict[str, str], case: dict[str, Any]) -> d
         )
 
 
+def _evaluate_case(
+    client: Any,
+    prompts: dict[str, dict[str, str]],
+    campaigns: dict[str, AdventurePlan],
+    role: str,
+    case: dict[str, Any],
+) -> dict[str, Any]:
+    if role == "campaign":
+        return _campaign_case(client, prompts[role], case)
+    if role == "character":
+        return _character_case(client, prompts[role], case, campaigns)
+    if role == "master":
+        return _master_case(client, prompts[role], case)
+    raise ValueError(f"unknown evaluation role: {role}")
+
+
 def evaluate_candidate(
     client: Any,
     manifest: dict[str, Any],
     case_ids: set[str] | None = None,
+    max_workers: int = 6,
 ) -> dict[str, Any]:
+    if max_workers < 1:
+        raise ValueError("max_workers must be at least 1")
     prompts = manifest["prompts"]
     campaign_cases = _records("campaigns.jsonl")
     character_cases = _records("characters.jsonl")
@@ -269,11 +289,18 @@ def evaluate_candidate(
             raise ValueError(f"unknown case ids: {', '.join(sorted(missing))}")
     all_campaigns = _records("campaigns.jsonl")
     campaigns = {case["id"]: AdventurePlan.model_validate(case["golden"]) for case in all_campaigns}
-    samples = [_campaign_case(client, prompts["campaign"], case) for case in campaign_cases]
-    samples.extend(
-        _character_case(client, prompts["character"], case, campaigns) for case in character_cases
-    )
-    samples.extend(_master_case(client, prompts["master"], case) for case in master_cases)
+    jobs = [
+        *(("campaign", case) for case in campaign_cases),
+        *(("character", case) for case in character_cases),
+        *(("master", case) for case in master_cases),
+    ]
+    with ThreadPoolExecutor(max_workers=max_workers) as executor:
+        samples = list(
+            executor.map(
+                lambda job: _evaluate_case(client, prompts, campaigns, job[0], job[1]),
+                jobs,
+            )
+        )
     role_scores = {
         role: round(
             statistics.mean(sample["score"] for sample in samples if sample["role"] == role),
@@ -328,6 +355,12 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("--candidate", action="append", type=Path, required=True)
     parser.add_argument("--case-id", action="append")
     parser.add_argument("--max-quality-drop", type=float, default=5.0)
+    parser.add_argument(
+        "--max-workers",
+        type=int,
+        default=6,
+        help="Maximum number of cases to invoke concurrently per candidate (default: 6).",
+    )
     parser.add_argument("--output", type=Path)
     args = parser.parse_args(argv)
     try:
@@ -339,6 +372,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                     client,
                     manifest,
                     set(args.case_id) if args.case_id else None,
+                    args.max_workers,
                 )
                 for manifest in manifests
             ],
