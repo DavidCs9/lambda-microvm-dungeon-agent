@@ -106,6 +106,15 @@ Resources:
                 Effect: Allow
                 Action:
                   - apigateway:*
+                  - bedrock:CreatePrompt
+                  - bedrock:CreatePromptVersion
+                  - bedrock:DeletePrompt
+                  - bedrock:GetPrompt
+                  - bedrock:ListPrompts
+                  - bedrock:ListTagsForResource
+                  - bedrock:TagResource
+                  - bedrock:UntagResource
+                  - bedrock:UpdatePrompt
                   - cloudwatch:DeleteAlarms
                   - cloudwatch:DescribeAlarms
                   - cloudwatch:PutMetricAlarm

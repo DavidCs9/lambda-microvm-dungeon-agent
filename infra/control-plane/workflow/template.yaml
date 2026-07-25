@@ -8,16 +8,407 @@ Parameters:
     Default: 30
     AllowedValues: [7, 14, 30, 60, 90]
     Description: Retention period for workflow and Lambda operational logs.
-  BedrockModelId:
+  CampaignModelId:
     Type: String
     Default: us.anthropic.claude-sonnet-4-6
-    Description: Bedrock inference profile used by both session architects.
+    Description: Bedrock inference profile baked into the campaign prompt version.
+  CharacterModelId:
+    Type: String
+    Default: us.anthropic.claude-sonnet-4-6
+    Description: Bedrock inference profile baked into the character prompt version.
+  MasterModelId:
+    Type: String
+    Default: us.anthropic.claude-sonnet-4-6
+    Description: Bedrock inference profile baked into the Dungeon Master prompt version.
   MicrovmImageName:
     Type: String
     Default: dungeon-agent-fastapi
     Description: Image name resolved to its latest active version at runtime.
 
 Resources:
+  DungeonUserPool:
+    Type: AWS::Cognito::UserPool
+    Properties:
+      UserPoolName: !Sub "${AWS::StackName}-users"
+      AdminCreateUserConfig:
+        AllowAdminCreateUserOnly: true
+      UsernameAttributes: [email]
+      AutoVerifiedAttributes: [email]
+      MfaConfiguration: "OFF"
+      Policies:
+        PasswordPolicy:
+          MinimumLength: 12
+          RequireLowercase: true
+          RequireNumbers: true
+          RequireSymbols: true
+          RequireUppercase: true
+
+  DungeonUserPoolClient:
+    Type: AWS::Cognito::UserPoolClient
+    Properties:
+      ClientName: !Sub "${AWS::StackName}-web"
+      UserPoolId: !Ref DungeonUserPool
+      GenerateSecret: false
+      PreventUserExistenceErrors: ENABLED
+      ExplicitAuthFlows:
+        - ALLOW_USER_SRP_AUTH
+        - ALLOW_REFRESH_TOKEN_AUTH
+
+  ManagedPromptProviderRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      Policies:
+        - PolicyName: ManageBedrockPrompts
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - bedrock:CreatePrompt
+                  - bedrock:ListPrompts
+                Resource: "*"
+              - Effect: Allow
+                Action:
+                  - bedrock:CreatePromptVersion
+                  - bedrock:DeletePrompt
+                  - bedrock:TagResource
+                  - bedrock:UntagResource
+                  - bedrock:UpdatePrompt
+                Resource: !Sub "arn:${AWS::Partition}:bedrock:${AWS::Region}:${AWS::AccountId}:prompt/*"
+
+  ManagedPromptProvider:
+    Type: AWS::Lambda::Function
+    Properties:
+      Description: CloudFormation provider for typed Bedrock managed prompts.
+      Runtime: python3.13
+      Handler: index.handler
+      Role: !GetAtt ManagedPromptProviderRole.Arn
+      Timeout: 60
+      Code:
+        ZipFile: |
+          import boto3
+          import cfnresponse
+          import re
+
+          client = boto3.client("bedrock-agent")
+
+          def schema_value(value):
+              if isinstance(value, list):
+                  return [schema_value(item) for item in value]
+              if isinstance(value, dict):
+                  return {key: schema_value(item) for key, item in value.items()}
+              if value == "true":
+                  return True
+              if value == "false":
+                  return False
+              if isinstance(value, str) and re.fullmatch(r"-?(0|[1-9]\d*)(\.\d+)?", value):
+                  return float(value) if "." in value else int(value)
+              return value
+
+          def api_value(value):
+              if isinstance(value, list):
+                  return [api_value(item) for item in value]
+              if not isinstance(value, dict):
+                  return value
+              converted = {}
+              for key, item in value.items():
+                  api_key = key[:1].lower() + key[1:]
+                  if key == "Json":
+                      converted[api_key] = schema_value(item)
+                  elif key == "Tags":
+                      converted[api_key] = item
+                  elif key == "MaxTokens":
+                      converted[api_key] = int(item)
+                  elif key == "Temperature":
+                      converted[api_key] = float(item)
+                  else:
+                      converted[api_key] = api_value(item)
+              return converted
+
+          def find_prompt(name):
+              token = None
+              while True:
+                  request = {"maxResults": 10}
+                  if token:
+                      request["nextToken"] = token
+                  response = client.list_prompts(**request)
+                  for prompt in response.get("promptSummaries", []):
+                      if prompt["name"] == name:
+                          return prompt
+                  token = response.get("nextToken")
+                  if not token:
+                      return None
+
+          def handler(event, context):
+              physical_id = event.get("PhysicalResourceId")
+              try:
+                  properties = dict(event["ResourceProperties"])
+                  properties.pop("ServiceToken", None)
+                  version_description = properties.pop("VersionDescription")
+                  definition = api_value(properties)
+                  tags = definition.pop("tags", {})
+
+                  if event["RequestType"] == "Delete":
+                      if physical_id and re.fullmatch(r"[A-Za-z0-9]{10}", physical_id):
+                          try:
+                              client.delete_prompt(promptIdentifier=physical_id)
+                          except client.exceptions.ResourceNotFoundException:
+                              pass
+                      cfnresponse.send(
+                          event, context, cfnresponse.SUCCESS, {}, physical_id
+                      )
+                      return
+
+                  if event["RequestType"] == "Create":
+                      existing = find_prompt(definition["name"])
+                      if existing:
+                          physical_id = existing["id"]
+                          draft = client.update_prompt(
+                              promptIdentifier=physical_id, **definition
+                          )
+                      else:
+                          draft = client.create_prompt(**definition, tags=tags)
+                          physical_id = draft["id"]
+                  else:
+                      draft = client.update_prompt(
+                          promptIdentifier=physical_id, **definition
+                      )
+
+                  version = client.create_prompt_version(
+                      promptIdentifier=physical_id,
+                      description=version_description,
+                      tags=tags,
+                  )
+                  version_number = str(version["version"])
+                  version_arn = str(version["arn"])
+                  if not version_arn.endswith(f":{version_number}"):
+                      version_arn = f"{version_arn}:{version_number}"
+                  cfnresponse.send(
+                      event,
+                      context,
+                      cfnresponse.SUCCESS,
+                      {
+                          "Arn": version_arn,
+                          "Id": physical_id,
+                          "Version": version_number,
+                      },
+                      physical_id,
+                  )
+              except Exception as error:
+                  cfnresponse.send(
+                      event,
+                      context,
+                      cfnresponse.FAILED,
+                      {"Error": str(error)},
+                      physical_id,
+                      reason=str(error),
+                  )
+
+  CampaignManagedPrompt:
+    Type: Custom::BedrockManagedPrompt
+    Properties:
+      ServiceToken: !GetAtt ManagedPromptProvider.Arn
+      VersionDescription: Campaign prompt definition revision 4
+      Name: !Sub "${AWS::StackName}-campaign-iac"
+      Description: Creates a compact validated one-shot campaign.
+      DefaultVariant: default
+      Tags:
+        project: lambda-microvm-dungeon-agent
+        role: campaign
+      Variants:
+        - Name: default
+          ModelId: !Ref CampaignModelId
+          TemplateType: CHAT
+          InferenceConfiguration:
+            Text:
+              MaxTokens: 3000
+              Temperature: 0.9
+          Metadata:
+            - Key: project
+              Value: lambda-microvm-dungeon-agent
+            - Key: role
+              Value: campaign
+          TemplateConfiguration:
+            Chat:
+              System:
+                - Text: >-
+                    Design a compact fantasy one-shot with declared exits, snake_case IDs, at
+                    least three solution paths, no commercial-fiction copies, and no silent
+                    bell/tower. All IDs must use lowercase ASCII letters, digits, and underscores
+                    only. Treat every tool-schema maxLength as a hard limit. Use one short
+                    sentence per field: premise at most 120 characters, objective 70, opening
+                    100, and every description 90.
+              Messages:
+                - Role: user
+                  Content:
+                    - Text: >-
+                        Create a 10-15 minute {{language_name}} adventure inspired by {{theme}}:
+                        objective, 3-5 locations, 1-2 NPCs, useful items, secrets, max_turns, and
+                        short opening. Also pick a small, coherent starting_inventory (0-2 item
+                        ids from items) that the protagonist plausibly already carries given the
+                        premise.
+
+                        {{repair_feedback}}
+              InputVariables:
+                - Name: language_name
+                - Name: theme
+                - Name: repair_feedback
+              ToolConfiguration:
+                ToolChoice:
+                  Tool:
+                    Name: create_adventure
+                Tools:
+                  - ToolSpec:
+                      Name: create_adventure
+                      Description: Return the complete validated adventure plan.
+                      InputSchema:
+                        Json: {"$defs":{"Character":{"additionalProperties":false,"properties":{"id":{"pattern":"^[a-z][a-z0-9_]{1,31}$","title":"Id","type":"string"},"name":{"maxLength":50,"minLength":2,"title":"Name","type":"string"},"description":{"maxLength":160,"minLength":5,"title":"Description","type":"string"},"motivation":{"maxLength":300,"minLength":5,"title":"Motivation","type":"string"}},"required":["id","name","description","motivation"],"title":"Character","type":"object"},"Item":{"additionalProperties":false,"properties":{"id":{"pattern":"^[a-z][a-z0-9_]{1,31}$","title":"Id","type":"string"},"name":{"maxLength":50,"minLength":2,"title":"Name","type":"string"},"description":{"maxLength":160,"minLength":5,"title":"Description","type":"string"}},"required":["id","name","description"],"title":"Item","type":"object"},"Location":{"additionalProperties":false,"properties":{"id":{"pattern":"^[a-z][a-z0-9_]{1,31}$","title":"Id","type":"string"},"name":{"maxLength":60,"minLength":2,"title":"Name","type":"string"},"description":{"maxLength":160,"minLength":10,"title":"Description","type":"string"},"exits":{"items":{"type":"string"},"maxItems":4,"title":"Exits","type":"array"}},"required":["id","name","description","exits"],"title":"Location","type":"object"}},"additionalProperties":false,"properties":{"title":{"maxLength":70,"minLength":3,"title":"Title","type":"string"},"premise":{"maxLength":200,"minLength":20,"title":"Premise","type":"string"},"objective":{"maxLength":120,"minLength":10,"title":"Objective","type":"string"},"opening":{"maxLength":180,"minLength":20,"title":"Opening","type":"string"},"starting_location_id":{"title":"Starting Location Id","type":"string"},"locations":{"items":{"$ref":"#/$defs/Location"},"maxItems":5,"minItems":3,"title":"Locations","type":"array"},"characters":{"items":{"$ref":"#/$defs/Character"},"maxItems":2,"minItems":1,"title":"Characters","type":"array"},"items":{"items":{"$ref":"#/$defs/Item"},"maxItems":5,"minItems":2,"title":"Items","type":"array"},"starting_inventory":{"description":"Item ids (from items) the protagonist already carries at the start. Keep it small and coherent with the character and premise.","items":{"type":"string"},"maxItems":3,"title":"Starting Inventory","type":"array"},"secrets":{"items":{"type":"string"},"maxItems":3,"minItems":1,"title":"Secrets","type":"array"},"max_turns":{"maximum":15,"minimum":8,"title":"Max Turns","type":"integer"}},"required":["title","premise","objective","opening","starting_location_id","locations","characters","items","secrets","max_turns"],"title":"AdventurePlan","type":"object"}
+
+  CharacterManagedPrompt:
+    Type: Custom::BedrockManagedPrompt
+    Properties:
+      ServiceToken: !GetAtt ManagedPromptProvider.Arn
+      VersionDescription: Character prompt definition revision 2
+      Name: !Sub "${AWS::StackName}-character-iac"
+      Description: Creates a protagonist grounded in a supplied campaign.
+      DefaultVariant: default
+      Tags:
+        project: lambda-microvm-dungeon-agent
+        role: character
+      Variants:
+        - Name: default
+          ModelId: !Ref CharacterModelId
+          TemplateType: CHAT
+          InferenceConfiguration:
+            Text:
+              MaxTokens: 2000
+              Temperature: 0.85
+          Metadata:
+            - Key: project
+              Value: lambda-microvm-dungeon-agent
+            - Key: role
+              Value: character
+          TemplateConfiguration:
+            Chat:
+              System:
+                - Text: >-
+                    Design one concise protagonist tied to the adventure, vary
+                    gender/presentation, hide secrets, and make choices investigative, social,
+                    and risky.
+              Messages:
+                - Role: user
+                  Content:
+                    - Text: >-
+                        Create one concise protagonist in {{language_name}}: identity, desire,
+                        personal stake, known facts, and three ways to begin. Put exactly these
+                        pronouns in the pronouns field: {{pronouns}}. Align name, appearance, and
+                        grammar with that identity. Set stats (might, agility, wits, charm,
+                        resolve) to a value of 1-3 each, chosen freely and independently to fit the
+                        archetype. Do not balance them. Keep every string field short enough for
+                        the tool schema.
+
+                        Adventure JSON:
+
+                        {{adventure_json}}
+
+                        {{repair_feedback}}
+              InputVariables:
+                - Name: language_name
+                - Name: pronouns
+                - Name: adventure_json
+                - Name: repair_feedback
+              ToolConfiguration:
+                ToolChoice:
+                  Tool:
+                    Name: create_player_character
+                Tools:
+                  - ToolSpec:
+                      Name: create_player_character
+                      Description: Return a complete protagonist grounded in the supplied adventure.
+                      InputSchema:
+                        Json: {"$defs":{"CharacterStats":{"additionalProperties":false,"description":"Five simple attributes (1-3). The value is the roll modifier it grants.","properties":{"might":{"maximum":3,"minimum":1,"title":"Might","type":"integer"},"agility":{"maximum":3,"minimum":1,"title":"Agility","type":"integer"},"wits":{"maximum":3,"minimum":1,"title":"Wits","type":"integer"},"charm":{"maximum":3,"minimum":1,"title":"Charm","type":"integer"},"resolve":{"maximum":3,"minimum":1,"title":"Resolve","type":"integer"}},"required":["might","agility","wits","charm","resolve"],"title":"CharacterStats","type":"object"}},"additionalProperties":false,"description":"A playable identity deliberately connected to one adventure.","properties":{"name":{"maxLength":50,"minLength":2,"title":"Name","type":"string"},"pronouns":{"maxLength":30,"minLength":2,"title":"Pronouns","type":"string"},"archetype":{"maxLength":80,"minLength":3,"title":"Archetype","type":"string"},"appearance":{"maxLength":300,"minLength":10,"title":"Appearance","type":"string"},"background":{"maxLength":500,"minLength":30,"title":"Background","type":"string"},"desire":{"maxLength":240,"minLength":10,"title":"Desire","type":"string"},"need":{"maxLength":240,"minLength":10,"title":"Need","type":"string"},"connection_to_adventure":{"maxLength":300,"minLength":20,"title":"Connection To Adventure","type":"string"},"strength":{"maxLength":200,"minLength":5,"title":"Strength","type":"string"},"flaw":{"maxLength":200,"minLength":5,"title":"Flaw","type":"string"},"contradiction":{"maxLength":300,"minLength":10,"title":"Contradiction","type":"string"},"npc_connection":{"maxLength":300,"minLength":10,"title":"Npc Connection","type":"string"},"meaningful_item":{"maxLength":200,"minLength":5,"title":"Meaningful Item","type":"string"},"open_question":{"maxLength":300,"minLength":10,"title":"Open Question","type":"string"},"known_facts":{"items":{"type":"string"},"maxItems":3,"minItems":2,"title":"Known Facts","type":"array"},"opening_choices":{"items":{"type":"string"},"maxItems":3,"minItems":3,"title":"Opening Choices","type":"array"},"stats":{"$ref":"#/$defs/CharacterStats","description":"Five attributes (1-3 each), chosen freely to fit the archetype. Each value is the modifier added to the d20 when that attribute governs a risky action."}},"required":["name","pronouns","archetype","appearance","background","desire","need","connection_to_adventure","strength","flaw","contradiction","npc_connection","meaningful_item","open_question","known_facts","opening_choices"],"title":"PlayerCharacter","type":"object"}
+
+  MasterManagedPrompt:
+    Type: Custom::BedrockManagedPrompt
+    Properties:
+      ServiceToken: !GetAtt ManagedPromptProvider.Arn
+      VersionDescription: Master prompt definition revision 2
+      Name: !Sub "${AWS::StackName}-master-iac"
+      Description: Adjudicates one turn against the authoritative world state.
+      DefaultVariant: default
+      Tags:
+        project: lambda-microvm-dungeon-agent
+        role: master
+      Variants:
+        - Name: default
+          ModelId: !Ref MasterModelId
+          TemplateType: CHAT
+          InferenceConfiguration:
+            Text:
+              MaxTokens: 1200
+              Temperature: 0.65
+          Metadata:
+            - Key: project
+              Value: lambda-microvm-dungeon-agent
+            - Key: role
+              Value: master
+          TemplateConfiguration:
+            Chat:
+              System:
+                - Text: >-
+                    Be a fair dungeon master. Roll only for risk, use declared IDs in changes,
+                    move failures forward, set earned victory only, and narrate in 1-3 vivid
+                    sentences. Respect the current inventory: only add_items/remove_items that
+                    exist in plan.items, never remove an item the player is not carrying, and
+                    reference carried items naturally in the narration. When a roll is required,
+                    set stat to the attribute that governs the action (might, agility, wits,
+                    charm, or resolve); the hero's stat value in player_character.stats is added
+                    to the d20, so weigh it when setting difficulty.
+              Messages:
+                - Role: user
+                  Content:
+                    - Text: >-
+                        Resolve this turn entirely in {{language_name}}.
+
+                        Player action:
+
+                        {{action}}
+
+                        World JSON:
+
+                        {{world_json}}
+
+                        Previous proposal rejection:
+
+                        {{rejection_feedback}}
+
+                        {{repair_feedback}}
+              InputVariables:
+                - Name: language_name
+                - Name: action
+                - Name: world_json
+                - Name: rejection_feedback
+                - Name: repair_feedback
+              ToolConfiguration:
+                ToolChoice:
+                  Tool:
+                    Name: resolve_turn
+                Tools:
+                  - ToolSpec:
+                      Name: resolve_turn
+                      Description: Return the success and failure branches for this player action.
+                      InputSchema:
+                        Json: {"$defs":{"StateChanges":{"additionalProperties":false,"properties":{"location_id":{"anyOf":[{"type":"string"},{"type":"null"}],"title":"Location Id"},"add_items":{"items":{"type":"string"},"maxItems":2,"title":"Add Items","type":"array"},"remove_items":{"items":{"type":"string"},"maxItems":2,"title":"Remove Items","type":"array"},"add_facts":{"items":{"type":"string"},"maxItems":3,"title":"Add Facts","type":"array"},"health_delta":{"default":0,"maximum":1,"minimum":-2,"title":"Health Delta","type":"integer"},"objective_complete":{"default":false,"title":"Objective Complete","type":"boolean"}},"title":"StateChanges","type":"object"}},"additionalProperties":false,"properties":{"intent":{"maxLength":300,"minLength":2,"title":"Intent","type":"string"},"requires_roll":{"title":"Requires Roll","type":"boolean"},"difficulty":{"anyOf":[{"maximum":20,"minimum":5,"type":"integer"},{"type":"null"}],"title":"Difficulty"},"stat":{"anyOf":[{"enum":["might","agility","wits","charm","resolve"],"type":"string"},{"type":"null"}],"title":"Stat"},"success_narration":{"maxLength":500,"minLength":10,"title":"Success Narration","type":"string"},"failure_narration":{"maxLength":500,"minLength":10,"title":"Failure Narration","type":"string"},"success_changes":{"$ref":"#/$defs/StateChanges"},"failure_changes":{"$ref":"#/$defs/StateChanges"},"suggestions":{"items":{"type":"string"},"maxItems":3,"minItems":2,"title":"Suggestions","type":"array"}},"required":["intent","requires_roll","success_narration","failure_narration","success_changes","failure_changes","suggestions"],"title":"TurnProposal","type":"object"}
+
   SessionTable:
     Type: AWS::DynamoDB::Table
     DeletionPolicy: Delete
@@ -114,12 +505,21 @@ Resources:
   ControlPlaneHttpApi:
     Type: AWS::Serverless::HttpApi
     Properties:
+      Auth:
+        DefaultAuthorizer: CognitoJwtAuthorizer
+        Authorizers:
+          CognitoJwtAuthorizer:
+            IdentitySource: "$request.header.Authorization"
+            JwtConfiguration:
+              audience:
+                - !Ref DungeonUserPoolClient
+              issuer: !Sub "https://cognito-idp.${AWS::Region}.${AWS::URLSuffix}/${DungeonUserPool}"
       CorsConfiguration:
         AllowHeaders:
           - content-type
           - idempotency-key
           - x-correlation-id
-          - x-player-id
+          - authorization
         AllowMethods: [GET, POST]
         AllowOrigins: ["*"]
 
@@ -140,6 +540,7 @@ Resources:
           STATE_MACHINE_ARN: !GetAtt CreateSessionStateMachine.Arn
           CAMPAIGN_STATE_MACHINE_ARN: !GetAtt CreateCampaignStateMachine.Arn
           TURN_WORKER_FUNCTION_NAME: !Ref TurnWorkerFunction
+          ALLOW_SANDBOX_IDENTITY: "false"
           MICROVM_IMAGE_NAME: !Ref MicrovmImageName
           WS_MANAGEMENT_ENDPOINT: !Sub "https://${ControlPlaneWebSocketApi}.execute-api.${AWS::Region}.${AWS::URLSuffix}/prod"
           SPEECH_CACHE_BUCKET: !Ref SpeechCacheBucket
@@ -320,6 +721,7 @@ Resources:
               - Effect: Allow
                 Action:
                   - bedrock:InvokeModel
+                  - bedrock:RenderPrompt
                 Resource: "*"
               - Effect: Allow
                 Action:
@@ -368,7 +770,9 @@ Resources:
         Variables:
           TABLE_NAME: !Ref SessionTable
           CAMPAIGN_TABLE_NAME: !Ref CampaignTable
-          BEDROCK_MODEL_ID: !Ref BedrockModelId
+          BEDROCK_MODEL_ID: !Ref CampaignModelId
+          CAMPAIGN_PROMPT_ARN: !GetAtt CampaignManagedPrompt.Arn
+          CHARACTER_PROMPT_ARN: !GetAtt CharacterManagedPrompt.Arn
           MICROVM_IMAGE_NAME: !Ref MicrovmImageName
           WS_MANAGEMENT_ENDPOINT: !Sub "https://${ControlPlaneWebSocketApi}.execute-api.${AWS::Region}.${AWS::URLSuffix}/prod"
           SPEECH_CACHE_BUCKET: !Ref SpeechCacheBucket
@@ -401,7 +805,8 @@ Resources:
         Variables:
           TABLE_NAME: !Ref SessionTable
           CAMPAIGN_TABLE_NAME: !Ref CampaignTable
-          BEDROCK_MODEL_ID: !Ref BedrockModelId
+          BEDROCK_MODEL_ID: !Ref MasterModelId
+          MASTER_PROMPT_ARN: !GetAtt MasterManagedPrompt.Arn
           MICROVM_IMAGE_NAME: !Ref MicrovmImageName
           WS_MANAGEMENT_ENDPOINT: !Sub "https://${ControlPlaneWebSocketApi}.execute-api.${AWS::Region}.${AWS::URLSuffix}/prod"
           POWERTOOLS_SERVICE_NAME: dungeon-agent-control-plane
@@ -1528,8 +1933,17 @@ Resources:
 
 Outputs:
   ApiUrl:
-    Description: Public sandbox endpoint. Send x-player-id on every request.
+    Description: HTTP API endpoint. Send a Cognito access token as a Bearer token.
     Value: !Sub "https://${ControlPlaneHttpApi}.execute-api.${AWS::Region}.${AWS::URLSuffix}"
+  CognitoUserPoolId:
+    Description: Cognito User Pool ID for the web login.
+    Value: !Ref DungeonUserPool
+  CognitoUserPoolClientId:
+    Description: Public Cognito app client ID for the web login.
+    Value: !Ref DungeonUserPoolClient
+  CognitoIssuer:
+    Description: Cognito JWT issuer for the HTTP API authorizer.
+    Value: !Sub "https://cognito-idp.${AWS::Region}.${AWS::URLSuffix}/${DungeonUserPool}"
   WebSocketUrl:
     Description: Sandbox realtime endpoint. Connect with a playerId query parameter.
     Value: !Sub "wss://${ControlPlaneWebSocketApi}.execute-api.${AWS::Region}.${AWS::URLSuffix}/prod"
@@ -1557,3 +1971,12 @@ Outputs:
   WorkflowMonitorDeadLetterQueueUrl:
     Description: Queue containing terminal workflow events that operational monitoring could not consume.
     Value: !Ref WorkflowMonitorDeadLetterQueue
+  CampaignPromptVersionArn:
+    Description: Versioned campaign prompt ARN used by the runtime and evaluator.
+    Value: !GetAtt CampaignManagedPrompt.Arn
+  CharacterPromptVersionArn:
+    Description: Versioned character prompt ARN used by the runtime and evaluator.
+    Value: !GetAtt CharacterManagedPrompt.Arn
+  MasterPromptVersionArn:
+    Description: Versioned Dungeon Master prompt ARN used by the runtime and evaluator.
+    Value: !GetAtt MasterManagedPrompt.Arn

@@ -1,6 +1,9 @@
 import { AnimatePresence, motion } from "framer-motion";
+import { useEffect, useState } from "react";
+import { currentAuthSession, signOut, type AuthSession } from "./auth/cognito";
 import { AtmosphereStage } from "./game/AtmosphereStage";
-import { useGameStore } from "./state/store";
+import { gameActions, useGameStore } from "./state/store";
+import { LoginScreen } from "./ui/LoginScreen";
 import { MenuScreen } from "./ui/MenuScreen";
 import { CampaignsScreen } from "./ui/CampaignsScreen";
 import { PhaseTheaterScreen } from "./ui/PhaseTheaterScreen";
@@ -15,11 +18,45 @@ import { OutcomeScreen } from "./ui/OutcomeScreen";
 export function App() {
   const screen = useGameStore((s) => s.screen);
   const diceBeat = useGameStore((s) => s.diceBeat);
+  const [authSession, setAuthSession] = useState<AuthSession | null | undefined>(undefined);
+
+  useEffect(() => {
+    void currentAuthSession()
+      .then((session) => setAuthSession(session))
+      .catch(() => setAuthSession(null));
+  }, []);
+
+  useEffect(() => {
+    if (authSession) {
+      gameActions.setPlayerId(authSession.userSub);
+    }
+  }, [authSession]);
+
+  if (authSession === undefined) {
+    return <div className="min-h-screen bg-[var(--deep)]" />;
+  }
+
+  if (!authSession) {
+    return <LoginScreen onAuthenticated={setAuthSession} />;
+  }
+
+  function logout() {
+    signOut();
+    gameActions.resetToMenu();
+    setAuthSession(null);
+  }
 
   return (
     <div className="relative min-h-screen overflow-hidden bg-[var(--deep)] text-[var(--ink)]">
       <AtmosphereStage diceBeat={diceBeat} screen={screen} />
       <div className="relative z-10 min-h-screen">
+        <button
+          type="button"
+          onClick={logout}
+          className="absolute right-6 top-6 z-20 text-xs tracking-[0.14em] text-[var(--muted)] uppercase transition hover:text-[var(--ink)]"
+        >
+          Salir
+        </button>
         <AnimatePresence mode="wait">
           <motion.div
             key={screen}

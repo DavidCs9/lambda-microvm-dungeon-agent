@@ -100,3 +100,7 @@ AWS_PROFILE=personal AWS_REGION=us-east-2 aws cloudformation deploy \
 
 4. Trigger **Deploy control plane sandbox** from the Actions tab (or merge a control-plane change to `main`).
 
+Redeploy the GitHub deploy role template after adding new control-plane resource types. The role
+owns the Bedrock Prompt Management create, version, update, tag, read, and delete permissions used
+by CloudFormation; prompt contents and production versions remain owned by the control-plane
+stack.

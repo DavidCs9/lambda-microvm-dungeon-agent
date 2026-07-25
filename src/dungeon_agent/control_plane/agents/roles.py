@@ -28,6 +28,7 @@ class AdventureArchitect:
                 "Also pick a small, coherent starting_inventory (0-2 item ids from items) that the "
                 "protagonist plausibly already carries given the premise."
             ),
+            prompt_variables={"language_name": language_name, "theme": theme},
             tool_name="create_adventure",
             tool_description="Return the complete validated adventure plan.",
             output_model=AdventurePlan,
@@ -70,6 +71,11 @@ class CharacterArchitect:
                 ensure_ascii=False,
                 separators=(",", ":"),
             ),
+            prompt_variables={
+                "language_name": language_name,
+                "pronouns": pronouns,
+                "adventure_json": adventure.model_dump_json(),
+            },
             tool_name="create_player_character",
             tool_description="Return a complete protagonist grounded in the supplied adventure.",
             output_model=PlayerCharacter,

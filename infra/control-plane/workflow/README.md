@@ -4,9 +4,13 @@ This SAM stack deploys the first real control-plane vertical slice: HTTP API, La
 and Step Functions Standard workflows (create-campaign + create-session). Session and campaign
 records are durable.
 
-The sandbox API is intentionally simple and public. Send `x-player-id` on every request; it becomes
-the session owner. This is convenient for the lab and must be replaced with JWT authentication
-before treating the endpoint as a real product.
+The HTTP API is protected by a Cognito User Pool JWT authorizer. Self-registration is disabled;
+the stack creates the User Pool and public app client through SAM, while individual users are added
+manually after deployment. The WebSocket remains a temporary sandbox path using `playerId`.
+
+After deployment, copy the `ApiUrl`, `WebSocketUrl`, `CognitoUserPoolId`, and
+`CognitoUserPoolClientId` outputs into `web/.env.local`. In the Cognito console, create the demo
+users administratively and give each a permanent password before they sign in.
 
 ## Deploy
 
@@ -39,3 +43,10 @@ aws cloudformation deploy \
 ```
 
 The current sandbox is deployed in `us-east-2` as `dungeon-agent-control-plane-sandbox`.
+The template owns each Bedrock managed prompt and immutable version. A small custom resource is
+used because the native `AWS::Bedrock::Prompt` provider converts JSON Schema numeric and boolean
+values to strings. The workflow and turn-worker functions consume the resulting version ARNs
+directly. When changing a prompt definition, also increment its `VersionDescription` revision so
+CloudFormation records the intended snapshot. The three version ARNs are exposed as stack outputs
+for evals. Campaign, character, and Dungeon Master model IDs are independent template parameters
+so an eval winner can be promoted per role without changing runtime code.
