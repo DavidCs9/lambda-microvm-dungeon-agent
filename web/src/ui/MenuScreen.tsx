@@ -8,7 +8,6 @@ import {
   EmberButton,
   ErrorLine,
   GhostButton,
-  GhostField,
   QuietMeta,
   ScreenShell,
   wsStatusLabel,
@@ -123,15 +122,6 @@ export function MenuScreen() {
         >
           {MENU_COPY.tagline}
         </motion.p>
-
-        <GhostField
-          id="player-id"
-          label="Tu nombre en la mesa"
-          value={playerId}
-          minLength={3}
-          placeholder="mínimo 3 caracteres"
-          onChange={(v) => gameActions.setPlayerId(v)}
-        />
 
         <div className="mt-10 flex w-full max-w-xs flex-col items-stretch gap-3">
           <EmberButton

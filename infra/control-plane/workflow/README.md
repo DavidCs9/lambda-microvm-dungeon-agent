@@ -4,9 +4,13 @@ This SAM stack deploys the first real control-plane vertical slice: HTTP API, La
 and Step Functions Standard workflows (create-campaign + create-session). Session and campaign
 records are durable.
 
-The sandbox API is intentionally simple and public. Send `x-player-id` on every request; it becomes
-the session owner. This is convenient for the lab and must be replaced with JWT authentication
-before treating the endpoint as a real product.
+The HTTP API is protected by a Cognito User Pool JWT authorizer. Self-registration is disabled;
+the stack creates the User Pool and public app client through SAM, while individual users are added
+manually after deployment. The WebSocket remains a temporary sandbox path using `playerId`.
+
+After deployment, copy the `ApiUrl`, `WebSocketUrl`, `CognitoUserPoolId`, and
+`CognitoUserPoolClientId` outputs into `web/.env.local`. In the Cognito console, create the demo
+users administratively and give each a permanent password before they sign in.
 
 ## Deploy
 

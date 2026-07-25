@@ -26,6 +26,34 @@ Parameters:
     Description: Image name resolved to its latest active version at runtime.
 
 Resources:
+  DungeonUserPool:
+    Type: AWS::Cognito::UserPool
+    Properties:
+      UserPoolName: !Sub "${AWS::StackName}-users"
+      AdminCreateUserConfig:
+        AllowAdminCreateUserOnly: true
+      UsernameAttributes: [email]
+      AutoVerifiedAttributes: [email]
+      MfaConfiguration: "OFF"
+      Policies:
+        PasswordPolicy:
+          MinimumLength: 12
+          RequireLowercase: true
+          RequireNumbers: true
+          RequireSymbols: true
+          RequireUppercase: true
+
+  DungeonUserPoolClient:
+    Type: AWS::Cognito::UserPoolClient
+    Properties:
+      ClientName: !Sub "${AWS::StackName}-web"
+      UserPoolId: !Ref DungeonUserPool
+      GenerateSecret: false
+      PreventUserExistenceErrors: ENABLED
+      ExplicitAuthFlows:
+        - ALLOW_USER_SRP_AUTH
+        - ALLOW_REFRESH_TOKEN_AUTH
+
   ManagedPromptProviderRole:
     Type: AWS::IAM::Role
     Properties:
@@ -477,12 +505,21 @@ Resources:
   ControlPlaneHttpApi:
     Type: AWS::Serverless::HttpApi
     Properties:
+      Auth:
+        DefaultAuthorizer: CognitoJwtAuthorizer
+        Authorizers:
+          CognitoJwtAuthorizer:
+            IdentitySource: "$request.header.Authorization"
+            JwtConfiguration:
+              audience:
+                - !Ref DungeonUserPoolClient
+              issuer: !Sub "https://cognito-idp.${AWS::Region}.${AWS::URLSuffix}/${DungeonUserPool}"
       CorsConfiguration:
         AllowHeaders:
           - content-type
           - idempotency-key
           - x-correlation-id
-          - x-player-id
+          - authorization
         AllowMethods: [GET, POST]
         AllowOrigins: ["*"]
 
@@ -503,6 +540,7 @@ Resources:
           STATE_MACHINE_ARN: !GetAtt CreateSessionStateMachine.Arn
           CAMPAIGN_STATE_MACHINE_ARN: !GetAtt CreateCampaignStateMachine.Arn
           TURN_WORKER_FUNCTION_NAME: !Ref TurnWorkerFunction
+          ALLOW_SANDBOX_IDENTITY: "false"
           MICROVM_IMAGE_NAME: !Ref MicrovmImageName
           WS_MANAGEMENT_ENDPOINT: !Sub "https://${ControlPlaneWebSocketApi}.execute-api.${AWS::Region}.${AWS::URLSuffix}/prod"
           SPEECH_CACHE_BUCKET: !Ref SpeechCacheBucket
@@ -1888,8 +1926,17 @@ Resources:
 
 Outputs:
   ApiUrl:
-    Description: Public sandbox endpoint. Send x-player-id on every request.
+    Description: HTTP API endpoint. Send a Cognito access token as a Bearer token.
     Value: !Sub "https://${ControlPlaneHttpApi}.execute-api.${AWS::Region}.${AWS::URLSuffix}"
+  CognitoUserPoolId:
+    Description: Cognito User Pool ID for the web login.
+    Value: !Ref DungeonUserPool
+  CognitoUserPoolClientId:
+    Description: Public Cognito app client ID for the web login.
+    Value: !Ref DungeonUserPoolClient
+  CognitoIssuer:
+    Description: Cognito JWT issuer for the HTTP API authorizer.
+    Value: !Sub "https://cognito-idp.${AWS::Region}.${AWS::URLSuffix}/${DungeonUserPool}"
   WebSocketUrl:
     Description: Sandbox realtime endpoint. Connect with a playerId query parameter.
     Value: !Sub "wss://${ControlPlaneWebSocketApi}.execute-api.${AWS::Region}.${AWS::URLSuffix}/prod"

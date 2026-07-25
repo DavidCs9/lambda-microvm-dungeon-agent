@@ -9,6 +9,7 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "amazon-cognito-identity-js": "^6.3.20",
     "framer-motion": "^12.42.2",
     "pixi.js": "^8.19.0",
     "react": "^19.2.7",
