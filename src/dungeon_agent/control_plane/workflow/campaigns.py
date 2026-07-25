@@ -271,6 +271,16 @@ def _elapsed_ms(monotonic: Callable[[], float], started: float) -> int:
     return max(0, round((monotonic() - started) * 1000))
 
 
+# Spanish display labels for the five character stats (order is stable for the UI).
+_STAT_LABELS: dict[str, str] = {
+    "might": "Fuerza",
+    "agility": "Destreza",
+    "wits": "Astucia",
+    "charm": "Labia",
+    "resolve": "Temple",
+}
+
+
 def build_opening(
     language: LanguageCode, adventure: AdventurePlan, character: PlayerCharacter
 ) -> OpeningDocument:
@@ -304,6 +314,15 @@ def build_opening(
             )
             for index, item_id in enumerate(adventure.starting_inventory, start=1)
             if item_id in item_by_id
+        ),
+        *(
+            (
+                f"stats_{stat_key}",
+                OpeningBlockKind.STATS,
+                f"{label} {getattr(character.stats, stat_key)}",
+                False,
+            )
+            for stat_key, label in _STAT_LABELS.items()
         ),
     ]
     return OpeningDocument(

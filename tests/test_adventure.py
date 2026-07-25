@@ -4,6 +4,7 @@ from dungeon_agent.api.adventure import initial_world, resolve_turn, start_adven
 from dungeon_agent.api.models import (
     AdventurePlan,
     Character,
+    CharacterStats,
     Item,
     Location,
     PlayerCharacter,
@@ -83,6 +84,7 @@ def proposal(**changes: object) -> TurnProposal:
         "intent": "Try a creative approach",
         "requires_roll": True,
         "difficulty": 12,
+        "stat": "agility",
         "success_narration": "Your clever plan works and opens a new path.",
         "failure_narration": "The attempt fails, but you notice a useful clue.",
         "success_changes": StateChanges(add_facts=["A new path is open"]),
@@ -90,6 +92,9 @@ def proposal(**changes: object) -> TurnProposal:
         "suggestions": ["Talk to Mara", "Explore the mill"],
     }
     values.update(changes)
+    # A governing stat is required exactly when a roll is required.
+    if not values["requires_roll"]:
+        values["stat"] = None
     return TurnProposal.model_validate(values)
 
 
@@ -136,6 +141,42 @@ def test_d20_selects_and_applies_only_matching_branch() -> None:
     assert failure.last_result is not None and not failure.last_result.success
     assert failure.health == 2
     assert "The stones are slippery" in failure.facts
+
+
+def test_stat_modifier_shifts_the_outcome_of_the_same_roll() -> None:
+    strong = sample_player().model_copy(
+        update={"stats": CharacterStats(might=3, agility=3, wits=3, charm=3, resolve=3)}
+    )
+    weak = sample_player().model_copy(
+        update={"stats": CharacterStats(might=1, agility=1, wits=1, charm=1, resolve=1)}
+    )
+
+    strong_turn = resolve_turn(
+        start_adventure("en", sample_plan(), strong),
+        "leap the gap",
+        proposal(difficulty=12, stat="agility"),
+        roll=9,
+    )
+    weak_turn = resolve_turn(
+        start_adventure("en", sample_plan(), weak),
+        "leap the gap",
+        proposal(difficulty=12, stat="agility"),
+        roll=9,
+    )
+
+    assert strong_turn.last_result is not None
+    assert strong_turn.last_result.success  # 9 + 3 == 12 meets the difficulty
+    assert strong_turn.last_result.roll == 9
+    assert strong_turn.last_result.modifier == 3
+    assert strong_turn.last_result.stat == "agility"
+    assert weak_turn.last_result is not None
+    assert not weak_turn.last_result.success  # 9 + 1 == 10 falls short
+    assert weak_turn.last_result.modifier == 1
+
+
+def test_turn_proposal_requires_a_governing_stat_when_rolling() -> None:
+    with pytest.raises(ValueError, match="governing stat"):
+        proposal(stat=None)
 
 
 def test_model_cannot_invent_unknown_locations_or_items() -> None:

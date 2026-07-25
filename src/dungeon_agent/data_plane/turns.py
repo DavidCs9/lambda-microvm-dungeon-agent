@@ -120,6 +120,8 @@ class TurnWorker:
                     roll=result.roll,
                     difficulty=result.difficulty,
                     success=result.success,
+                    stat=result.stat,
+                    modifier=result.modifier,
                 ),
                 now,
             )
