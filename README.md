@@ -1,110 +1,81 @@
 # Lambda MicroVM Dungeon Agent
 
-A bilingual, AI-directed tabletop adventure that generates a new world and a new playable
-protagonist for every session. The terminal client runs locally; each game's authoritative state
-and d20 rules live inside a dedicated AWS Lambda MicroVM.
+A personal lab: an AI one-shot RPG where a browser client talks to a sandbox AWS backend.
+Campaigns generate a world and protagonist once; each play session forks that campaign into an
+isolated Lambda MicroVM that owns dice and world mutations.
 
 [![CI](https://github.com/DavidCs9/lambda-microvm-dungeon-agent/actions/workflows/ci.yml/badge.svg)](https://github.com/DavidCs9/lambda-microvm-dungeon-agent/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
 ## How this started
 
-This project began as a weekend lab to test the new AWS Lambda MicroVM experience: launch an
-isolated VM, reach a small FastAPI service over authenticated HTTPS, preserve state across its
-lifecycle, and measure the latency. A tiny dungeon was only supposed to make the infrastructure
-test less boring.
+Weekend experiment to poke AWS Lambda MicroVMs: launch an isolated VM, hit a small FastAPI guest
+over authenticated HTTPS, keep state across the lifecycle, measure latency. A tiny dungeon made
+the infra test less boring. The dungeon was fun, so the lab grew into campaigns, a web client,
+Bedrock architects, Polly narration, and deploy lanes. Still one-dev, still a lab.
 
-Then the dungeon was actually fun to play.
+## What you play
 
-The experiment grew into a bilingual tabletop game with generated worlds, dedicated adventure and
-character architects, free-form Dungeon Master adjudication, visible dice, voice, music,
-observability, and gameplay evals. The MicroVM lab is still here, but now it protects the rules and
-state of a real game I want to keep improving.
+1. **Create a campaign** — Adventure Architect + Character Architect (Bedrock) build a world and
+   protagonist once. Optional portrait. No MicroVM.
+2. **Start a session** — fork the ready campaign into a dedicated MicroVM; zero model calls on the
+   play-boot path.
+3. **Act freely** — the Dungeon Master proposes outcomes; the MicroVM rolls the d20, validates,
+   persists, and decides win/lose.
+4. **Hear it** — Polly speech (data plane) for narration when configured.
 
-## What the game does
+Spanish is the showcase UI language; generation supports Spanish and English.
 
-At the beginning of a session:
+## Architecture (C4)
 
-1. The **Adventure Architect** creates a compact fantasy world, conflict, locations, NPCs, items,
-   secrets, and objective.
-2. The **Character Architect** creates a protagonist grounded in that world: identity, history,
-   desire, weakness, contradiction, relationships, prior knowledge, and three optional ways to
-   begin.
-3. The TUI introduces who you are and why the adventure matters before asking for an action.
-4. The **Dungeon Master** interprets free-form actions and proposes success and failure outcomes.
-5. The MicroVM rolls the d20, validates the proposal, persists state, and decides victory or defeat.
+Full write-up, L3 planes, and sequences: [docs/architecture.md](docs/architecture.md).
 
-The player is never limited to a command menu. Suggested openings provide direction, but any
-plausible action can be attempted.
+### L1 — System context
 
-## Current experience
+Player browser → Dungeon Agent → Bedrock (LLMs/images) and Lambda MicroVMs (isolated game host).
 
-- A completely new short adventure and protagonist per session
-- Official Spanish and English gameplay
-- Free-form actions with visible d20 rolls and original dice audio
-- Generated Dungeon Master voice through Amazon Polly
-- Original local fantasy ambience
-- Live location, inventory, objective, health, and remaining-turn state
-- Per-session model calls, tokens, latency, and estimated cost
-- Deterministic victory and defeat screens
-- An isolated, temporary MicroVM for every game
+![L1 System Context](docs/diagrams/l1-system-context.png)
 
-## Architecture
+### L2 — Containers
 
-```text
-Local machine
-  Textual TUI / plain CLI
-          |
-  presentation-neutral GamePort
-          |
-  DungeonOrchestrator
-     |       |       |
-     |       |       +-- Dungeon Master (Bedrock)
-     |       +---------- Character Architect (Bedrock)
-     +------------------ Adventure Architect (Bedrock)
-          |
-  authenticated HTTPS
-          |
-Dedicated Lambda MicroVM
-  FastAPI + authoritative world state + d20 rules
-```
+Deployable units inside the system boundary. The browser never talks to the MicroVM.
 
-Bedrock and Polly credentials remain on the local side. The MicroVM receives validated plans and
-state proposals, not AWS credentials. Presentation clients consume structured `OpeningView`,
-`GameSnapshot`, `TurnView`, and `UsageSnapshot` values, so a future web client can reuse the same
-game orchestration without importing Textual or parsing terminal output.
+![L2 Containers](docs/diagrams/l2-containers.png)
 
-See [Architecture](docs/architecture.md), [RFC 0001](docs/rfcs/0001-web-control-plane.md),
-[RFC 0002](docs/rfcs/0002-campaign-play-split.md),
-[RFC 0003](docs/rfcs/0003-videogame-web-client.md),
-[RFC 0004](docs/rfcs/0004-resume-existing-campaign.md), the
-[web control plane plan](docs/plans/web-control-plane.md), and [Security](docs/security.md) for the
-detailed design and next implementation phase.
+| Container | Role |
+|---|---|
+| **Web SPA** | React/Vite showcase UI |
+| **Backend** | One SAM stack: API Gateway HTTP + WebSocket, Lambdas, Step Functions |
+| **Session store** | DynamoDB: campaigns, sessions, events, snapshots |
+| **Game MicroVM** | FastAPI guest: dice, validate/apply world, no AWS credentials |
 
-## Requirements
+Inside the Backend package split (same deploy): **control plane** sets up campaigns/sessions;
+**data plane** runs turns and speech; **plane_shared** holds contracts, DynamoDB, WS delivery, and
+the MicroVM HTTP client. Details and more diagrams in the architecture doc.
 
-- Python 3.14
-- [uv](https://docs.astral.sh/uv/)
-- AWS CLI v2 with Lambda MicroVM commands
-- An AWS profile with access to Lambda MicroVMs, Amazon Bedrock, and Amazon Polly
-- Access to the configured Bedrock model; Claude Sonnet 4.6 is the working default
-- macOS or Linux for the current local audio adapters
+## Play (web)
 
-Docker with ARM64 support is needed only when building the image locally.
-
-## Play
-
-Install all local dependencies:
+Needs a deployed sandbox stack (`dungeon-agent-control-plane-sandbox` in `us-east-2`) and a current
+MicroVM image the stack can launch. Stack deploy: [infra/README.md](infra/README.md) and
+[infra/control-plane/workflow/README.md](infra/control-plane/workflow/README.md).
 
 ```sh
-git clone https://github.com/DavidCs9/lambda-microvm-dungeon-agent.git
-cd lambda-microvm-dungeon-agent
+cd web
+cp .env.example .env.local
+# Set VITE_HTTP_URL / VITE_WS_URL from CloudFormation outputs ApiUrl / WebSocketUrl
+npm install
+npm run dev
+```
+
+Sandbox auth is `x-player-id` / WebSocket `playerId` (not Cognito). Lab convenience only.
+
+## Local MicroVM smoke (optional)
+
+The Textual TUI / plain CLI still launch a one-shot session against a MicroVM for infra smoke tests.
+That path is not the web play loop.
+
+```sh
 uv sync --all-groups
-```
-
-Get the latest active image version, then launch the TUI:
-
-```sh
 IMAGE_ARN="arn:aws:lambda:us-east-2:225989371926:microvm-image:dungeon-agent-fastapi"
 IMAGE_VERSION="$(aws lambda-microvms get-microvm-image \
   --profile personal \
@@ -120,35 +91,7 @@ uv run --group tooling dungeon-agent \
   --image-version "$IMAGE_VERSION"
 ```
 
-This resolves the active version at launch instead of hardcoding a version that becomes stale.
-Use `--language es` or `--language en` to skip language selection. Use `--plain` for a basic
-terminal, CI smoke test, or redirected input.
-
-Choose another available model without changing code:
-
-```sh
-uv run --group tooling dungeon-agent <the same AWS arguments> \
-  --model-id us.anthropic.claude-sonnet-5
-```
-
-Sonnet 5 currently requires account access from AWS; Sonnet 4.6 remains the default until that
-access is granted.
-
-### Controls
-
-| Input | Action |
-|---|---|
-| Any sentence | Attempt that action in the fiction |
-| `F1` or `/help` | Show localized help |
-| `F2` or `/state` | Refresh game state |
-| `F3` or `/stats` | Refresh model usage and cost |
-| `F4` | Toggle Dungeon Master voice |
-| `F5` | Toggle ambience |
-| `Ctrl+Q` or `/quit` | Terminate the MicroVM and exit |
-
-Audio is a local presentation adapter. The game remains fully playable with `--no-voice` and
-`--no-music`. Cached audio is written under `dist/audio-cache`; privacy-safe session metrics are
-appended to `dist/session-metrics.jsonl`.
+Use `--language es|en`, `--plain`, `--no-voice`, `--no-music` as needed.
 
 ## Development
 
@@ -161,72 +104,48 @@ uv run pytest
 uv run python evals/gameplay_experience.py
 ```
 
-The deterministic gameplay eval checks roleplay context persistence, d20 branching, creative state
-progress, authoritative terminal conditions, and state consistency. Compare actual Bedrock models
-as world architect, character architect, and Dungeon Master in both official languages:
+Frontend: `cd web && npm run build` (or `npm run dev` against the sandbox API).
 
-```sh
-uv run --group tooling python evals/narration_models.py \
-  --profile personal \
-  --region us-east-2 \
-  --model-id us.anthropic.claude-sonnet-4-6
-```
-
-Run the FastAPI rules service without a MicroVM:
+Guest FastAPI without a MicroVM:
 
 ```sh
 DUNGEON_WORKSPACE_DIR="$(mktemp -d)" \
   uv run uvicorn dungeon_agent.api.main:app --reload
 ```
 
-The service exposes health and state at `/health` and `/v1/world`; interactive OpenAPI docs are at
-`/docs`. Starting a game requires both a validated `AdventurePlan` and `PlayerCharacter`.
+## Repository map
 
-## Repository structure
+- `web/` — showcase SPA
+- `src/dungeon_agent/control_plane/` — campaign/session lifecycle, workflows, composition root
+- `src/dungeon_agent/data_plane/` — turns, speech, live play events
+- `src/dungeon_agent/plane_shared/` — HTTP/WS edge, DynamoDB, contracts, MicroVM client
+- `src/dungeon_agent/api/` — FastAPI rules/state inside the MicroVM
+- `src/dungeon_agent/domain/` — game schemas
+- `src/dungeon_agent/orchestrator/`, `tui/`, `cli.py` — local smoke path
+- `src/dungeon_agent/operations/` — image build and benchmarks
+- `infra/` — bootstrap, OIDC release role, SAM control-plane stack
+- `docs/` — architecture (C4), RFCs, security
+- `evals/`, `tests/`, `scripts/`
 
-- `src/dungeon_agent/api/` — FastAPI rules and persistent state inside the MicroVM
-- `src/dungeon_agent/domain/` — framework-neutral game and presentation contracts
-- `src/dungeon_agent/control_plane/domain/` — versioned web session contracts and ports
-- `src/dungeon_agent/orchestrator/` — agents, game use cases, contracts, and MicroVM adapter
-- `src/dungeon_agent/tui/` — Textual presentation layer
-- `src/dungeon_agent/audio/` — local voice, ambience, and dice adapters
-- `src/dungeon_agent/operations/` — image and benchmark workflows
-- `src/dungeon_agent/resources/` — packaged locales and reviewed model pricing
-- `evals/` — deterministic and live model-quality evaluations
-- `tests/` — API, orchestration, presentation, audio, and persistence tests
-- `infra/` — CloudFormation bootstrap and GitHub OIDC release infrastructure
-- `scripts/` — small operational entry points only
+## CI and releases
 
-## Images, CI, and releases
+PRs run path-filtered lanes (see [`.cursor/rules/deploy-lanes.mdc`](.cursor/rules/deploy-lanes.mdc)):
 
-Pull requests do not authenticate to AWS. CI runs on PRs only (not again on merge to `main`) and
-path-filters by deploy lane:
+- `web/**` → frontend build
+- control-plane / Python → ruff, mypy, pytest, gameplay evals
+- MicroVM image paths → also ARM64 container build + source package
 
-- `web/**` — Frontend `npm run build` only
-- Python / control-plane paths — ruff, mypy, pytest, gameplay evals
-- MicroVM image paths (Dockerfile, non-CP `src/dungeon_agent/**`, image builder) — also ARM64
-  container build and deterministic source packaging
+The aggregating **CI** check always reports. Tags `v*` publish a new `dungeon-agent-fastapi`
+MicroVM image via GitHub OIDC. Manual image/benchmark entrypoints:
+`python -m scripts.build_microvm_image`, `python -m scripts.benchmark_microvm`.
 
-Docs-only changes skip the heavy jobs. The aggregating **CI** job always reports so merges are not
-blocked by skipped lanes.
+## Status
 
-Tags matching `v*` trigger the release workflow. It repeats the quality gates, assumes a short-lived
-AWS role through GitHub OIDC, publishes a new version of `dungeon-agent-fastapi`, and creates a
-GitHub Release with image metadata. Builds and AWS publication are intentionally separate.
+Experimental public lab, not a production service. Do not add generated-code execution without
+egress limits and a dedicated security look. Never commit credentials, MicroVM tokens, `.env`, or
+session state.
 
-For one-time release infrastructure setup, see [infra/README.md](infra/README.md). To package or
-publish manually, use `python -m scripts.build_microvm_image`; to measure launch, suspend, resume,
-and warm-request latency, use `python -m scripts.benchmark_microvm`.
-
-## Safety and project status
-
-This is an experimental public lab, not a production service. Do not add generated-code execution
-without restricted network egress, resource limits, and a dedicated security review. Never commit
-AWS credentials, MicroVM auth tokens, `.env` files, generated session state, or private source
-material.
-
-Contributions are welcome. Read [CONTRIBUTING.md](CONTRIBUTING.md), [SECURITY.md](SECURITY.md), and
-[CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md) first.
+See [CONTRIBUTING.md](CONTRIBUTING.md), [SECURITY.md](SECURITY.md), [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md).
 
 ## License
 

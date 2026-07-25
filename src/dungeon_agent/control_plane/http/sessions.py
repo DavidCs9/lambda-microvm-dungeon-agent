@@ -1,0 +1,293 @@
+from collections.abc import Callable
+from datetime import datetime
+from typing import Any
+
+from dungeon_agent.control_plane.http.workflows import ensure_workflow
+from dungeon_agent.plane_shared.logging import logger
+from dungeon_agent.plane_shared.domain import models as dm
+from dungeon_agent.plane_shared.domain.enums import (
+    CampaignStatus,
+    ErrorCode,
+    EventType,
+    SessionPhase,
+    SessionStatus,
+)
+from dungeon_agent.plane_shared.domain.models import (
+    CreateSessionWorkflowInput,
+    SessionId,
+    SessionRecord,
+)
+from dungeon_agent.plane_shared.events import append_session_event
+from dungeon_agent.plane_shared.http.errors import (
+    Clock,
+    dependency_error,
+    error_result,
+    load_owned,
+    owner_access_error,
+    utc_now,
+)
+from dungeon_agent.plane_shared.http.models import (
+    AuthenticatedIdentity,
+    CreateSessionRequest,
+    HttpResult,
+    SessionEnvelope,
+    SessionListEnvelope,
+)
+from dungeon_agent.plane_shared.identifiers import new_session_id
+from dungeon_agent.plane_shared.persistence.errors import SessionRevisionConflictError
+
+SESSION_DEPENDENCY = "A session dependency is temporarily unavailable."
+
+
+class SessionHttpHandlers:
+    def __init__(
+        self,
+        store: Any,
+        workflows: Any,
+        campaigns: Any,
+        *,
+        delivery: Any | None = None,
+        microvms: Any | None = None,
+        clock: Clock | None = None,
+        session_id_factory: Callable[[], SessionId] = new_session_id,
+        max_active_sessions_per_owner: int = 3,
+        max_sessions_per_campaign: int = 10,
+    ) -> None:
+        self._store, self._workflows, self._campaigns = (store, workflows, campaigns)
+        self._delivery, self._microvms = (delivery, microvms)
+        self._clock, self._session_id_factory = (clock or utc_now, session_id_factory)
+        self._max_active = max_active_sessions_per_owner
+        self._max_replays = max_sessions_per_campaign
+
+    def create_session(
+        self,
+        identity: AuthenticatedIdentity,
+        request: CreateSessionRequest,
+        *,
+        idempotency_key: str,
+        correlation_id: str,
+    ) -> HttpResult:
+        now = self._clock()
+        try:
+            existing = self._store.find_by_idempotency_key(identity.owner_id, idempotency_key)
+            if existing is not None:
+                return self._accepted(
+                    self._ensure_workflow(existing, idempotency_key, correlation_id, now),
+                    correlation_id,
+                )
+            campaign = self._campaigns.get(request.campaign_id)
+        except Exception:
+            logger.exception("dependency_unavailable", correlation_id=correlation_id)
+            return self._dependency_error(correlation_id)
+        access_error = owner_access_error(
+            identity, campaign, "campaign", ErrorCode.CAMPAIGN_NOT_FOUND, correlation_id
+        )
+        if access_error is not None:
+            return access_error
+        assert campaign is not None
+        if campaign.status is not CampaignStatus.READY:
+            return error_result(
+                409,
+                ErrorCode.CAMPAIGN_CONFLICT,
+                "The campaign is not ready for play.",
+                True,
+                correlation_id,
+            )
+        if quota_error := self._quota_error(
+            identity.owner_id, campaign.campaign_id, correlation_id
+        ):
+            return quota_error
+        record = SessionRecord(
+            session_id=self._session_id_factory(),
+            owner_id=identity.owner_id,
+            language=request.language,
+            status=SessionStatus.REQUESTED,
+            phase=SessionPhase.REQUESTED,
+            revision=0,
+            last_event_sequence=0,
+            created_at=now,
+            updated_at=now,
+            campaign_id=campaign.campaign_id,
+            campaign_revision=campaign.revision,
+        )
+        try:
+            session = self._store.create(record, idempotency_key)
+            return self._accepted(
+                self._ensure_workflow(session, idempotency_key, correlation_id, now), correlation_id
+            )
+        except Exception:
+            logger.exception("dependency_unavailable", correlation_id=correlation_id)
+            return self._dependency_error(correlation_id)
+
+    def get_session(
+        self, identity: AuthenticatedIdentity, session_id: SessionId, *, correlation_id: str
+    ) -> HttpResult:
+        session, error = self._load(identity, session_id, correlation_id)
+        if error is not None:
+            return error
+        assert session is not None
+        return HttpResult(200, SessionEnvelope(session=session), correlation_id)
+
+    def list_active_sessions(
+        self, identity: AuthenticatedIdentity, *, correlation_id: str
+    ) -> HttpResult:
+        try:
+            body = SessionListEnvelope(sessions=self._store.list_active_by_owner(identity.owner_id))
+            return HttpResult(200, body, correlation_id)
+        except Exception:
+            logger.exception("dependency_unavailable", correlation_id=correlation_id)
+            return self._dependency_error(correlation_id)
+
+    def abandon_session(
+        self, identity: AuthenticatedIdentity, session_id: SessionId, *, correlation_id: str
+    ) -> HttpResult:
+        session, error = self._load(identity, session_id, correlation_id)
+        if error is not None:
+            return error
+        assert session is not None
+        if session.status in (SessionStatus.COMPLETED, SessionStatus.FAILED):
+            return HttpResult(200, SessionEnvelope(session=session), correlation_id)
+        if session.status in (SessionStatus.REQUESTED, SessionStatus.CREATING):
+            return error_result(
+                409,
+                ErrorCode.SESSION_CONFLICT,
+                "The session is still being created; retry once it settles.",
+                True,
+                correlation_id,
+            )
+        microvm_id = session.active_microvm_id
+        try:
+            saved = self._save(
+                session,
+                status=SessionStatus.COMPLETED,
+                phase=SessionPhase.COMPLETED,
+                active_microvm_id=None,
+            )
+        except SessionRevisionConflictError:
+            return self._conflict("The session changed while abandoning it.", correlation_id)
+        except Exception:
+            logger.exception("dependency_unavailable", correlation_id=correlation_id)
+            return self._dependency_error(correlation_id)
+        if microvm_id is not None and self._microvms is not None:
+            try:
+                self._microvms.terminate(microvm_id)
+            except Exception:
+                logger.exception("microvm_terminate_failed_on_abandon")
+        try:
+            self._emit(
+                session_id,
+                EventType.SESSION_COMPLETED,
+                dm.SessionCompletedPayload(outcome="abandoned", revision=saved.revision),
+                correlation_id,
+            )
+        except Exception:
+            logger.exception("session_completed_emission_failed_on_abandon")
+        return HttpResult(200, SessionEnvelope(session=saved), correlation_id)
+
+    def _quota_error(
+        self, owner_id: str, campaign_id: dm.CampaignId, correlation_id: str
+    ) -> HttpResult | None:
+        try:
+            active = self._store.count_active_by_owner(owner_id)
+            replays = self._store.count_by_campaign(campaign_id)
+        except Exception:
+            logger.exception("dependency_unavailable", correlation_id=correlation_id)
+            return self._dependency_error(correlation_id)
+        if active >= self._max_active:
+            return error_result(
+                429,
+                ErrorCode.QUOTA_EXCEEDED,
+                "Too many active sessions; complete one before starting another.",
+                True,
+                correlation_id,
+            )
+        if replays >= self._max_replays:
+            return error_result(
+                429,
+                ErrorCode.QUOTA_EXCEEDED,
+                "This campaign reached its session limit.",
+                False,
+                correlation_id,
+            )
+        return None
+
+    @staticmethod
+    def _accepted(session: SessionRecord, correlation_id: str) -> HttpResult:
+        return HttpResult(
+            202,
+            SessionEnvelope(session=session),
+            correlation_id,
+            location=f"/sessions/{session.session_id}",
+        )
+
+    def _ensure_workflow(
+        self, session: SessionRecord, idempotency_key: str, correlation_id: str, now: datetime
+    ) -> SessionRecord:
+        if session.workflow_execution_arn is not None:
+            return session
+        if session.campaign_id is None or session.campaign_revision is None:
+            raise RuntimeError("session has no campaign snapshot reference")
+        workflow_input = CreateSessionWorkflowInput(
+            session_id=session.session_id,
+            owner_id=session.owner_id,
+            language=session.language,
+            campaign_id=session.campaign_id,
+            campaign_revision=session.campaign_revision,
+            idempotency_key=idempotency_key,
+            correlation_id=correlation_id,
+            requested_at=session.created_at,
+        )
+        return SessionRecord.model_validate(
+            ensure_workflow(
+                session,
+                store=self._store,
+                aggregate_id=session.session_id,
+                now=now,
+                start=lambda: self._workflows.start_create_session(workflow_input),
+            )
+        )
+
+    def _load(
+        self, identity: AuthenticatedIdentity, session_id: SessionId, correlation_id: str
+    ) -> tuple[SessionRecord | None, HttpResult | None]:
+        session, error = load_owned(
+            self._store,
+            identity,
+            session_id,
+            resource_name="session",
+            not_found_code=ErrorCode.SESSION_NOT_FOUND,
+            dependency_message=SESSION_DEPENDENCY,
+            correlation_id=correlation_id,
+        )
+        return (SessionRecord.model_validate(session) if session is not None else None, error)
+
+    def _save(self, session: SessionRecord, **update: object) -> SessionRecord:
+        update.update(revision=session.revision + 1, updated_at=self._clock())
+        saved = self._store.save(
+            session.model_copy(update=update), expected_revision=session.revision
+        )
+        return SessionRecord.model_validate(saved)
+
+    def _emit(
+        self,
+        session_id: SessionId,
+        event_type: EventType,
+        payload: dm.EventPayload,
+        correlation_id: str,
+    ) -> None:
+        append_session_event(
+            self._store,
+            self._delivery,
+            session_id,
+            event_type,
+            payload,
+            correlation_id,
+            self._clock(),
+        )
+
+    def _dependency_error(self, correlation_id: str) -> HttpResult:
+        return dependency_error(SESSION_DEPENDENCY, correlation_id)
+
+    @staticmethod
+    def _conflict(message: str, correlation_id: str) -> HttpResult:
+        return error_result(409, ErrorCode.SESSION_CONFLICT, message, False, correlation_id)

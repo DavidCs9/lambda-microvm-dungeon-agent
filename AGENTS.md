@@ -10,7 +10,7 @@
 
 **When in doubt: ask "is this enterprise over-engineering for a lab?" If yes, don't do it.**
 
-**Deploy lanes:** After a change, pick the minimum validation path — `web/**` → FE only (`npm run dev`); `control_plane/**` or `infra/control-plane/**` → SAM sandbox deploy; MicroVM game/runtime (`Dockerfile`, non-CP `src/dungeon_agent/**`) → publish image / new `IMAGE_VERSION`. Compose only when contracts cross lanes. CI in [`.github/workflows/ci.yml`](.github/workflows/ci.yml) path-filters the same way (FE PRs skip Python/ARM64/package); require the aggregating **CI** check, not individual lane jobs. Details: [`.cursor/rules/deploy-lanes.mdc`](.cursor/rules/deploy-lanes.mdc).
+**Deploy lanes:** After a change, pick the minimum validation path — `web/**` → FE only (`npm run dev`); `control_plane/**` / `data_plane/**` / `plane_shared/**` or `infra/control-plane/**` → SAM sandbox deploy; MicroVM game/runtime (`Dockerfile`, guest `api/` and other non-plane `src/dungeon_agent/**`) → publish image / new `IMAGE_VERSION`. Compose only when contracts cross lanes. CI in [`.github/workflows/ci.yml`](.github/workflows/ci.yml) path-filters the same way (FE PRs skip Python/ARM64/package); require the aggregating **CI** check, not individual lane jobs. Details: [`.cursor/rules/deploy-lanes.mdc`](.cursor/rules/deploy-lanes.mdc).
 
 ---
 

@@ -2,7 +2,7 @@
 
 import base64
 import json
-from typing import Any, Protocol
+from typing import Any
 
 from dungeon_agent.domain.game import PlayerCharacter
 
@@ -11,10 +11,6 @@ DEFAULT_IMAGE_MODEL_ID = "stability.stable-image-core-v1:1"
 DEFAULT_IMAGE_REGION = "us-west-2"
 PORTRAIT_STYLE = "moody candlelit oil painting, dark brown and ember tones"
 PORTRAIT_NEGATIVE_PROMPT = "text, watermark, signature, extra limbs, blurry, cartoon"
-
-
-class BedrockImageRuntimePort(Protocol):
-    def invoke_model(self, *, modelId: str, body: str, accept: str, contentType: str) -> Any: ...
 
 
 def build_portrait_prompt(character: PlayerCharacter) -> str:
@@ -28,7 +24,7 @@ def build_portrait_prompt(character: PlayerCharacter) -> str:
 
 
 def generate_character_portrait(
-    bedrock_client: BedrockImageRuntimePort,
+    bedrock_client: Any,
     character: PlayerCharacter,
     *,
     model_id: str = DEFAULT_IMAGE_MODEL_ID,

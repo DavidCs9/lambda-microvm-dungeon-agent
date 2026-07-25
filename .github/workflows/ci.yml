@@ -44,6 +44,8 @@ jobs:
               - 'uv.lock'
               - 'src/dungeon_agent/**'
               - '!src/dungeon_agent/control_plane/**'
+              - '!src/dungeon_agent/data_plane/**'
+              - '!src/dungeon_agent/plane_shared/**'
               - 'scripts/build_microvm_image.py'
               - 'src/dungeon_agent/operations/image_builder.py'
               - '.github/workflows/ci.yml'
