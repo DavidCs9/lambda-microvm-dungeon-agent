@@ -204,7 +204,10 @@ def test_adventure_architect_injects_theme_seed_into_prompt() -> None:
 def test_dungeon_master_rejects_unknown_item_without_model_call() -> None:
     agent = Mock()
     master = DungeonMaster(agent, "en")
-    world = {"plan": sample_plan().model_dump(mode="json"), "inventory": ["chalk"]}
+    world: dict[str, object] = {
+        "plan": sample_plan().model_dump(mode="json"),
+        "inventory": ["chalk"],
+    }
 
     proposal = master.adjudicate("I throw an archive key into the ravine.", world)
 
@@ -219,7 +222,10 @@ def test_dungeon_master_uses_model_for_known_item_action() -> None:
     agent = Mock()
     agent.invoke.return_value = sample_player()
     master = DungeonMaster(agent, "en")
-    world = {"plan": sample_plan().model_dump(mode="json"), "inventory": ["chalk"]}
+    world: dict[str, object] = {
+        "plan": sample_plan().model_dump(mode="json"),
+        "inventory": ["chalk"],
+    }
 
     master.adjudicate("I use the Wayfinder Chalk.", world)
 
