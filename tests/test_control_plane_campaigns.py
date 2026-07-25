@@ -354,3 +354,28 @@ def _campaign_event(sequence: int, *, suffix: str) -> CampaignEvent:
         correlation_id="corr-campaign-test",
         payload=CampaignCreationStartedPayload(language="en"),
     )
+
+
+def test_build_opening_surfaces_starting_inventory_as_named_blocks() -> None:
+    from dungeon_agent.control_plane.workflow.campaigns import build_opening
+    from tests.test_adventure import sample_plan, sample_player
+
+    opening = build_opening("en", sample_plan(), sample_player())
+
+    inventory_blocks = [
+        block for block in opening.blocks if block.kind is OpeningBlockKind.INVENTORY
+    ]
+    assert [block.text for block in inventory_blocks] == ["Rope"]
+    # Inventory is context, not narrated aloud.
+    assert all(not block.narratable for block in inventory_blocks)
+
+
+def test_build_opening_has_no_inventory_blocks_when_empty() -> None:
+    from dungeon_agent.control_plane.workflow.campaigns import build_opening
+    from tests.test_adventure import sample_plan, sample_player
+
+    plan = sample_plan().model_copy(update={"starting_inventory": []})
+
+    opening = build_opening("en", plan, sample_player())
+
+    assert not any(block.kind is OpeningBlockKind.INVENTORY for block in opening.blocks)

@@ -18,6 +18,7 @@ from dungeon_agent.plane_shared.domain.models import (
     SessionId,
     SessionRecord,
     SubmitTurnCommand,
+    TurnCompletedPayload,
     TurnId,
 )
 from dungeon_agent.plane_shared.http.models import (
@@ -149,7 +150,7 @@ def _turn_world() -> WorldState:
         plan=sample_plan(),
         player_character=sample_player(),
         location_id="tower",
-        inventory=["key"],
+        inventory=["rope"],
         health=3,
         facts=["The door is open."],
         status="active",
@@ -245,10 +246,15 @@ def test_worker_applies_the_turn_and_emits_authoritative_events() -> None:
     assert outcome["status"] == "completed"
     session = repository.get(SESSION_ID)
     assert session is not None and session.status is SessionStatus.READY
-    assert [event.type for event in repository.list_after(SESSION_ID, 0)] == [
+    events = repository.list_after(SESSION_ID, 0)
+    assert [event.type for event in events] == [
         EventType.DICE_ROLLED,
         EventType.TURN_COMPLETED,
     ]
+    completed = next(event for event in events if event.type is EventType.TURN_COMPLETED)
+    # Inventory ids are resolved to their catalog display names for the client.
+    assert isinstance(completed.payload, TurnCompletedPayload)
+    assert completed.payload.inventory == ("Rope",)
     assert snapshots.saved[0].revision == 1
     assert microvms.apply_calls == 1
 

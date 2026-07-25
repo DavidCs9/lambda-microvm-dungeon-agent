@@ -25,7 +25,10 @@ class DungeonMaster:
         result = self.agent.invoke(
             system=(
                 "Be a fair dungeon master. Roll only for risk, use declared IDs in changes, move "
-                "failures forward, set earned victory only, and narrate in 1-3 vivid sentences."
+                "failures forward, set earned victory only, and narrate in 1-3 vivid sentences. "
+                "Respect the current inventory: only add_items/remove_items that exist in "
+                "plan.items, never remove an item the player is not carrying, and reference "
+                "carried items naturally in the narration."
             ),
             prompt=json.dumps(
                 {

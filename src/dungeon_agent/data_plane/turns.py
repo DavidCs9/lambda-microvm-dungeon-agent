@@ -3,6 +3,7 @@ from datetime import datetime
 from typing import Any, Literal, cast
 
 from dungeon_agent.data_plane.agents.roles import DungeonMaster
+from dungeon_agent.domain.game import WorldState
 from dungeon_agent.plane_shared.domain.enums import EventType, SessionPhase, SessionStatus
 from dungeon_agent.plane_shared.domain.models import (
     DiceRolledPayload,
@@ -16,6 +17,14 @@ from dungeon_agent.plane_shared.events import append_session_event, utc_now
 from dungeon_agent.plane_shared.microvms.manager import TurnRejectedError
 
 Clock = Callable[[], datetime]
+
+
+def _inventory_names(world: WorldState) -> tuple[str, ...]:
+    """Resolve inventory item ids to display names using the adventure catalog."""
+    if world.plan is None:
+        return tuple(world.inventory)
+    names_by_id = {item.id: item.name for item in world.plan.items}
+    return tuple(names_by_id.get(item_id, item_id) for item_id in world.inventory)
 
 
 class TurnWorker:
@@ -122,6 +131,7 @@ class TurnWorker:
                 revision=session.revision,
                 narration=result.narration,
                 action=command.action,
+                inventory=_inventory_names(world),
             ),
             now,
         )

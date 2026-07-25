@@ -261,6 +261,9 @@ class TurnCompletedPayload(ContractModel):
     revision: int = Field(ge=1)
     narration: str = Field(min_length=1, max_length=4000)
     action: str | None = Field(default=None, min_length=1, max_length=500)
+    # Resolved item names the protagonist carries after this turn. None on legacy
+    # events emitted before inventory delivery existed.
+    inventory: tuple[str, ...] | None = Field(default=None, max_length=8)
 
 
 class SessionCompletedPayload(ContractModel):

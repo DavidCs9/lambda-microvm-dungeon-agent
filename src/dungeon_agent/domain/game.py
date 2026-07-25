@@ -68,6 +68,14 @@ class AdventurePlan(BaseModel):
     locations: list[Location] = Field(min_length=3, max_length=5)
     characters: list[Character] = Field(min_length=1, max_length=2)
     items: list[Item] = Field(min_length=2, max_length=5)
+    starting_inventory: list[str] = Field(
+        default_factory=list,
+        max_length=3,
+        description=(
+            "Item ids (from items) the protagonist already carries at the start. "
+            "Keep it small and coherent with the character and premise."
+        ),
+    )
     secrets: list[str] = Field(min_length=1, max_length=3)
     max_turns: int = Field(ge=8, le=15)
 
@@ -81,8 +89,13 @@ class AdventurePlan(BaseModel):
         for location in self.locations:
             if any(exit_id not in location_ids for exit_id in location.exits):
                 raise ValueError(f"location {location.id} has an unknown exit")
-        if len({item.id for item in self.items}) != len(self.items):
+        item_ids = {item.id for item in self.items}
+        if len(item_ids) != len(self.items):
             raise ValueError("item ids must be unique")
+        if len(set(self.starting_inventory)) != len(self.starting_inventory):
+            raise ValueError("starting inventory ids must be unique")
+        if any(item_id not in item_ids for item_id in self.starting_inventory):
+            raise ValueError("starting inventory references an unknown item")
         if len({character.id for character in self.characters}) != len(self.characters):
             raise ValueError("character ids must be unique")
         return self

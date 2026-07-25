@@ -24,7 +24,9 @@ class AdventureArchitect:
             ),
             prompt=(
                 f"Create a 10-15 minute {language_name} adventure inspired by {theme}: objective, "
-                "3-5 locations, 1-2 NPCs, useful items, secrets, max_turns, and short opening."
+                "3-5 locations, 1-2 NPCs, useful items, secrets, max_turns, and short opening. "
+                "Also pick a small, coherent starting_inventory (0-2 item ids from items) that the "
+                "protagonist plausibly already carries given the premise."
             ),
             tool_name="create_adventure",
             tool_description="Return the complete validated adventure plan.",

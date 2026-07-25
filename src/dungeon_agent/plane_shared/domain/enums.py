@@ -68,6 +68,7 @@ class OpeningBlockKind(StrEnum):
     KNOWLEDGE = "knowledge"
     SITUATION = "situation"
     POSSIBLE_ACTION = "possible_action"
+    INVENTORY = "inventory"
 
 
 class ErrorCode(StrEnum):

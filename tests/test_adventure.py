@@ -72,6 +72,7 @@ def sample_plan() -> AdventurePlan:
             Item(id="bell", name="Storm Bell", description="A small rune-covered bell."),
             Item(id="rope", name="Rope", description="A coil of sturdy rope."),
         ],
+        starting_inventory=["rope"],
         secrets=["Mara hid the bell in the mill."],
         max_turns=10,
     )
@@ -99,6 +100,28 @@ def test_generated_adventure_starts_from_validated_plan() -> None:
     assert world.location_id == "square"
     assert world.plan is not None
     assert world.plan.title == "The Storm Bell"
+
+
+def test_start_adventure_seeds_the_declared_starting_inventory() -> None:
+    world = start_adventure("en", sample_plan(), sample_player())
+
+    assert world.inventory == ["rope"]
+
+
+def test_start_adventure_defaults_to_an_empty_inventory() -> None:
+    plan = sample_plan().model_copy(update={"starting_inventory": []})
+
+    world = start_adventure("en", plan, sample_player())
+
+    assert world.inventory == []
+
+
+def test_plan_rejects_starting_inventory_with_unknown_item() -> None:
+    payload = sample_plan().model_dump()
+    payload["starting_inventory"] = ["ghost_key"]
+
+    with pytest.raises(ValueError, match="unknown item"):
+        AdventurePlan.model_validate(payload)
 
 
 def test_d20_selects_and_applies_only_matching_branch() -> None:

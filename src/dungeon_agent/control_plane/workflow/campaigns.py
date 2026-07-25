@@ -277,6 +277,7 @@ def build_opening(
     from dungeon_agent.plane_shared.domain.enums import OpeningBlockKind
     from dungeon_agent.plane_shared.domain.models import OpeningBlock
 
+    item_by_id = {item.id: item for item in adventure.items}
     content = [
         (
             "identity",
@@ -293,6 +294,16 @@ def build_opening(
         *(
             (f"action_{index}", OpeningBlockKind.POSSIBLE_ACTION, action, False)
             for index, action in enumerate(character.opening_choices, start=1)
+        ),
+        *(
+            (
+                f"inventory_{index}",
+                OpeningBlockKind.INVENTORY,
+                item_by_id[item_id].name,
+                False,
+            )
+            for index, item_id in enumerate(adventure.starting_inventory, start=1)
+            if item_id in item_by_id
         ),
     ]
     return OpeningDocument(

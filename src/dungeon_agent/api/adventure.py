@@ -33,7 +33,7 @@ def start_adventure(
         plan=plan,
         player_character=player_character,
         location_id=plan.starting_location_id,
-        inventory=[],
+        inventory=list(plan.starting_inventory),
         health=3,
         facts=[],
         status="active",
