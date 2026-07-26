@@ -69,5 +69,19 @@ class RuntimeConfiguredBedrockAgent:
         self._role = role
 
     def invoke(self, **kwargs: Any) -> Any:
-        target = self._config.get(self._role).target
-        return StructuredBedrockAgent(self._client, target).invoke(**kwargs)
+        config = self._config.get(self._role)
+        request_metadata = dict(kwargs.pop("request_metadata", {}) or {})
+        metrics = kwargs.pop("metrics", None)
+        if metrics is not None:
+            metrics.model_id = config.model_id
+        request_metadata.update(
+            {
+                "runtime_role": self._role,
+                "runtime_model_id": config.model_id,
+                "runtime_prompt_arn": config.prompt_arn or "none",
+            }
+        )
+        return StructuredBedrockAgent(self._client, config.target, metrics=metrics).invoke(
+            request_metadata=request_metadata,
+            **kwargs,
+        )
