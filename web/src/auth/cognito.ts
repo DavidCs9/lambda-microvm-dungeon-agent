@@ -145,6 +145,13 @@ export function authErrorMessage(error: unknown): string {
     if (code === "PasswordResetRequiredException") {
       return "Este usuario necesita restablecer su contraseña desde Cognito.";
     }
+    if (code === "InvalidPasswordException") {
+      const message = (error as { message?: unknown }).message;
+      if (typeof message === "string" && message.toLowerCase().includes("not long enough")) {
+        return "La contraseña debe tener al menos 12 caracteres.";
+      }
+      return "La contraseña no cumple los requisitos: usa al menos 12 caracteres, una mayúscula, una minúscula, un número y un símbolo.";
+    }
   }
   return "No se pudo iniciar sesión. Inténtalo de nuevo.";
 }

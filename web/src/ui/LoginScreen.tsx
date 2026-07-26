@@ -18,11 +18,25 @@ export function LoginScreen({ onAuthenticated }: { onAuthenticated: (session: Au
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  const passwordRequirements = [
+    [newPassword.length >= 12, "Al menos 12 caracteres"],
+    [/[a-z]/.test(newPassword), "Una letra minúscula"],
+    [/[A-Z]/.test(newPassword), "Una letra mayúscula"],
+    [/\d/.test(newPassword), "Un número"],
+    [/[^A-Za-z0-9]/.test(newPassword), "Un símbolo"],
+  ] as const;
+  const validNewPassword =
+    passwordRequirements.every(([met]) => met) && newPassword === newPasswordConfirmation;
+
   async function submit() {
     if (busy) return;
     if (!challenge && (!email.trim() || !password)) return;
-    if (challenge && (!newPassword || newPassword !== newPasswordConfirmation)) {
-      setError("Las contraseñas nuevas deben coincidir.");
+    if (challenge && !validNewPassword) {
+      setError(
+        newPassword !== newPasswordConfirmation
+          ? "Las contraseñas nuevas deben coincidir."
+          : "La contraseña todavía no cumple todos los requisitos.",
+      );
       return;
     }
     setBusy(true);
@@ -96,6 +110,16 @@ export function LoginScreen({ onAuthenticated }: { onAuthenticated: (session: Au
                 value={newPassword}
                 onChange={setNewPassword}
               />
+              <ul
+                className="mt-2 w-full space-y-1 text-left text-sm text-[var(--muted)]"
+                aria-label="Requisitos de contraseña"
+              >
+                {passwordRequirements.map(([met, label]) => (
+                  <li key={label} className={met ? "text-[var(--success)]" : undefined}>
+                    {met ? "✓" : "○"} {label}
+                  </li>
+                ))}
+              </ul>
               <GhostField
                 id="new-password-confirmation"
                 label="Repite la contraseña"
@@ -110,7 +134,7 @@ export function LoginScreen({ onAuthenticated }: { onAuthenticated: (session: Au
             disabled={
               busy ||
               (!challenge && (!email.trim() || !password)) ||
-              (!!challenge && (!newPassword || !newPasswordConfirmation))
+              (!!challenge && !validNewPassword)
             }
           >
             {busy ? "Guardando…" : challenge ? "Guardar contraseña" : "Entrar"}

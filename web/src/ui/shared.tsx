@@ -420,6 +420,7 @@ export function GhostField({
   onChange,
   minLength,
   placeholder,
+  autoComplete,
   type = "text",
 }: {
   id: string;
@@ -428,6 +429,7 @@ export function GhostField({
   onChange: (value: string) => void;
   minLength?: number;
   placeholder?: string;
+  autoComplete?: string;
   type?: "text" | "password" | "email";
 }) {
   return (
@@ -441,6 +443,7 @@ export function GhostField({
           value={value}
         minLength={minLength}
         placeholder={placeholder}
+        autoComplete={autoComplete}
         onChange={(e) => onChange(e.target.value)}
         className="border-0 border-b border-[var(--line)] bg-transparent px-0 py-2 text-[var(--ink)] outline-none placeholder:text-[var(--muted)]/50 focus:border-[var(--ember)]/60"
       />
