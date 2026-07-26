@@ -161,6 +161,29 @@ export function PlayTableScreen() {
         />
       }
     >
+      <div className="flex shrink-0 flex-col border-b border-[var(--line)] bg-[var(--surface-1)] lg:hidden">
+        <details className="group border-b border-[var(--line)] last:border-b-0">
+          <summary className="flex min-h-11 cursor-pointer list-none items-center justify-between px-4 py-2 text-xs tracking-[0.16em] text-[var(--muted)] uppercase [font-family:var(--font-ui)] marker:hidden">
+            <span>Contexto de campaña</span>
+            <span className="text-[var(--ember)] transition group-open:rotate-45">+</span>
+          </summary>
+          <CampaignContextPanel opening={opening} mobile />
+        </details>
+        <details className="group">
+          <summary className="flex min-h-11 cursor-pointer list-none items-center justify-between px-4 py-2 text-xs tracking-[0.16em] text-[var(--muted)] uppercase [font-family:var(--font-ui)] marker:hidden">
+            <span>Personaje e inventario</span>
+            <span className="text-[var(--ember)] transition group-open:rotate-45">+</span>
+          </summary>
+          <CharacterContextPanel
+            opening={opening}
+            portraitUrl={portraitUrl}
+            inventory={inventory}
+            stats={stats}
+            mobile
+          />
+        </details>
+      </div>
+
       {confirmExit && (
         <div className="shrink-0 border-b border-[var(--line)] bg-[var(--surface-2)] px-4 py-2 text-center text-xs text-[var(--muted)] [font-family:var(--font-ui)]">
           ¿Volver al menú? La partida queda en pausa; usa Continuar para retomar.
