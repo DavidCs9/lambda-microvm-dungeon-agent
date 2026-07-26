@@ -54,7 +54,7 @@ export function App() {
         <button
           type="button"
           onClick={logout}
-          className="absolute right-6 top-6 z-20 text-xs tracking-[0.14em] text-[var(--muted)] uppercase transition hover:text-[var(--ink)]"
+          className="absolute right-4 top-[calc(env(safe-area-inset-top)+0.75rem)] z-20 min-h-11 px-2 text-xs tracking-[0.14em] text-[var(--muted)] uppercase transition hover:text-[var(--ink)] sm:right-6 sm:top-6"
         >
           Salir
         </button>
