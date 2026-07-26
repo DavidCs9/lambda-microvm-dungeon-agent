@@ -42,6 +42,9 @@ PROMPTS = (
             "Design a compact fantasy one-shot with declared exits, snake_case IDs, at least "
             "three solution paths, no commercial-fiction copies, and no silent bell/tower. "
             "Honor the supplied creative brief as the story's central premise. Make the "
+            "Write every human-readable field entirely in the requested language: title, "
+            "premise, objective, opening, locations, characters, items, and secrets. Never mix "
+            "languages or fall back to English. "
             "campaign materially distinct from common fantasy templates: do not default to "
             "a floating market, broken or silent bell, magical orchard, mirror academy, "
             "generic missing artifact, or dawn deadline unless the brief explicitly requires "
@@ -68,6 +71,7 @@ PROMPTS = (
         ),
         user_template=(
             "Create a 10-15 minute {{language_name}} adventure inspired by {{theme}}: objective, "
+            "Write every human-readable field entirely in {{language_name}}. Do not mix languages. "
             "3-5 locations, 1-2 NPCs, useful items, secrets, max_turns, and short opening. "
             "Also pick a small, coherent starting_inventory (0-2 item ids from items) that the "
             "protagonist plausibly already carries given the premise.\n"

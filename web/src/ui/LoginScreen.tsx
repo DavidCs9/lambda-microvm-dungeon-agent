@@ -81,7 +81,7 @@ export function LoginScreen({ onAuthenticated }: { onAuthenticated: (session: Au
               />
               <GhostField
                 id="password"
-                label="Contraseña temporal"
+                label="Contraseña"
                 type="password"
                 value={password}
                 onChange={setPassword}

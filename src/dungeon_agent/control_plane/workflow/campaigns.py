@@ -293,6 +293,8 @@ def build_opening(
 
     item_by_id = {item.id: item for item in adventure.items}
     content = [
+        ("premise", OpeningBlockKind.PREMISE, adventure.premise, True),
+        ("objective", OpeningBlockKind.OBJECTIVE, adventure.objective, True),
         (
             "identity",
             OpeningBlockKind.IDENTITY,

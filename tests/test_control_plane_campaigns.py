@@ -419,6 +419,18 @@ def test_build_opening_surfaces_starting_inventory_as_named_blocks() -> None:
     assert all(not block.narratable for block in inventory_blocks)
 
 
+def test_build_opening_surfaces_premise_and_objective_before_character_context() -> None:
+    from dungeon_agent.control_plane.workflow.campaigns import build_opening
+    from tests.test_adventure import sample_plan, sample_player
+
+    opening = build_opening("en", sample_plan(), sample_player())
+
+    assert [(block.kind, block.text) for block in opening.blocks[:2]] == [
+        (OpeningBlockKind.PREMISE, sample_plan().premise),
+        (OpeningBlockKind.OBJECTIVE, sample_plan().objective),
+    ]
+
+
 def test_build_opening_has_no_inventory_blocks_when_empty() -> None:
     from dungeon_agent.control_plane.workflow.campaigns import build_opening
     from tests.test_adventure import sample_plan, sample_player

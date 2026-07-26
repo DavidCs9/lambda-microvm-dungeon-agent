@@ -1,4 +1,5 @@
 import json
+import re
 from hashlib import sha256
 from typing import Any, cast
 
@@ -46,7 +47,24 @@ class AdventureArchitect:
 
     def create(self, language: LanguageCode, *, theme_seed: str | None = None) -> AdventurePlan:
         language_name = _language_name(language)
-        theme = theme_seed or ADVENTURE_THEME_SEED
+        theme = (
+            f"{theme_seed or ADVENTURE_THEME_SEED}\n"
+            f"OUTPUT LANGUAGE CONTRACT: write every human-readable field in {language_name} only. "
+            "Do not mix languages, translate names and prose consistently, and do not use English "
+            "fallback text when the requested language is Spanish."
+        )
+        result = self._invoke(language_name, theme)
+        adventure = result
+        if _has_language_leak(adventure, language):
+            result = self._invoke(
+                language_name,
+                f"{theme}\nIMPORTANT REPAIR: the previous draft mixed languages. Rewrite every "
+                f"human-readable field in {language_name} only.",
+            )
+            adventure = result
+        return adventure
+
+    def _invoke(self, language_name: str, theme: str) -> AdventurePlan:
         result = self.agent.invoke(
             system=(
                 "Design a compact fantasy one-shot with declared exits, snake_case IDs, at least "
@@ -59,6 +77,9 @@ class AdventureArchitect:
             ),
             prompt=(
                 f"Create a 10-15 minute {language_name} adventure inspired by {theme}: objective, "
+                f"Every human-readable output field must be written entirely in {language_name}; "
+                "this includes title, premise, objective, opening, locations, characters, items, "
+                "and secrets. "
                 "3-5 locations, 1-2 NPCs, useful items, secrets, max_turns, and short opening. "
                 "Also pick a small, coherent starting_inventory (0-2 item ids from items) that the "
                 "protagonist plausibly already carries given the premise."
@@ -71,6 +92,37 @@ class AdventureArchitect:
             temperature=0.9,
         )
         return cast(AdventurePlan, result)
+
+
+_LANGUAGE_MARKERS = {
+    "es": (
+        {"el", "la", "los", "las", "una", "un", "que", "con", "para", "debe"},
+        {"the", "you", "your", "must", "before", "with"},
+    ),
+    "en": (
+        {"the", "you", "your", "must", "before", "with", "and"},
+        {"el", "la", "los", "las", "una", "un", "que", "con", "para", "debe"},
+    ),
+}
+
+
+def _has_language_leak(adventure: AdventurePlan, language: LanguageCode) -> bool:
+    expected, foreign = _LANGUAGE_MARKERS[language]
+
+    def strings(value: object) -> list[str]:
+        if isinstance(value, str):
+            return [value]
+        if isinstance(value, dict):
+            return [text for part in value.values() for text in strings(part)]
+        if isinstance(value, list):
+            return [text for part in value for text in strings(part)]
+        return []
+
+    for text in strings(adventure.model_dump(mode="json")):
+        words = set(re.findall(r"[a-záéíóúüñ]{2,}", text.lower()))
+        if words & foreign and not words & expected:
+            return True
+    return False
 
 
 class CharacterArchitect:
