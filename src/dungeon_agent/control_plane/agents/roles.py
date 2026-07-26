@@ -45,7 +45,14 @@ class AdventureArchitect:
     def __init__(self, agent: Any) -> None:
         self.agent = agent
 
-    def create(self, language: LanguageCode, *, theme_seed: str | None = None) -> AdventurePlan:
+    def create(
+        self,
+        language: LanguageCode,
+        *,
+        theme_seed: str | None = None,
+        campaign_id: str | None = None,
+        metrics: Any | None = None,
+    ) -> AdventurePlan:
         language_name = _language_name(language)
         theme = (
             f"{theme_seed or ADVENTURE_THEME_SEED}\n"
@@ -53,18 +60,27 @@ class AdventureArchitect:
             "Do not mix languages, translate names and prose consistently, and do not use English "
             "fallback text when the requested language is Spanish."
         )
-        result = self._invoke(language_name, theme)
+        result = self._invoke(language_name, theme, campaign_id=campaign_id, metrics=metrics)
         adventure = result
         if _has_language_leak(adventure, language):
             result = self._invoke(
                 language_name,
                 f"{theme}\nIMPORTANT REPAIR: the previous draft mixed languages. Rewrite every "
                 f"human-readable field in {language_name} only.",
+                campaign_id=campaign_id,
+                metrics=metrics,
             )
             adventure = result
         return adventure
 
-    def _invoke(self, language_name: str, theme: str) -> AdventurePlan:
+    def _invoke(
+        self,
+        language_name: str,
+        theme: str,
+        *,
+        campaign_id: str | None,
+        metrics: Any | None,
+    ) -> AdventurePlan:
         result = self.agent.invoke(
             system=(
                 "Design a compact fantasy one-shot with declared exits, snake_case IDs, at least "
@@ -96,6 +112,8 @@ class AdventureArchitect:
             output_model=AdventurePlan,
             max_tokens=3_000,
             temperature=0.9,
+            request_metadata={"campaign_id": campaign_id} if campaign_id else None,
+            metrics=metrics,
         )
         return cast(AdventurePlan, result)
 
@@ -136,7 +154,13 @@ class CharacterArchitect:
         self.agent = agent
 
     def create(
-        self, language: LanguageCode, adventure: AdventurePlan, *, pronoun_seed: str | None = None
+        self,
+        language: LanguageCode,
+        adventure: AdventurePlan,
+        *,
+        pronoun_seed: str | None = None,
+        campaign_id: str | None = None,
+        metrics: Any | None = None,
     ) -> PlayerCharacter:
         language_name = _language_name(language)
         pronouns = pronoun_seed if pronoun_seed is not None else _pronoun_seed(language)
@@ -174,6 +198,8 @@ class CharacterArchitect:
             output_model=PlayerCharacter,
             max_tokens=2_000,
             temperature=0.85,
+            request_metadata={"campaign_id": campaign_id} if campaign_id else None,
+            metrics=metrics,
         )
         # Clamp so persisted artifacts still load on MicroVM images with older caps.
         return _clamp_player_character(cast(PlayerCharacter, result))

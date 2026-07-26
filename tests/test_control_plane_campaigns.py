@@ -285,8 +285,16 @@ def test_adventure_generation_uses_stable_campaign_creative_profile() -> None:
     class AdventureArchitect:
         theme_seed: str | None = None
 
-        def create(self, language: str, *, theme_seed: str | None = None) -> object:
+        def create(
+            self,
+            language: str,
+            *,
+            theme_seed: str | None = None,
+            campaign_id: str | None = None,
+            metrics: object | None = None,
+        ) -> object:
             assert language == "en"
+            assert campaign_id == CAMPAIGN_ID
             self.theme_seed = theme_seed
             return sample_plan()
 

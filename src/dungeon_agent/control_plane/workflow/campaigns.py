@@ -13,6 +13,7 @@ from dungeon_agent.control_plane.workflow.runner import (
 )
 from dungeon_agent.control_plane.workflow.util import required_string
 from dungeon_agent.domain.game import AdventurePlan, LanguageCode, PlayerCharacter
+from dungeon_agent.plane_shared.agents.bedrock import InvocationMetrics
 from dungeon_agent.plane_shared.domain.enums import (
     CampaignPhase,
     CampaignStatus,
@@ -23,12 +24,14 @@ from dungeon_agent.plane_shared.domain.models import (
     ArtifactRef,
     CampaignCreationFailedPayload,
     CampaignCreationStartedPayload,
+    CampaignGenerationMetrics,
     CampaignId,
     CampaignPhaseChangedPayload,
     CampaignReadyPayload,
     CampaignRecord,
     CreateCampaignWorkflowInput,
     OpeningDocument,
+    RoleGenerationMetrics,
 )
 from dungeon_agent.plane_shared.events import append_campaign_event
 
@@ -100,17 +103,19 @@ class DurableCampaignWorkflowStub:
                 campaign.campaign_id, EventType.CAMPAIGN_PHASE_CHANGED, phase_payload, state, now
             )
         if operation == "GenerateAdventure":
-            adventure_ref, latency_ms = self._generate_adventure(_workflow_input(state))
+            adventure_ref, latency_ms, generation = self._generate_adventure(_workflow_input(state))
             state["adventureRef"] = adventure_ref
             state["adventureLatencyMs"] = latency_ms
+            state["adventureGeneration"] = generation
         elif operation == "GenerateCharacter":
-            character_ref, latency_ms = self._generate_character(
+            character_ref, latency_ms, generation = self._generate_character(
                 campaign_id=required_string(state, "campaignId"),
                 language=cast(LanguageCode, required_string(state, "language")),
                 adventure_ref=required_string(state, "adventureRef"),
             )
             state["characterRef"] = character_ref
             state["characterLatencyMs"] = latency_ms
+            state["characterGeneration"] = generation
         elif operation == "MarkCampaignReady":
             opening = self._load_opening(required_string(state, "characterRef"))
             campaign = self._update_campaign(
@@ -121,6 +126,7 @@ class DurableCampaignWorkflowStub:
                 adventure_ref=required_string(state, "adventureRef"),
                 character_ref=required_string(state, "characterRef"),
                 opening_title=opening.title,
+                generation=_campaign_generation_metrics(state),
             )
             state["status"] = campaign.status.value
             state["phase"] = campaign.phase.value
@@ -154,21 +160,30 @@ class DurableCampaignWorkflowStub:
             )
         return state
 
-    def _generate_adventure(self, workflow_input: CreateCampaignWorkflowInput) -> tuple[str, int]:
+    def _generate_adventure(
+        self, workflow_input: CreateCampaignWorkflowInput
+    ) -> tuple[str, int, dict[str, object]]:
         if self._adventure_architect is None or self._adventures is None:
             raise RuntimeError("campaign adventure generation is not configured")
         started = self._monotonic()
+        metrics = InvocationMetrics()
         generated = self._adventure_architect.create(
             workflow_input.language,
             theme_seed=campaign_theme_seed(str(workflow_input.campaign_id)),
+            campaign_id=str(workflow_input.campaign_id),
+            metrics=metrics,
         )
         adventure = AdventurePlan.model_validate(generated.model_dump(mode="python"))
         adventure_ref = self._adventures.save_adventure(workflow_input.campaign_id, adventure)
-        return (str(adventure_ref), _elapsed_ms(self._monotonic, started))
+        return (
+            str(adventure_ref),
+            _elapsed_ms(self._monotonic, started),
+            _metrics_payload(metrics),
+        )
 
     def _generate_character(
         self, *, campaign_id: CampaignId, language: LanguageCode, adventure_ref: ArtifactRef
-    ) -> tuple[str, int]:
+    ) -> tuple[str, int, dict[str, object]]:
         if (
             self._character_architect is None
             or self._adventures is None
@@ -176,10 +191,13 @@ class DurableCampaignWorkflowStub:
         ):
             raise RuntimeError("campaign character generation is not configured")
         started = self._monotonic()
+        metrics = InvocationMetrics()
         adventure = AdventurePlan.model_validate(
             self._adventures.load_adventure(adventure_ref).model_dump(mode="python")
         )
-        generated = self._character_architect.create(language, adventure)
+        generated = self._character_architect.create(
+            language, adventure, campaign_id=str(campaign_id), metrics=metrics
+        )
         character = PlayerCharacter.model_validate(generated.model_dump(mode="python"))
         opening = build_opening(language, adventure, character)
         character_ref = self._characters.save_character(
@@ -188,7 +206,11 @@ class DurableCampaignWorkflowStub:
             opening,
             portrait_key=self._try_generate_portrait(campaign_id, character),
         )
-        return (str(character_ref), _elapsed_ms(self._monotonic, started))
+        return (
+            str(character_ref),
+            _elapsed_ms(self._monotonic, started),
+            _metrics_payload(metrics),
+        )
 
     def _try_generate_portrait(
         self, campaign_id: CampaignId, character: PlayerCharacter
@@ -240,6 +262,7 @@ class DurableCampaignWorkflowStub:
         adventure_ref: str | None = None,
         character_ref: str | None = None,
         opening_title: str | None = None,
+        generation: CampaignGenerationMetrics | None = None,
     ) -> CampaignRecord:
         return update_record(
             self._store,
@@ -254,6 +277,7 @@ class DurableCampaignWorkflowStub:
             adventure_ref=adventure_ref,
             character_ref=character_ref,
             opening_title=opening_title,
+            generation=generation,
         )
 
 
@@ -273,6 +297,34 @@ def _workflow_input(state: Mapping[str, object]) -> CreateCampaignWorkflowInput:
 
 def _elapsed_ms(monotonic: Callable[[], float], started: float) -> int:
     return max(0, round((monotonic() - started) * 1000))
+
+
+def _metrics_payload(metrics: InvocationMetrics) -> dict[str, object]:
+    return {
+        "modelId": metrics.model_id,
+        "calls": metrics.calls,
+        "inputTokens": metrics.input_tokens,
+        "outputTokens": metrics.output_tokens,
+        "latencyMs": metrics.latency_ms,
+        "repairs": metrics.repairs,
+    }
+
+
+def _campaign_generation_metrics(state: Mapping[str, object]) -> CampaignGenerationMetrics | None:
+    def role_metrics(key: str) -> RoleGenerationMetrics | None:
+        value = state.get(key)
+        if not isinstance(value, Mapping) or not value.get("modelId"):
+            return None
+        return RoleGenerationMetrics.model_validate(value)
+
+    adventure = role_metrics("adventureGeneration")
+    character = role_metrics("characterGeneration")
+    if adventure is None and character is None:
+        return None
+    return CampaignGenerationMetrics(
+        adventure_architect=adventure,
+        character_architect=character,
+    )
 
 
 # Spanish display labels for the five character stats (order is stable for the UI).
