@@ -3,7 +3,11 @@ from unittest.mock import Mock
 import pytest
 from pydantic import ValidationError
 
-from dungeon_agent.control_plane.agents.roles import AdventureArchitect, CharacterArchitect
+from dungeon_agent.control_plane.agents.roles import (
+    AdventureArchitect,
+    CharacterArchitect,
+    campaign_theme_seed,
+)
 from dungeon_agent.data_plane.agents.roles import DungeonMaster
 from dungeon_agent.orchestrator.observability import SessionMetrics
 from dungeon_agent.plane_shared.agents.bedrock import StructuredBedrockAgent
@@ -199,6 +203,16 @@ def test_adventure_architect_injects_theme_seed_into_prompt() -> None:
     assert "a ferry stuck between two dawns" in prompt
     assert "Spanish" in prompt
     assert "silent bell/tower" in system
+
+
+def test_campaign_theme_seed_is_stable_but_varies_by_campaign() -> None:
+    first = campaign_theme_seed("cam_01J00000000000000000000001")
+    same = campaign_theme_seed("cam_01J00000000000000000000001")
+    other = campaign_theme_seed("cam_01J00000000000000000000002")
+
+    assert first == same
+    assert first != other
+    assert "floating market" not in first
 
 
 def test_dungeon_master_rejects_unknown_item_without_model_call() -> None:
