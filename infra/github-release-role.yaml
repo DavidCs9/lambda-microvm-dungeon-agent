@@ -41,7 +41,7 @@ Resources:
   GitHubReleaseRole:
     Type: AWS::IAM::Role
     Properties:
-      Description: Publishes version-tagged dungeon agent Lambda MicroVM images from GitHub.
+      Description: Publishes merged dungeon agent Lambda MicroVM releases from GitHub.
       MaxSessionDuration: 3600
       AssumeRolePolicyDocument:
         Version: "2012-10-17"
