@@ -12,6 +12,13 @@ export interface AuthSession {
   username: string;
 }
 
+export interface NewPasswordChallenge {
+  kind: "new-password-required";
+  complete: (newPassword: string) => Promise<AuthSession>;
+}
+
+export type SignInResult = AuthSession | NewPasswordChallenge;
+
 function pool(): CognitoUserPool {
   const UserPoolId = import.meta.env.VITE_COGNITO_USER_POOL_ID;
   const ClientId = import.meta.env.VITE_COGNITO_CLIENT_ID;
@@ -61,7 +68,7 @@ export async function accessToken(): Promise<string | null> {
   return (await currentAuthSession())?.accessToken ?? null;
 }
 
-export function signIn(email: string, password: string): Promise<AuthSession> {
+export function signIn(email: string, password: string): Promise<SignInResult> {
   const user = new CognitoUser({ Username: email, Pool: pool() });
   const details = new AuthenticationDetails({ Username: email, Password: password });
   return new Promise((resolve, reject) => {
@@ -74,8 +81,27 @@ export function signIn(email: string, password: string): Promise<AuthSession> {
         }
       },
       onFailure: (error) => reject(error),
-      newPasswordRequired: () =>
-        reject(new Error("Este usuario necesita una contraseña permanente configurada por un administrador.")),
+      newPasswordRequired: () => {
+        resolve({
+          kind: "new-password-required",
+          complete: (newPassword) => completeNewPassword(user, newPassword),
+        });
+      },
+    });
+  });
+}
+
+function completeNewPassword(user: CognitoUser, newPassword: string): Promise<AuthSession> {
+  return new Promise((resolve, reject) => {
+    user.completeNewPasswordChallenge(newPassword, {}, {
+      onSuccess: (session) => {
+        try {
+          resolve(sessionOf(user, session));
+        } catch (error) {
+          reject(error);
+        }
+      },
+      onFailure: reject,
     });
   });
 }
@@ -95,6 +121,13 @@ export function authErrorMessage(error: unknown): string {
     }
     if (code === "PasswordResetRequiredException") {
       return "Este usuario necesita restablecer su contraseña desde Cognito.";
+    }
+    if (code === "InvalidPasswordException") {
+      const message = (error as { message?: unknown }).message;
+      if (typeof message === "string" && message.toLowerCase().includes("not long enough")) {
+        return "La contraseña debe tener al menos 12 caracteres.";
+      }
+      return "La contraseña no cumple los requisitos: usa al menos 12 caracteres, una mayúscula, una minúscula, un número y un símbolo.";
     }
   }
   return "No se pudo iniciar sesión. Inténtalo de nuevo.";
