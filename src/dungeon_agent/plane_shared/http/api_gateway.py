@@ -22,6 +22,7 @@ from dungeon_agent.plane_shared.http.models import (
     SpeechRequest,
     SubmitActionRequest,
 )
+from dungeon_agent.plane_shared.http.rate_limit import UserRateLimiter
 
 SESSION_ID_ADAPTER = TypeAdapter(SessionId)
 CAMPAIGN_ID_ADAPTER = TypeAdapter(CampaignId)
@@ -47,6 +48,13 @@ ROUTE_PLANE: dict[str, Literal["control", "data"]] = {
     "POST /speech": "data",
 }
 
+DEFAULT_USER_RATE_LIMITS = {
+    "POST /campaigns": 20,
+    "POST /sessions": 20,
+    "POST /sessions/{sessionId}/actions": 120,
+    "POST /speech": 60,
+}
+
 
 class ApiGatewayHttpAdapter:
     def __init__(
@@ -57,12 +65,14 @@ class ApiGatewayHttpAdapter:
         actions: ActionHttpHandlers | None = None,
         speech: SpeechHttpHandlers | None = None,
         allow_sandbox_identity: bool = False,
+        rate_limiter: UserRateLimiter | None = None,
     ) -> None:
         self._handlers = handlers
         self._campaigns = campaigns
         self._actions = actions
         self._speech = speech
         self._allow_sandbox_identity = allow_sandbox_identity
+        self._rate_limiter = rate_limiter or UserRateLimiter(DEFAULT_USER_RATE_LIMITS)
         sessions, campaigns = (self._handlers, self._campaigns)
 
         def submit_action(
@@ -150,6 +160,20 @@ class ApiGatewayHttpAdapter:
             if route is None:
                 result = error_result(
                     404, ErrorCode.SESSION_NOT_FOUND, "Route not found.", False, correlation_id
+                )
+            elif not (decision := self._rate_limiter.check(identity.owner_id, route_key)).allowed:
+                result = error_result(
+                    429,
+                    ErrorCode.QUOTA_EXCEEDED,
+                    "Too many requests; retry shortly.",
+                    True,
+                    correlation_id,
+                )
+                result = HttpResult(
+                    result.status_code,
+                    result.body,
+                    result.correlation_id,
+                    retry_after_seconds=decision.retry_after_seconds,
                 )
             else:
                 result = route(event, headers, identity, correlation_id)

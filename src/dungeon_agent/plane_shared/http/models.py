@@ -123,6 +123,7 @@ class HttpResult:
     body: HttpBody
     correlation_id: str
     location: str | None = None
+    retry_after_seconds: int | None = None
 
     def headers(self) -> dict[str, str]:
         headers = {
@@ -132,4 +133,6 @@ class HttpResult:
         }
         if self.location is not None:
             headers["location"] = self.location
+        if self.retry_after_seconds is not None:
+            headers["retry-after"] = str(self.retry_after_seconds)
         return headers
