@@ -1,9 +1,39 @@
 import json
+from hashlib import sha256
 from typing import Any, cast
 
 from dungeon_agent.domain.game import AdventurePlan, LanguageCode, PlayerCharacter
 
-ADVENTURE_THEME_SEED = "a floating market that drifts overnight"
+_CREATIVE_PROFILES = (
+    "a village that loses one street from its map every sunrise",
+    "a lighthouse whose beam reveals a different future each night",
+    "a traveling theatre where the actors have forgotten the final scene",
+    "a river crossing that demands a cherished memory as its toll",
+    "a mine where the excavated ore whispers names of people still alive",
+    "a city archive whose books are rewriting the town's history",
+    "a harvest festival where every contestant is secretly an impostor",
+    "a caravan carrying a living statue that wants to change destinations",
+    "a mountain monastery where the shadows are attending lessons without bodies",
+    "a ruined observatory tracking a star that is moving toward the village",
+    "a coastal village whose tide leaves behind objects from tomorrow",
+    "a forest path that rearranges itself around whoever tells the truth",
+    "a court where a polite monster is accused of a crime it did not commit",
+    "a bridge that appears only when two enemies agree on one thing",
+    "a clockmaker's workshop where one unfinished clock is aging the whole town",
+    "a border inn sheltering travelers who each remember a different war",
+)
+ADVENTURE_THEME_SEED = "a fresh fantasy situation with an unusual constraint"
+
+
+def campaign_theme_seed(campaign_id: str) -> str:
+    """Return a stable, varied creative brief for one campaign generation."""
+    digest = sha256(campaign_id.encode("utf-8")).digest()
+    profile = _CREATIVE_PROFILES[int.from_bytes(digest[:2], "big") % len(_CREATIVE_PROFILES)]
+    variation = digest.hex()[:8]
+    return (
+        f"{profile}. Creative variation key {variation}; use it only as a tie-breaker and do not "
+        "mention it in the adventure."
+    )
 
 
 def _language_name(language: LanguageCode) -> str:
@@ -20,7 +50,12 @@ class AdventureArchitect:
         result = self.agent.invoke(
             system=(
                 "Design a compact fantasy one-shot with declared exits, snake_case IDs, at least "
-                "three solution paths, no commercial-fiction copies, and no silent bell/tower."
+                "three solution paths, no commercial-fiction copies, and no silent bell/tower. "
+                "Honor the supplied creative brief as the story's central premise. Make the "
+                "campaign materially distinct from common fantasy templates: do not default to "
+                "a floating market, broken or silent bell, magical orchard, mirror academy, "
+                "generic missing artifact, or dawn deadline unless the brief explicitly requires "
+                "it. Do not reuse the same title pattern across campaigns."
             ),
             prompt=(
                 f"Create a 10-15 minute {language_name} adventure inspired by {theme}: objective, "
