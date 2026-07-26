@@ -33,6 +33,7 @@ export function PlayTableScreen() {
   const [confirmExit, setConfirmExit] = useState(false);
   const [followBottom, setFollowBottom] = useState(true);
   const [voiceOn, setVoiceOn] = useState(isVoiceEnabled);
+  const [mobilePanel, setMobilePanel] = useState<"campaign" | "character" | null>(null);
 
   const scrollRef = useRef<HTMLDivElement>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
@@ -162,18 +163,25 @@ export function PlayTableScreen() {
       }
     >
       <div className="flex shrink-0 flex-col border-b border-[var(--line)] bg-[var(--surface-1)] lg:hidden">
-        <details className="group border-b border-[var(--line)] last:border-b-0">
-          <summary className="flex min-h-11 cursor-pointer list-none items-center justify-between px-4 py-2 text-xs tracking-[0.16em] text-[var(--muted)] uppercase [font-family:var(--font-ui)] marker:hidden">
-            <span>Contexto de campaña</span>
-            <span className="text-[var(--ember)] transition group-open:rotate-45">+</span>
-          </summary>
-          <CampaignContextPanel opening={opening} mobile />
-        </details>
-        <details className="group">
-          <summary className="flex min-h-11 cursor-pointer list-none items-center justify-between px-4 py-2 text-xs tracking-[0.16em] text-[var(--muted)] uppercase [font-family:var(--font-ui)] marker:hidden">
-            <span>Personaje e inventario</span>
-            <span className="text-[var(--ember)] transition group-open:rotate-45">+</span>
-          </summary>
+        <div className="flex">
+          {([
+            ["campaign", "Contexto de campaña"],
+            ["character", "Personaje e inventario"],
+          ] as const).map(([panel, label]) => (
+            <button
+              key={panel}
+              type="button"
+              aria-expanded={mobilePanel === panel}
+              onClick={() => setMobilePanel((current) => (current === panel ? null : panel))}
+              className={`flex min-h-11 flex-1 items-center justify-between px-3 py-2 text-left text-[0.65rem] tracking-[0.12em] uppercase [font-family:var(--font-ui)] ${mobilePanel === panel ? "text-[var(--ember)]" : "text-[var(--muted)]"}`}
+            >
+              <span>{label}</span>
+              <span aria-hidden="true" className="ml-2 text-sm">{mobilePanel === panel ? "×" : "+"}</span>
+            </button>
+          ))}
+        </div>
+        {mobilePanel === "campaign" && <CampaignContextPanel opening={opening} mobile />}
+        {mobilePanel === "character" && (
           <CharacterContextPanel
             opening={opening}
             portraitUrl={portraitUrl}
@@ -181,7 +189,7 @@ export function PlayTableScreen() {
             stats={stats}
             mobile
           />
-        </details>
+        )}
       </div>
 
       {confirmExit && (
