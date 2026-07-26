@@ -185,6 +185,10 @@ def update_image(
     return image_arn
 
 
+def _client_token(*parts: str) -> str:
+    return hashlib.sha256("\0".join(parts).encode("utf-8")).hexdigest()
+
+
 def publish_image(
     microvms: LambdaMicroVMsClient,
     *,
@@ -206,7 +210,9 @@ def publish_image(
             artifact_uri=artifact_uri,
             build_role_arn=build_role_arn,
             region=region,
-            client_token=artifact.sha256,
+            client_token=_client_token(
+                "create", image_name, artifact.sha256, release_version or ""
+            ),
             release_version=release_version,
         )
         operation = "created"
@@ -217,7 +223,9 @@ def publish_image(
             artifact_uri=artifact_uri,
             build_role_arn=build_role_arn,
             region=region,
-            client_token=artifact.sha256,
+            client_token=_client_token(
+                "update", existing["imageArn"], artifact.sha256, build_role_arn, region
+            ),
             release_version=release_version,
         )
         operation = "updated"

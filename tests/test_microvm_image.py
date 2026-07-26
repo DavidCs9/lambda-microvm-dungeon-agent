@@ -8,6 +8,7 @@ import pytest
 from dungeon_agent.operations.image_builder import (
     SOURCE_FILES,
     Artifact,
+    _client_token,
     existing_artifact,
     package_source,
     publish_image,
@@ -86,4 +87,11 @@ def test_publish_updates_an_existing_image() -> None:
         )
     )
     client.update_microvm_image.assert_called_once()
+    assert client.update_microvm_image.call_args.kwargs["clientToken"] == _client_token(
+        "update",
+        "arn:existing",
+        artifact.sha256,
+        "arn:aws:iam::123456789012:role/build-role",
+        "us-east-2",
+    )
     client.tag_resource.assert_called_once_with(Resource="arn:existing", Tags={"Release": "v1.2.3"})
