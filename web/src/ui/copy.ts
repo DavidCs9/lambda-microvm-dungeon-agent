@@ -122,6 +122,8 @@ export function voiceLabel(enabled: boolean): string {
 const OPENING_KIND_COPY: Record<string, string> = {
   identity: "Identidad",
   background: "Trasfondo",
+  premise: "La aventura",
+  objective: "Objetivo",
   motivation: "Motivación",
   knowledge: "Saber",
   situation: "Situación",

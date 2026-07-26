@@ -3,7 +3,13 @@ from unittest.mock import Mock
 import pytest
 from pydantic import ValidationError
 
-from dungeon_agent.control_plane.agents.roles import AdventureArchitect, CharacterArchitect
+from dungeon_agent.control_plane.agents.roles import (
+    AdventureArchitect,
+    CharacterArchitect,
+    _has_language_leak,
+    campaign_theme_seed,
+)
+from dungeon_agent.data_plane.agents.roles import DungeonMaster
 from dungeon_agent.orchestrator.observability import SessionMetrics
 from dungeon_agent.plane_shared.agents.bedrock import StructuredBedrockAgent
 from tests.test_adventure import sample_plan, sample_player
@@ -190,11 +196,57 @@ def test_adventure_architect_injects_theme_seed_into_prompt() -> None:
         StructuredBedrockAgent(client, "test-model", SessionMetrics.start("test-model"))
     )
 
-    architect.create("es", theme_seed="a ferry stuck between two dawns")
+    architect.create("en", theme_seed="a ferry stuck between two dawns")
 
     request = client.converse.call_args.kwargs
     prompt = request["messages"][0]["content"][0]["text"]
     system = request["system"][0]["text"]
     assert "a ferry stuck between two dawns" in prompt
-    assert "Spanish" in prompt
+    assert "English" in prompt
     assert "silent bell/tower" in system
+
+
+def test_campaign_theme_seed_is_stable_but_varies_by_campaign() -> None:
+    first = campaign_theme_seed("cam_01J00000000000000000000001")
+    same = campaign_theme_seed("cam_01J00000000000000000000001")
+    other = campaign_theme_seed("cam_01J00000000000000000000002")
+
+    assert first == same
+    assert first != other
+    assert "floating market" not in first
+
+
+def test_adventure_language_guard_catches_hybrid_output() -> None:
+    assert _has_language_leak(sample_plan(), "es")
+    assert not _has_language_leak(sample_plan(), "en")
+
+
+def test_dungeon_master_rejects_unknown_item_without_model_call() -> None:
+    agent = Mock()
+    master = DungeonMaster(agent, "en")
+    world: dict[str, object] = {
+        "plan": sample_plan().model_dump(mode="json"),
+        "inventory": ["chalk"],
+    }
+
+    proposal = master.adjudicate("I throw an archive key into the ravine.", world)
+
+    assert not proposal.requires_roll
+    assert proposal.stat is None
+    assert proposal.difficulty is None
+    assert proposal.failure_changes.add_facts == ["The unknown item cannot change the world."]
+    agent.invoke.assert_not_called()
+
+
+def test_dungeon_master_uses_model_for_known_item_action() -> None:
+    agent = Mock()
+    agent.invoke.return_value = sample_player()
+    master = DungeonMaster(agent, "en")
+    world: dict[str, object] = {
+        "plan": sample_plan().model_dump(mode="json"),
+        "inventory": ["chalk"],
+    }
+
+    master.adjudicate("I use the Wayfinder Chalk.", world)
+
+    agent.invoke.assert_called_once()

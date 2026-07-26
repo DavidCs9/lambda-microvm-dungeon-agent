@@ -10,11 +10,13 @@ export interface AuthSession {
   idToken: string;
   userSub: string;
   username: string;
+  displayName: string;
 }
 
 export interface NewPasswordChallenge {
-  kind: "new-password-required";
-  complete: (newPassword: string) => Promise<AuthSession>;
+  kind: "new-password";
+  user: CognitoUser;
+  requiredAttributes: Record<string, string>;
 }
 
 export type SignInResult = AuthSession | NewPasswordChallenge;
@@ -31,16 +33,30 @@ function pool(): CognitoUserPool {
 }
 
 function sessionOf(user: CognitoUser, session: CognitoUserSession): AuthSession {
-  const idPayload = session.getIdToken().decodePayload() as { sub?: unknown };
+  const idPayload = session.getIdToken().decodePayload() as {
+    email?: unknown;
+    sub?: unknown;
+  };
   if (typeof idPayload.sub !== "string") {
     throw new Error("Cognito session is missing the user subject.");
   }
+  const email = typeof idPayload.email === "string" ? idPayload.email : user.getUsername();
   return {
     accessToken: session.getAccessToken().getJwtToken(),
     idToken: session.getIdToken().getJwtToken(),
     userSub: idPayload.sub,
     username: user.getUsername(),
+    displayName: displayNameFromEmail(email),
   };
+}
+
+export function displayNameFromEmail(email: string): string {
+  const localPart = email.split("@", 1)[0] ?? email;
+  return localPart
+    .split(/[._+-]+/)
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1).toLowerCase())
+    .join(" ");
 }
 
 function sessionForUser(user: CognitoUser): Promise<AuthSession | null> {
@@ -81,27 +97,34 @@ export function signIn(email: string, password: string): Promise<SignInResult> {
         }
       },
       onFailure: (error) => reject(error),
-      newPasswordRequired: () => {
-        resolve({
-          kind: "new-password-required",
-          complete: (newPassword) => completeNewPassword(user, newPassword),
-        });
+      newPasswordRequired: (userAttributes, requiredAttributes) => {
+        const attributes: Record<string, string> = {};
+        for (const name of requiredAttributes ?? []) {
+          const value = userAttributes?.[name];
+          if (typeof value === "string") {
+            attributes[name] = value;
+          }
+        }
+        resolve({ kind: "new-password", user, requiredAttributes: attributes });
       },
     });
   });
 }
 
-function completeNewPassword(user: CognitoUser, newPassword: string): Promise<AuthSession> {
+export function completeNewPassword(
+  challenge: NewPasswordChallenge,
+  newPassword: string,
+): Promise<AuthSession> {
   return new Promise((resolve, reject) => {
-    user.completeNewPasswordChallenge(newPassword, {}, {
+    challenge.user.completeNewPasswordChallenge(newPassword, challenge.requiredAttributes, {
       onSuccess: (session) => {
         try {
-          resolve(sessionOf(user, session));
+          resolve(sessionOf(challenge.user, session));
         } catch (error) {
           reject(error);
         }
       },
-      onFailure: reject,
+      onFailure: (error) => reject(error),
     });
   });
 }

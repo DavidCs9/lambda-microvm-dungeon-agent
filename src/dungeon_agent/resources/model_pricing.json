@@ -5,6 +5,10 @@
       "input": "0.035",
       "output": "0.14"
     },
+    "us.anthropic.claude-haiku-4-5-20251001-v1:0": {
+      "input": "1.00",
+      "output": "5.00"
+    },
     "us.anthropic.claude-sonnet-4-6": {
       "input": "3.00",
       "output": "15.00"

@@ -64,6 +64,8 @@ class EventType(StrEnum):
 class OpeningBlockKind(StrEnum):
     IDENTITY = "identity"
     BACKGROUND = "background"
+    PREMISE = "premise"
+    OBJECTIVE = "objective"
     MOTIVATION = "motivation"
     KNOWLEDGE = "knowledge"
     SITUATION = "situation"

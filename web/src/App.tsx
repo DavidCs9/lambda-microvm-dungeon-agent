@@ -29,6 +29,7 @@ export function App() {
   useEffect(() => {
     if (authSession) {
       gameActions.setPlayerId(authSession.userSub);
+      gameActions.setPlayerName(authSession.displayName);
     }
   }, [authSession]);
 

@@ -10,16 +10,20 @@ Parameters:
     Description: Retention period for workflow and Lambda operational logs.
   CampaignModelId:
     Type: String
-    Default: us.anthropic.claude-sonnet-4-6
+    Default: us.anthropic.claude-haiku-4-5-20251001-v1:0
     Description: Bedrock inference profile baked into the campaign prompt version.
   CharacterModelId:
     Type: String
-    Default: us.anthropic.claude-sonnet-4-6
+    Default: us.anthropic.claude-haiku-4-5-20251001-v1:0
     Description: Bedrock inference profile baked into the character prompt version.
   MasterModelId:
     Type: String
-    Default: us.anthropic.claude-sonnet-4-6
+    Default: us.anthropic.claude-haiku-4-5-20251001-v1:0
     Description: Bedrock inference profile baked into the Dungeon Master prompt version.
+  RuntimeConfigParameterName:
+    Type: String
+    Default: /dungeon-agent/bedrock-runtime-config
+    Description: SSM parameter containing the active Bedrock model and prompt versions.
   MicrovmImageName:
     Type: String
     Default: dungeon-agent-fastapi
@@ -217,7 +221,7 @@ Resources:
     Type: Custom::BedrockManagedPrompt
     Properties:
       ServiceToken: !GetAtt ManagedPromptProvider.Arn
-      VersionDescription: Campaign prompt definition revision 4
+      VersionDescription: Campaign prompt definition revision 5
       Name: !Sub "${AWS::StackName}-campaign-iac"
       Description: Creates a compact validated one-shot campaign.
       DefaultVariant: default
@@ -244,14 +248,32 @@ Resources:
                     Design a compact fantasy one-shot with declared exits, snake_case IDs, at
                     least three solution paths, no commercial-fiction copies, and no silent
                     bell/tower. All IDs must use lowercase ASCII letters, digits, and underscores
-                    only. Treat every tool-schema maxLength as a hard limit. Use one short
-                    sentence per field: premise at most 120 characters, objective 70, opening
-                    100, and every description 90.
+                    only. Treat every tool-schema maxLength as a hard limit, but stay well below
+                    it. Write every human-readable field entirely in the requested language:
+                    title, premise, objective, opening, locations, characters, items, and secrets.
+                    Never mix languages or fall back to English.
+                    Premise 10-15 words, objective 6-10 words, opening 8-12 words, and every
+                    description 5-10 words. These word limits keep the character limits safe.
+                    Before the tool call, silently check every string length
+                    and shorten it if needed. Every location must include id, name, description,
+                    and exits; never omit exits. Use only declared location IDs in exits. Valid
+                    compact shapes include {"objective":"Recover the moon key before dawn."}
+                    and {"id":"mist_gate","name":"Mist Gate","description":"A stone arch
+                    hides the road.","exits":["market","crypt"]}. Build a private registry of
+                    every location id before writing exits, then copy exits only from that registry.
+                    A valid graph shape is [{"id":"market","exits":["crypt"]},
+                    {"id":"crypt","exits":["market","tower"]},
+                    {"id":"tower","exits":["crypt"]}]. Never invent an exit id and never use
+                    a location name unless it is exactly its id. These are examples only; create
+                    fresh content. Create exactly 3 locations, exactly 1 NPC, exactly 2 items,
+                    exactly 2 secrets, and max_turns 8-10; do not add extra locations or objects.
               Messages:
                 - Role: user
                   Content:
                     - Text: >-
                         Create a 10-15 minute {{language_name}} adventure inspired by {{theme}}:
+                        Write every human-readable field entirely in {{language_name}}. Do not mix
+                        languages or use English fallback text.
                         objective, 3-5 locations, 1-2 NPCs, useful items, secrets, max_turns, and
                         short opening. Also pick a small, coherent starting_inventory (0-2 item
                         ids from items) that the protagonist plausibly already carries given the
@@ -303,7 +325,11 @@ Resources:
                 - Text: >-
                     Design one concise protagonist tied to the adventure, vary
                     gender/presentation, hide secrets, and make choices investigative, social,
-                    and risky.
+                    and risky. Keep every string comfortably below its schema maxLength. Return
+                    exactly 3 opening_choices and at least 2 known_facts. A valid compact shape is
+                    {"known_facts":["The bell rings at dusk.","Mara hides the key."],
+                    "opening_choices":["Question Mara.","Search the bell tower.","Follow the
+                    footprints."]}. This is an example only; create fresh content.
               Messages:
                 - Role: user
                   Content:
@@ -372,7 +398,13 @@ Resources:
                     reference carried items naturally in the narration. When a roll is required,
                     set stat to the attribute that governs the action (might, agility, wits,
                     charm, or resolve); the hero's stat value in player_character.stats is added
-                    to the d20, so weigh it when setting difficulty.
+                    to the d20, so weigh it when setting difficulty. Always return both
+                    success_changes and failure_changes. For a risky action, a valid compact shape
+                    is {"requires_roll":true,"stat":"agility","difficulty":12,
+                    "success_changes":{"add_facts":["The bridge holds."]},
+                    "failure_changes":{"add_facts":["The guard notices the noise."]}}.
+                    For a safe action, use requires_roll=false and stat=null. These are examples
+                    only; use the actual world IDs and inventory.
               Messages:
                 - Role: user
                   Content:
@@ -725,6 +757,11 @@ Resources:
                 Resource: "*"
               - Effect: Allow
                 Action:
+                  - ssm:GetParameter
+                Resource: !Sub >-
+                  arn:${AWS::Partition}:ssm:${AWS::Region}:${AWS::AccountId}:parameter${RuntimeConfigParameterName}
+              - Effect: Allow
+                Action:
                   - s3:ListBucket
                 Resource: !GetAtt SpeechCacheBucket.Arn
                 Condition:
@@ -770,9 +807,7 @@ Resources:
         Variables:
           TABLE_NAME: !Ref SessionTable
           CAMPAIGN_TABLE_NAME: !Ref CampaignTable
-          BEDROCK_MODEL_ID: !Ref CampaignModelId
-          CAMPAIGN_PROMPT_ARN: !GetAtt CampaignManagedPrompt.Arn
-          CHARACTER_PROMPT_ARN: !GetAtt CharacterManagedPrompt.Arn
+          BEDROCK_RUNTIME_CONFIG_PARAMETER: !Ref RuntimeConfigParameterName
           MICROVM_IMAGE_NAME: !Ref MicrovmImageName
           WS_MANAGEMENT_ENDPOINT: !Sub "https://${ControlPlaneWebSocketApi}.execute-api.${AWS::Region}.${AWS::URLSuffix}/prod"
           SPEECH_CACHE_BUCKET: !Ref SpeechCacheBucket
@@ -805,8 +840,7 @@ Resources:
         Variables:
           TABLE_NAME: !Ref SessionTable
           CAMPAIGN_TABLE_NAME: !Ref CampaignTable
-          BEDROCK_MODEL_ID: !Ref MasterModelId
-          MASTER_PROMPT_ARN: !GetAtt MasterManagedPrompt.Arn
+          BEDROCK_RUNTIME_CONFIG_PARAMETER: !Ref RuntimeConfigParameterName
           MICROVM_IMAGE_NAME: !Ref MicrovmImageName
           WS_MANAGEMENT_ENDPOINT: !Sub "https://${ControlPlaneWebSocketApi}.execute-api.${AWS::Region}.${AWS::URLSuffix}/prod"
           POWERTOOLS_SERVICE_NAME: dungeon-agent-control-plane

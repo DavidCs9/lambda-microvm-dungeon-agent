@@ -36,6 +36,7 @@ export type DiceBeat = {
 export interface GameState {
   screen: Screen;
   playerId: string;
+  playerName: string;
   wsStatus: WsStatus;
   campaign: CampaignRecord | null;
   campaigns: CampaignRecord[];
@@ -94,6 +95,7 @@ function createInitialState(playerId: string): GameState {
   return {
     screen: "menu",
     playerId,
+    playerName: "Jugador",
     wsStatus: "disconnected",
     campaign: null,
     campaigns: [],
@@ -193,6 +195,8 @@ function payloadTurnId(payload: Record<string, unknown> | undefined): string {
 const OPENING_KINDS = new Set<OpeningBlockKind>([
   "identity",
   "background",
+  "premise",
+  "objective",
   "motivation",
   "knowledge",
   "situation",
@@ -652,6 +656,10 @@ function syncClients(playerId: string): void {
 }
 
 export const gameActions = {
+  setPlayerName(name: string): void {
+    setState({ playerName: name.trim() || "Jugador" });
+  },
+
   setPlayerId(id: string): void {
     const playerId = id.trim();
     persistPlayerId(playerId);
