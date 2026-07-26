@@ -264,6 +264,7 @@ Resources:
                   - lambda:GetFunctionCodeSigningConfig
                   - lambda:GetFunctionConfiguration
                   - lambda:GetPolicy
+                  - lambda:InvokeFunction
                   - lambda:ListTags
                   - lambda:ListVersionsByFunction
                   - lambda:RemovePermission
