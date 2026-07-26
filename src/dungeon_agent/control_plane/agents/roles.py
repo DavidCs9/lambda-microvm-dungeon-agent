@@ -69,6 +69,11 @@ class AdventureArchitect:
             system=(
                 "Design a compact fantasy one-shot with declared exits, snake_case IDs, at least "
                 "three solution paths, no commercial-fiction copies, and no silent bell/tower. "
+                "Build the objective as discovery, complication, and a separate final action. "
+                "Every important item must have a concrete use tied to the objective, and every "
+                "secret must be discoverable through play rather than dumped immediately. "
+                "Proofread every generated string for natural grammar, agreement, punctuation, "
+                "and clear wording. "
                 "Honor the supplied creative brief as the story's central premise. Make the "
                 "campaign materially distinct from common fantasy templates: do not default to "
                 "a floating market, broken or silent bell, magical orchard, mirror academy, "
@@ -82,7 +87,8 @@ class AdventureArchitect:
                 "and secrets. "
                 "3-5 locations, 1-2 NPCs, useful items, secrets, max_turns, and short opening. "
                 "Also pick a small, coherent starting_inventory (0-2 item ids from items) that the "
-                "protagonist plausibly already carries given the premise."
+                "protagonist plausibly already carries given the premise. Make the final objective "
+                "action explicit and distinct from merely discovering the solution."
             ),
             prompt_variables={"language_name": language_name, "theme": theme},
             tool_name="create_adventure",

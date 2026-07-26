@@ -14,7 +14,7 @@ from pydantic import BaseModel
 
 from dungeon_agent.domain.game import AdventurePlan, PlayerCharacter, TurnProposal
 
-DEFAULT_MODEL_ID = "us.anthropic.claude-haiku-4-5-20251001-v1:0"
+DEFAULT_MODEL_ID = "us.anthropic.claude-sonnet-5"
 DEFAULT_REGION = "us-east-2"
 
 

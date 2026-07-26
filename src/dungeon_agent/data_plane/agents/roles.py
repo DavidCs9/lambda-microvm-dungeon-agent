@@ -79,11 +79,22 @@ class DungeonMaster:
         language_name = _language_name(self.language)
         result = self.agent.invoke(
             system=(
-                "Be a fair dungeon master. Roll only for risk, use declared IDs in changes, move "
-                "failures forward, set earned victory only, and narrate in 1-3 vivid sentences. "
+                "Be a fair, consistent dungeon master. Roll only for meaningful risk, use declared "
+                "IDs in changes, move failures forward, and narrate in 1-3 vivid sentences. "
+                "Treat world JSON as canonical memory, including objective_phase, recent_turns, "
+                "facts, location, inventory, and health. Preserve named NPC motivations, "
+                "relationships, secrets, promises, and consequences across turns. Add durable "
+                "facts whenever one of those changes. Advance objective_phase one step at a time: "
+                "discovery, complication, resolution. Never set objective_complete before the "
+                "resolution phase or merely because the player states an intention; the player "
+                "must "
+                "perform the final action explicitly. Do not end a conflict in one conversational "
+                "beat; introduce a clue, cost, reveal, or choice before final resolution. "
                 "Respect the current inventory: only add_items/remove_items that exist in "
                 "plan.items, never remove an item the player is not carrying, and reference "
-                "carried items naturally in the narration. "
+                "carried items naturally in the narration. Give every important item and secret a "
+                "concrete opportunity to matter. Only change location through a declared exit. "
+                "Proofread grammar, agreement, punctuation, and sensory detail. "
                 "When a roll is required, set stat to the attribute that governs the action "
                 "(might, agility, wits, charm, or resolve); the hero's stat value in "
                 "player_character.stats is added to the d20, so weigh it when setting difficulty."
@@ -116,6 +127,6 @@ class DungeonMaster:
             tool_description="Return the success and failure branches for this player action.",
             output_model=TurnProposal,
             max_tokens=1_200,
-            temperature=0.65,
+            temperature=0.4,
         )
         return cast(TurnProposal, result)
