@@ -11,6 +11,7 @@ from dungeon_agent.control_plane.http.campaigns import CampaignHttpHandlers
 from dungeon_agent.control_plane.http.sessions import SessionHttpHandlers
 from dungeon_agent.data_plane.http.speech import SpeechHttpHandlers
 from dungeon_agent.plane_shared.http.api_gateway import ApiGatewayHttpAdapter
+from dungeon_agent.plane_shared.http.rate_limit import UserRateLimiter
 from dungeon_agent.plane_shared.persistence.memory import (
     InMemoryCampaignRepository,
     InMemoryControlPlaneRepository,
@@ -71,7 +72,9 @@ class FakeS3Client:
         return f"https://fake-s3.example/{Params['Key']}?expires={ExpiresIn}"
 
 
-def _speech_adapter() -> tuple[ApiGatewayHttpAdapter, FakePollyClient, FakeS3Client]:
+def _speech_adapter(
+    rate_limiter: UserRateLimiter | None = None,
+) -> tuple[ApiGatewayHttpAdapter, FakePollyClient, FakeS3Client]:
     sessions = InMemoryControlPlaneRepository()
     workflows = FakeWorkflowStarter()
     campaigns = InMemoryCampaignRepository()
@@ -105,6 +108,7 @@ def _speech_adapter() -> tuple[ApiGatewayHttpAdapter, FakePollyClient, FakeS3Cli
         campaign_handlers,
         speech=speech,
         allow_sandbox_identity=True,
+        rate_limiter=rate_limiter,
     )
     return adapter, polly, s3
 
@@ -199,3 +203,28 @@ def test_speech_accepts_sandbox_identity_header() -> None:
     assert _body(response)["cacheHit"] is False
     assert len(polly.calls) == 1
     assert polly.calls[0]["VoiceId"] == "Andres"
+
+
+def test_rate_limit_is_per_user_and_returns_retry_after() -> None:
+    now = 100.0
+    limiter = UserRateLimiter(
+        {"POST /speech": 1},
+        monotonic=lambda: now,
+    )
+    adapter, polly, _ = _speech_adapter(limiter)
+    event = _event("POST /speech", body={"text": "Hello.", "language": "en"})
+
+    assert adapter(event)["statusCode"] == 200
+    blocked = adapter(event)
+    other_user = adapter(
+        _event(
+            "POST /speech",
+            owner="another_user",
+            body={"text": "Hello.", "language": "en"},
+        )
+    )
+
+    assert blocked["statusCode"] == 429
+    assert blocked["headers"]["retry-after"] == "60"
+    assert other_user["statusCode"] == 200
+    assert len(polly.calls) == 1

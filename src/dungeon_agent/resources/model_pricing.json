@@ -5,11 +5,20 @@
       "input": "0.035",
       "output": "0.14"
     },
+    "us.anthropic.claude-haiku-4-5-20251001-v1:0": {
+      "input": "1.00",
+      "output": "5.00"
+    },
     "us.anthropic.claude-sonnet-4-6": {
       "input": "3.00",
       "output": "15.00"
+    },
+    "us.anthropic.claude-sonnet-5": {
+      "input": "2.00",
+      "output": "10.00",
+      "notes": "Promotional launch pricing through 2026-08-31; standard pricing is 3.00/15.00."
     }
   },
   "source": "https://aws.amazon.com/bedrock/pricing/",
-  "verifiedAt": "2026-07-19"
+  "verifiedAt": "2026-07-26"
 }

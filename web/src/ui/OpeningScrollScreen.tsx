@@ -25,6 +25,11 @@ export function OpeningScrollScreen() {
   }, [opening]);
 
   const title = opening?.title?.trim() || "El umbral";
+  const premise = blocks.find((block) => block.kind === "premise");
+  const objective = blocks.find((block) => block.kind === "objective");
+  const situation = blocks.find((block) => block.kind === "situation");
+  const summaryIds = new Set([premise?.id, objective?.id, situation?.id]);
+  const contextBlocks = blocks.filter((block) => !summaryIds.has(block.id));
 
   return (
     <ScreenShell align="start" className="pb-32 pt-12">
@@ -60,7 +65,37 @@ export function OpeningScrollScreen() {
       </motion.header>
 
       <div className="mx-auto flex w-full max-w-2xl flex-col gap-10">
-        {blocks.map((block, index) => (
+        {(premise || objective || situation) && (
+          <motion.section
+            initial={{ opacity: 0, y: 18 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.55 }}
+            className="rounded-xl border border-[var(--line)] bg-[var(--surface-2)]/75 px-6 py-7 shadow-[0_18px_60px_rgba(0,0,0,0.24)] sm:px-9"
+          >
+            <p className="mb-4 text-[0.7rem] tracking-[0.24em] text-[var(--ember)] uppercase [font-family:var(--font-display)]">
+              La aventura
+            </p>
+            {premise && <p className="text-xl leading-relaxed text-[var(--ink)]">{premise.text}</p>}
+            {objective && (
+              <div className="mt-6 border-t border-[var(--line)] pt-5">
+                <p className="mb-2 text-[0.65rem] tracking-[0.2em] text-[var(--muted)] uppercase">
+                  Objetivo
+                </p>
+                <p className="text-base leading-relaxed text-[var(--ink)]/90">{objective.text}</p>
+              </div>
+            )}
+            {situation && (
+              <div className="mt-6 border-t border-[var(--line)] pt-5">
+                <p className="mb-2 text-[0.65rem] tracking-[0.2em] text-[var(--muted)] uppercase">
+                  Ahora mismo
+                </p>
+                <p className="text-base leading-relaxed text-[var(--ink)]/90">{situation.text}</p>
+              </div>
+            )}
+          </motion.section>
+        )}
+
+        {contextBlocks.map((block, index) => (
           <motion.article
             key={block.id}
             initial={{ opacity: 0, y: 28 }}
@@ -84,13 +119,13 @@ export function OpeningScrollScreen() {
         )}
       </div>
 
-      <div className="fixed inset-x-0 bottom-0 z-20 flex flex-col items-center border-t border-[var(--line)] bg-[var(--surface-2)] px-6 pt-4 pb-[calc(env(safe-area-inset-bottom)+1rem)] backdrop-blur-sm">
+      <div className="fixed inset-x-0 bottom-0 z-20 flex max-h-[40dvh] flex-col items-center overflow-y-auto border-t border-[var(--line)] bg-[var(--surface-2)] px-5 pt-3 pb-[calc(env(safe-area-inset-bottom)+0.75rem)] backdrop-blur-sm sm:px-6 sm:pt-4">
         <VoiceToggle
           enabled={voiceOn}
           onToggle={() => setVoiceOn(toggleVoice())}
           className="mb-3"
         />
-        <EmberButton onClick={() => gameActions.continueFromOpening()} className="mt-0">
+        <EmberButton onClick={() => gameActions.continueFromOpening()} className="mt-0 w-full max-w-sm">
           Comenzar la aventura
         </EmberButton>
         <ErrorLine message={errorMessage} />

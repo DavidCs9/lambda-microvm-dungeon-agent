@@ -29,6 +29,7 @@ export function App() {
   useEffect(() => {
     if (authSession) {
       gameActions.setPlayerId(authSession.userSub);
+      gameActions.setPlayerName(authSession.displayName);
     }
   }, [authSession]);
 
@@ -50,13 +51,15 @@ export function App() {
     <div className="relative min-h-screen overflow-hidden bg-[var(--deep)] text-[var(--ink)]">
       <AtmosphereStage diceBeat={diceBeat} screen={screen} />
       <div className="relative z-10 min-h-screen">
-        <button
-          type="button"
-          onClick={logout}
-          className="absolute right-6 top-6 z-20 text-xs tracking-[0.14em] text-[var(--muted)] uppercase transition hover:text-[var(--ink)]"
-        >
-          Salir
-        </button>
+        {screen !== "play" && (
+          <button
+            type="button"
+            onClick={logout}
+            className="absolute right-4 top-[calc(env(safe-area-inset-top)+0.75rem)] z-20 min-h-11 px-2 text-xs tracking-[0.14em] text-[var(--muted)] uppercase transition hover:text-[var(--ink)] sm:right-6 sm:top-6"
+          >
+            Salir
+          </button>
+        )}
         <AnimatePresence mode="wait">
           <motion.div
             key={screen}

@@ -14,7 +14,7 @@ from pydantic import BaseModel
 
 from dungeon_agent.domain.game import AdventurePlan, PlayerCharacter, TurnProposal
 
-DEFAULT_MODEL_ID = "us.anthropic.claude-sonnet-4-6"
+DEFAULT_MODEL_ID = "us.anthropic.claude-sonnet-5"
 DEFAULT_REGION = "us-east-2"
 
 
@@ -41,12 +41,37 @@ PROMPTS = (
         system=(
             "Design a compact fantasy one-shot with declared exits, snake_case IDs, at least "
             "three solution paths, no commercial-fiction copies, and no silent bell/tower. "
+            "Honor the supplied creative brief as the story's central premise. Make the "
+            "Write every human-readable field entirely in the requested language: title, "
+            "premise, objective, opening, locations, characters, items, and secrets. Never mix "
+            "languages or fall back to English. "
+            "campaign materially distinct from common fantasy templates: do not default to "
+            "a floating market, broken or silent bell, magical orchard, mirror academy, "
+            "generic missing artifact, or dawn deadline unless the brief explicitly requires "
+            "it. Do not reuse the same title pattern across campaigns. "
             "All IDs must use lowercase ASCII letters, digits, and underscores only. Treat every "
-            "tool-schema maxLength as a hard limit. Use one short sentence per field: premise at "
-            "most 120 characters, objective 70, opening 100, and every description 90."
+            "tool-schema maxLength as a hard limit, but stay well below it: premise <=140 "
+            "characters, objective 6-10 words, opening 8-12 words, premise 10-15 words, and "
+            "every description 5-10 words. These word limits keep the character limits safe. "
+            "Before the "
+            "tool call, silently check every string length and shorten it if needed. Every "
+            "location must include id, name, description, and exits; never omit exits. Use only "
+            "declared location IDs in exits. Valid compact shapes include "
+            '{"objective":"Recover the moon key before dawn."} and '
+            '{"id":"mist_gate","name":"Mist Gate",'
+            '"description":"A stone arch hides the road.",'
+            '"exits":["market","crypt"]}. Build a private registry of every location id '
+            "before writing exits, then copy exits only from that registry. A valid graph shape is "
+            '[{"id":"market","exits":["crypt"]},'
+            '{"id":"crypt","exits":["market","tower"]},'
+            '{"id":"tower","exits":["crypt"]}]. Never invent an exit id and never use a '
+            "location name unless it is exactly its id. These are examples only; create fresh "
+            "content. Create exactly 3 locations, exactly 1 NPC, exactly 2 items, exactly 2 "
+            "secrets, and max_turns 8-10; do not add extra locations or objects."
         ),
         user_template=(
             "Create a 10-15 minute {{language_name}} adventure inspired by {{theme}}: objective, "
+            "Write every human-readable field entirely in {{language_name}}. Do not mix languages. "
             "3-5 locations, 1-2 NPCs, useful items, secrets, max_turns, and short opening. "
             "Also pick a small, coherent starting_inventory (0-2 item ids from items) that the "
             "protagonist plausibly already carries given the premise.\n"
@@ -66,6 +91,11 @@ PROMPTS = (
         system=(
             "Design one concise protagonist tied to the adventure, vary gender/presentation, "
             "hide secrets, and make choices investigative, social, and risky."
+            " Keep every string comfortably below its schema maxLength. Return exactly 3 "
+            "opening_choices and at least 2 known_facts. A valid compact shape is "
+            '{"known_facts":["The bell rings at dusk.","Mara hides the key."], '
+            '"opening_choices":["Question Mara.","Search the bell tower.",'
+            '"Follow the footprints."]}. This is an example only; create fresh content.'
         ),
         user_template=(
             "Create one concise protagonist in {{language_name}}: identity, desire, personal "
@@ -95,7 +125,13 @@ PROMPTS = (
             "never remove an item the player is not carrying, and reference carried items "
             "naturally in the narration. When a roll is required, set stat to the attribute that "
             "governs the action (might, agility, wits, charm, or resolve); the hero's stat value "
-            "in player_character.stats is added to the d20, so weigh it when setting difficulty."
+            "in player_character.stats is added to the d20, so weigh it when setting difficulty. "
+            "Always return both success_changes and failure_changes. For a risky action, a valid "
+            'compact shape is {"requires_roll":true,"stat":"agility",'
+            '"difficulty":12,"success_changes":{"add_facts":["The bridge holds."]},'
+            '"failure_changes":{"add_facts":["The guard notices the noise."]}}. '
+            "For a safe action, use requires_roll=false and stat=null. These are examples only; "
+            "use the actual world IDs and inventory."
         ),
         user_template=(
             "Resolve this turn entirely in {{language_name}}.\nPlayer action:\n{{action}}\n"
@@ -269,12 +305,12 @@ def main() -> int:
     parser.add_argument("--region", default=DEFAULT_REGION)
     parser.add_argument("--model-id", default=DEFAULT_MODEL_ID)
     parser.add_argument("--role", action="append", choices=("campaign", "character", "master"))
-    parser.add_argument("--candidate-name", default="baseline-sonnet46")
+    parser.add_argument("--candidate-name", default="haiku-candidate")
     parser.add_argument("--base-manifest", type=Path)
     parser.add_argument(
         "--output",
         type=Path,
-        default=Path("evals/candidates/baseline-sonnet46.json"),
+        default=Path("artifacts/haiku-candidate.json"),
     )
     args = parser.parse_args()
     try:

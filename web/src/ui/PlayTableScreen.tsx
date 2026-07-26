@@ -26,16 +26,36 @@ export function PlayTableScreen() {
   const wsStatus = useGameStore((s) => s.wsStatus);
   const errorMessage = useGameStore((s) => s.errorMessage);
   const [action, setAction] = useState("");
+  const [pendingAction, setPendingAction] = useState("");
+  const [pendingSince, setPendingSince] = useState<number | null>(null);
+  const [pendingSeconds, setPendingSeconds] = useState(0);
   const [submitting, setSubmitting] = useState(false);
   const [confirmExit, setConfirmExit] = useState(false);
   const [followBottom, setFollowBottom] = useState(true);
   const [voiceOn, setVoiceOn] = useState(isVoiceEnabled);
+  const [mobilePanel, setMobilePanel] = useState<"campaign" | "character" | null>(null);
 
   const scrollRef = useRef<HTMLDivElement>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
+  const submittedTurnCount = useRef(0);
 
   const locked = turnPending || submitting;
   const canSubmit = action.trim().length > 0 && !locked;
+  const waitingCopy =
+    pendingSeconds >= 8
+      ? {
+          label: "La mesa sigue procesando tu acción.",
+          detail: "No la envíes de nuevo.",
+        }
+      : pendingSeconds >= 4
+        ? {
+            label: "La respuesta toma forma…",
+            detail: "El mundo se acomoda a tu decisión.",
+          }
+        : {
+            label: "El Master está pensando…",
+            detail: "La acción fue recibida.",
+          };
 
   const title =
     opening?.title?.trim() ||
@@ -44,6 +64,10 @@ export function PlayTableScreen() {
   async function onSubmit() {
     if (!canSubmit) return;
     const text = action.trim();
+    submittedTurnCount.current = turnLog.length;
+    setPendingAction(text);
+    setPendingSince(Date.now());
+    setPendingSeconds(0);
     setSubmitting(true);
     try {
       await gameActions.submitAction(text);
@@ -67,6 +91,23 @@ export function PlayTableScreen() {
     const timer = window.setTimeout(() => setConfirmExit(false), 3000);
     return () => window.clearTimeout(timer);
   }, [confirmExit]);
+
+  useEffect(() => {
+    if (!pendingSince) return;
+    const timer = window.setInterval(() => {
+      setPendingSeconds(Math.floor((Date.now() - pendingSince) / 1000));
+    }, 1000);
+    return () => window.clearInterval(timer);
+  }, [pendingSince]);
+
+  useEffect(() => {
+    if (!pendingAction) return;
+    if (turnLog.length > submittedTurnCount.current || (errorMessage && !locked)) {
+      setPendingAction("");
+      setPendingSince(null);
+      setPendingSeconds(0);
+    }
+  }, [errorMessage, locked, pendingAction, turnLog.length]);
 
   useEffect(() => {
     gameActions.ensurePortrait();
@@ -117,10 +158,40 @@ export function PlayTableScreen() {
           onSubmit={() => void onSubmit()}
           disabled={locked}
           error={errorMessage}
-          lockedLabel="Esperando respuesta…"
+          lockedLabel={waitingCopy.label}
         />
       }
     >
+      <div className="flex shrink-0 flex-col border-b border-[var(--line)] bg-[var(--surface-1)] lg:hidden">
+        <div className="flex">
+          {([
+            ["campaign", "Contexto de campaña"],
+            ["character", "Personaje e inventario"],
+          ] as const).map(([panel, label]) => (
+            <button
+              key={panel}
+              type="button"
+              aria-expanded={mobilePanel === panel}
+              onClick={() => setMobilePanel((current) => (current === panel ? null : panel))}
+              className={`flex min-h-11 flex-1 items-center justify-between px-3 py-2 text-left text-[0.65rem] tracking-[0.12em] uppercase [font-family:var(--font-ui)] ${mobilePanel === panel ? "text-[var(--ember)]" : "text-[var(--muted)]"}`}
+            >
+              <span>{label}</span>
+              <span aria-hidden="true" className="ml-2 text-sm">{mobilePanel === panel ? "×" : "+"}</span>
+            </button>
+          ))}
+        </div>
+        {mobilePanel === "campaign" && <CampaignContextPanel opening={opening} mobile />}
+        {mobilePanel === "character" && (
+          <CharacterContextPanel
+            opening={opening}
+            portraitUrl={portraitUrl}
+            inventory={inventory}
+            stats={stats}
+            mobile
+          />
+        )}
+      </div>
+
       {confirmExit && (
         <div className="shrink-0 border-b border-[var(--line)] bg-[var(--surface-2)] px-4 py-2 text-center text-xs text-[var(--muted)] [font-family:var(--font-ui)]">
           ¿Volver al menú? La partida queda en pausa; usa Continuar para retomar.
@@ -152,16 +223,26 @@ export function PlayTableScreen() {
             </TranscriptEntry>
           ))}
 
-          {(narrationStream || turnPending) && (
+          {(narrationStream || turnPending || submitting || pendingAction) && (
             <article
               aria-live="polite"
               className="border-l border-[var(--ember)]/40 pl-4"
             >
+              {pendingAction && !narrationStream && (
+                <p className="mb-4 text-sm text-[var(--muted)] [font-family:var(--font-ui)]">
+                  » {pendingAction}
+                </p>
+              )}
               <p className="mb-2 text-xs tracking-[0.2em] text-[var(--ember)] uppercase [font-family:var(--font-ui)]">
-                {turnPending && !narrationStream ? "Escuchando…" : "Narración"}
+                {narrationStream ? "El Master responde…" : waitingCopy.label}
               </p>
               <p className="text-base leading-[1.75] whitespace-pre-wrap text-[var(--ink)]">
-                {narrationStream || "…"}
+                {narrationStream || (
+                  <>
+                    <span className="animate-pulse">•••</span>
+                    <span className="ml-3 text-sm text-[var(--muted)]">{waitingCopy.detail}</span>
+                  </>
+                )}
               </p>
             </article>
           )}

@@ -28,7 +28,7 @@ export function BackNav({
     <button
       type="button"
       onClick={onBack}
-      className={`self-start text-xs tracking-[0.14em] text-[var(--muted)] uppercase transition hover:text-[var(--ink)] ${className}`}
+      className={`self-start flex min-h-11 items-center px-1 text-xs tracking-[0.14em] text-[var(--muted)] uppercase transition hover:text-[var(--ink)] ${className}`}
     >
       {label}
     </button>
@@ -48,7 +48,7 @@ export function ScreenShell({
     align === "center" ? "items-center justify-center" : "items-stretch justify-start";
   return (
     <div
-      className={`relative mx-auto flex min-h-screen w-full max-w-3xl flex-col px-6 py-16 sm:px-10 ${alignClass} ${className}`}
+      className={`relative mx-auto flex min-h-screen w-full max-w-3xl flex-col px-5 pb-[calc(env(safe-area-inset-bottom)+3rem)] pt-[calc(env(safe-area-inset-top)+3rem)] sm:px-10 sm:py-16 ${alignClass} ${className}`}
     >
       {children}
     </div>
@@ -57,7 +57,7 @@ export function ScreenShell({
 
 export function QuietMeta({ children }: { children: ReactNode }) {
   return (
-    <p className="mt-8 text-center text-sm tracking-wide text-[var(--muted)] opacity-80">
+    <p className="mt-8 px-2 text-center text-xs leading-relaxed tracking-wide text-[var(--muted)] opacity-80 sm:text-sm">
       {children}
     </p>
   );
@@ -93,7 +93,7 @@ export function EmberButton({
       type={type}
       onClick={onClick}
       disabled={disabled}
-      className={`relative mt-8 inline-flex min-h-12 items-center justify-center border border-[var(--ember)]/70 bg-[var(--ember)]/15 px-10 py-3 text-base tracking-[0.18em] text-[var(--ink)] uppercase transition duration-300 [font-family:var(--font-display)] hover:bg-[var(--ember)]/30 hover:border-[var(--ember)] disabled:cursor-not-allowed disabled:opacity-40 ${className}`}
+      className={`relative mt-8 inline-flex min-h-12 items-center justify-center border border-[var(--ember)]/70 bg-[var(--ember)]/15 px-6 py-3 text-sm tracking-[0.16em] text-[var(--ink)] uppercase transition duration-300 [font-family:var(--font-display)] hover:bg-[var(--ember)]/30 hover:border-[var(--ember)] disabled:cursor-not-allowed disabled:opacity-40 sm:px-10 sm:text-base sm:tracking-[0.18em] ${className}`}
     >
       {children}
     </button>
@@ -118,7 +118,7 @@ export function GhostButton({
       type={type}
       onClick={onClick}
       disabled={disabled}
-      className={`relative mt-4 inline-flex min-h-12 items-center justify-center border border-[var(--line)] bg-transparent px-10 py-3 text-base tracking-[0.18em] text-[var(--muted)] uppercase transition duration-300 [font-family:var(--font-display)] hover:border-[var(--ember)]/60 hover:text-[var(--ink)] disabled:cursor-not-allowed disabled:opacity-40 ${className}`}
+      className={`relative mt-4 inline-flex min-h-12 items-center justify-center border border-[var(--line)] bg-transparent px-6 py-3 text-sm tracking-[0.16em] text-[var(--muted)] uppercase transition duration-300 [font-family:var(--font-display)] hover:border-[var(--ember)]/60 hover:text-[var(--ink)] disabled:cursor-not-allowed disabled:opacity-40 sm:px-10 sm:text-base sm:tracking-[0.18em] ${className}`}
     >
       {children}
     </button>
@@ -177,7 +177,7 @@ export function VoiceToggle({
       type="button"
       onClick={onToggle}
       aria-pressed={enabled}
-      className={`shrink-0 text-xs tracking-[0.12em] uppercase transition ${enabled ? "text-[var(--ember)]" : "text-[var(--muted)]"} hover:text-[var(--ink)] ${className}`}
+      className={`flex min-h-11 shrink-0 items-center text-xs tracking-[0.12em] uppercase transition ${enabled ? "text-[var(--ember)]" : "text-[var(--muted)]"} hover:text-[var(--ink)] ${className}`}
     >
       {voiceLabel(enabled)}
     </button>
@@ -200,7 +200,7 @@ export function ContextBar({
   onVoiceToggle?: () => void;
 }) {
   return (
-    <header className="flex shrink-0 items-center gap-3 border-b border-[var(--line)] px-4 py-3 [font-family:var(--font-ui)] sm:px-6">
+    <header className="flex min-h-14 shrink-0 items-center gap-2 border-b border-[var(--line)] px-3 py-2 [font-family:var(--font-ui)] sm:gap-3 sm:px-6 sm:py-3">
       <button
         type="button"
         onClick={onExit}
@@ -208,10 +208,10 @@ export function ContextBar({
       >
         Salir
       </button>
-      <h1 className="min-w-0 flex-1 truncate text-sm text-[var(--ink)] [font-family:var(--font-display)]">
+      <h1 className="min-w-0 flex-1 truncate text-[0.8rem] text-[var(--ink)] [font-family:var(--font-display)] sm:text-sm">
         {title}
       </h1>
-      <div className="flex shrink-0 items-center gap-2 text-xs text-[var(--muted)]">
+      <div className="flex shrink-0 items-center gap-1.5 text-[0.65rem] text-[var(--muted)] sm:gap-2 sm:text-xs">
         {typeof voiceEnabled === "boolean" && onVoiceToggle && (
           <VoiceToggle enabled={voiceEnabled} onToggle={onVoiceToggle} />
         )}
@@ -286,10 +286,10 @@ export function Composer({
         dismissHint();
         onSubmit();
       }}
-      className="shrink-0 border-t border-[var(--line)] bg-[var(--surface-1)] px-4 py-3 [font-family:var(--font-ui)] sm:px-6"
+      className="shrink-0 border-t border-[var(--line)] bg-[var(--surface-1)] px-4 pt-3 pb-[calc(env(safe-area-inset-bottom)+0.75rem)] [font-family:var(--font-ui)] sm:px-6 sm:py-3"
     >
       {!hintSeen && (
-        <p className="mb-2 text-[0.7rem] tracking-wide text-[var(--muted)]">
+        <p className="mb-2 text-[0.65rem] leading-relaxed tracking-wide text-[var(--muted)] sm:text-[0.7rem]">
           Cmd/Ctrl + Enter para enviar · Enter para nueva línea
         </p>
       )}
@@ -420,6 +420,7 @@ export function GhostField({
   onChange,
   minLength,
   placeholder,
+  autoComplete,
   type = "text",
 }: {
   id: string;
@@ -428,6 +429,7 @@ export function GhostField({
   onChange: (value: string) => void;
   minLength?: number;
   placeholder?: string;
+  autoComplete?: string;
   type?: "text" | "password" | "email";
 }) {
   return (
@@ -441,6 +443,7 @@ export function GhostField({
           value={value}
         minLength={minLength}
         placeholder={placeholder}
+        autoComplete={autoComplete}
         onChange={(e) => onChange(e.target.value)}
         className="border-0 border-b border-[var(--line)] bg-transparent px-0 py-2 text-[var(--ink)] outline-none placeholder:text-[var(--muted)]/50 focus:border-[var(--ember)]/60"
       />

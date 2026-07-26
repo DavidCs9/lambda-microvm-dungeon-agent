@@ -143,6 +143,18 @@ def test_d20_selects_and_applies_only_matching_branch() -> None:
     assert "The stones are slippery" in failure.facts
 
 
+def test_recent_turn_memory_is_bounded_and_carries_canonical_state() -> None:
+    world = start_adventure("en", sample_plan(), sample_player())
+    automatic = proposal(requires_roll=False, difficulty=None)
+
+    for index in range(8):
+        world = resolve_turn(world, f"wait {index}", automatic)
+
+    assert len(world.recent_turns) == 6
+    assert world.recent_turns[0].revision == 3
+    assert world.recent_turns[-1].action == "wait 7"
+
+
 def test_stat_modifier_shifts_the_outcome_of_the_same_roll() -> None:
     strong = sample_player().model_copy(
         update={"stats": CharacterStats(might=3, agility=3, wits=3, charm=3, resolve=3)}
@@ -198,8 +210,124 @@ def test_model_cannot_invent_unknown_locations_or_items() -> None:
         )
 
 
+def test_model_cannot_teleport_through_an_undeclared_exit() -> None:
+    world = start_adventure("en", sample_plan(), sample_player())
+    world = resolve_turn(
+        world,
+        "walk to the tower",
+        proposal(
+            requires_roll=False,
+            difficulty=None,
+            success_changes=StateChanges(location_id="tower"),
+        ),
+    )
+
+    with pytest.raises(ValueError, match="undeclared exit"):
+        resolve_turn(
+            world,
+            "I teleport to the mill",
+            proposal(success_changes=StateChanges(location_id="mill")),
+            roll=20,
+        )
+
+
+def test_objective_phase_cannot_skip_or_regress() -> None:
+    world = start_adventure("en", sample_plan(), sample_player())
+    with pytest.raises(ValueError, match="skip an objective phase"):
+        resolve_turn(
+            world,
+            "I solve everything",
+            proposal(success_changes=StateChanges(objective_phase="resolution")),
+            roll=20,
+        )
+
+    world = resolve_turn(
+        world,
+        "I find a clue",
+        proposal(
+            requires_roll=False,
+            difficulty=None,
+            success_changes=StateChanges(
+                objective_phase="complication", add_facts=["A hidden cost appears"]
+            ),
+        ),
+    )
+    with pytest.raises(ValueError, match="phase backwards"):
+        resolve_turn(
+            world,
+            "I ignore the complication",
+            proposal(
+                requires_roll=False,
+                difficulty=None,
+                success_changes=StateChanges(objective_phase="discovery"),
+            ),
+        )
+
+
+def test_objective_completion_requires_progress_and_an_explicit_final_action() -> None:
+    world = start_adventure("en", sample_plan(), sample_player())
+    setup = proposal(
+        requires_roll=False,
+        difficulty=None,
+        success_changes=StateChanges(add_facts=["The bell's hiding place is known"]),
+    )
+    premature = resolve_turn(world, "I resolve the problem", setup)
+    developed = resolve_turn(
+        premature,
+        "I inspect the tower",
+        proposal(
+            requires_roll=False,
+            difficulty=None,
+            success_changes=StateChanges(
+                objective_phase="complication", add_facts=["The tower is unstable"]
+            ),
+        ),
+    )
+    resolving = resolve_turn(
+        developed,
+        "I prepare the bell",
+        proposal(
+            requires_roll=False,
+            difficulty=None,
+            success_changes=StateChanges(objective_phase="resolution"),
+        ),
+    )
+    victory = resolve_turn(
+        resolving,
+        "I ring the bell from the tower",
+        proposal(
+            requires_roll=False,
+            difficulty=None,
+            success_changes=StateChanges(objective_complete=True),
+        ),
+    )
+
+    assert premature.status == "active"
+    assert developed.status == "active"
+    assert resolving.status == "active"
+    assert victory.status == "won"
+
+
 def test_objective_completion_and_turn_limit_are_authoritative() -> None:
     world = start_adventure("en", sample_plan(), sample_player())
+    setup = proposal(
+        requires_roll=False,
+        difficulty=None,
+        success_changes=StateChanges(
+            objective_phase="complication", add_facts=["The tower is ready"]
+        ),
+    )
+    world = resolve_turn(world, "inspect the tower", setup)
+    world = resolve_turn(world, "ask Mara for the bell", setup)
+    world = resolve_turn(
+        world,
+        "prepare the bell",
+        proposal(
+            requires_roll=False,
+            difficulty=None,
+            success_changes=StateChanges(objective_phase="resolution"),
+        ),
+    )
     victory = resolve_turn(
         world,
         "ring the bell",
