@@ -1,9 +1,9 @@
-name: Release MicroVM image
+name: Release sandbox components
 
 on:
   push:
-    tags:
-      - "v*"
+    branches:
+      - main
 
 permissions:
   contents: read
@@ -13,11 +13,87 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  detect:
+    name: Detect release components
+    runs-on: ubuntu-latest
+    outputs:
+      vm: ${{ steps.components.outputs.vm }}
+      control_plane: ${{ steps.components.outputs.control_plane }}
+      web: ${{ steps.components.outputs.web }}
+      release_version: ${{ steps.version.outputs.release_version }}
+    steps:
+      - name: Check out full history
+        uses: actions/checkout@v7.0.0
+        with:
+          fetch-depth: 0
+      - name: Classify changed paths
+        id: components
+        shell: bash
+        run: |
+          set -euo pipefail
+          previous="$(git tag --list 'v[0-9]*' --sort=-version:refname | head -n 1 || true)"
+          if [[ -n "${previous}" ]]; then
+            changed="$(git diff --name-only "${previous}" "${GITHUB_SHA}")"
+          else
+            changed="$(git ls-tree -r --name-only "${GITHUB_SHA}")"
+          fi
+          vm=false
+          control_plane=false
+          web=false
+          while IFS= read -r path; do
+            case "${path}" in
+              web/*|infra/web/*|.github/workflows/deploy-web.yml)
+                web=true
+                ;;
+              infra/control-plane/*|src/dungeon_agent/control_plane/*|src/dungeon_agent/data_plane/*|src/dungeon_agent/plane_shared/*|.github/workflows/deploy-control-plane.yml)
+                control_plane=true
+                ;;
+              Dockerfile|pyproject.toml|uv.lock|src/dungeon_agent/api/*|src/dungeon_agent/domain/*|scripts/build_microvm_image.py|src/dungeon_agent/operations/image_builder.py)
+                vm=true
+                control_plane=true
+                ;;
+              .github/workflows/release.yml|.github/workflows/ci.yml)
+                vm=true
+                control_plane=true
+                web=true
+                ;;
+            esac
+          done <<< "${changed}"
+          {
+            echo "vm=${vm}"
+            echo "control_plane=${control_plane}"
+            echo "web=${web}"
+          } >> "${GITHUB_OUTPUT}"
+          echo "Changed paths:"
+          echo "${changed}"
+          echo "Components: vm=${vm}, control_plane=${control_plane}, web=${web}"
+      - name: Calculate next release version
+        id: version
+        shell: bash
+        run: |
+          set -euo pipefail
+          previous="$(git tag --list 'v[0-9]*' --sort=-version:refname | head -n 1 || true)"
+          if [[ -z "${previous}" ]]; then
+            release_version="v0.1.0"
+          elif [[ "${previous}" =~ ^v([0-9]+)\.([0-9]+)\.([0-9]+)$ ]]; then
+            major="${BASH_REMATCH[1]}"
+            minor="${BASH_REMATCH[2]}"
+            patch="${BASH_REMATCH[3]}"
+            release_version="v${major}.${minor}.$((patch + 1))"
+          else
+            echo "Latest release tag is not semver: ${previous}" >&2
+            exit 1
+          fi
+          echo "release_version=${release_version}" >> "${GITHUB_OUTPUT}"
+          echo "Release version: ${release_version}"
+
   container:
     name: Build ARM64 container
+    needs: detect
+    if: needs.detect.outputs.vm == 'true'
     runs-on: ubuntu-latest
     steps:
-      - name: Check out tagged source
+      - name: Check out main source
         uses: actions/checkout@v7.0.0
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v4.2.0
@@ -34,7 +110,7 @@ jobs:
     name: Verify release
     runs-on: ubuntu-latest
     steps:
-      - name: Check out tagged source
+      - name: Check out main source
         uses: actions/checkout@v7.0.0
       - name: Set up uv
         uses: astral-sh/setup-uv@v8.3.2
@@ -51,7 +127,24 @@ jobs:
           uv run mypy
           uv run pytest
           uv run python evals/gameplay_experience.py
-      - name: Package deterministic source bundle
+
+  package:
+    name: Package MicroVM source
+    needs: [detect, verify]
+    if: needs.detect.outputs.vm == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out main source
+        uses: actions/checkout@v7.0.0
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v8.3.2
+        with:
+          version: "0.11.29"
+          python-version: "3.14.6"
+          enable-cache: true
+      - name: Install dependencies
+        run: uv sync --locked --all-groups
+      - name: Build deterministic source bundle
         run: uv run --group tooling python -m scripts.build_microvm_image --package-only
       - name: Upload verified source bundle
         uses: actions/upload-artifact@v7.0.1
@@ -63,14 +156,15 @@ jobs:
 
   publish:
     name: Publish to AWS
-    needs: [container, verify]
+    needs: [detect, container, package, verify]
+    if: needs.detect.outputs.vm == 'true'
     runs-on: ubuntu-latest
     environment: release
     permissions:
       contents: write
       id-token: write
     steps:
-      - name: Check out tagged source
+      - name: Check out main source
         uses: actions/checkout@v7.0.0
       - name: Set up uv
         uses: astral-sh/setup-uv@v8.3.2
@@ -96,28 +190,90 @@ jobs:
           uv run --group tooling python -m scripts.build_microvm_image \
             --region "${{ vars.AWS_REGION }}" \
             --stack-name "${{ vars.AWS_BOOTSTRAP_STACK }}" \
-            --release-version "${GITHUB_REF_NAME}" \
+            --release-version "${{ needs.detect.outputs.release_version }}" \
             --output dist/microvm-source.zip \
             --use-existing-artifact \
             | tee dist/microvm-release.json
       - name: Add release summary
         run: |
-          echo "## Lambda MicroVM image ${GITHUB_REF_NAME}" >> "$GITHUB_STEP_SUMMARY"
+          echo "## Lambda MicroVM image ${{ needs.detect.outputs.release_version }}" >> "$GITHUB_STEP_SUMMARY"
           echo '```json' >> "$GITHUB_STEP_SUMMARY"
           cat dist/microvm-release.json >> "$GITHUB_STEP_SUMMARY"
           echo '```' >> "$GITHUB_STEP_SUMMARY"
+      - name: Upload VM release artifacts
+        uses: actions/upload-artifact@v7.0.1
+        with:
+          name: microvm-release-${{ github.sha }}
+          path: |
+            dist/microvm-source.zip
+            dist/microvm-release.json
+          if-no-files-found: error
+
+  control-plane:
+    name: Deploy control plane sandbox
+    needs: [detect, verify, publish]
+    if: >-
+      always() && needs.detect.outputs.control_plane == 'true' &&
+      needs.verify.result == 'success' &&
+      (needs.publish.result == 'success' || needs.detect.outputs.vm != 'true')
+    uses: ./.github/workflows/deploy-control-plane.yml
+    permissions:
+      contents: read
+      id-token: write
+    secrets: inherit
+
+  web:
+    name: Deploy web sandbox
+    needs: [detect, verify, control-plane]
+    if: >-
+      always() && needs.detect.outputs.web == 'true' &&
+      needs.verify.result == 'success' &&
+      (needs.control-plane.result == 'success' || needs.control-plane.result == 'skipped')
+    uses: ./.github/workflows/deploy-web.yml
+    permissions:
+      contents: read
+      id-token: write
+    secrets: inherit
+
+  release:
+    name: Create GitHub release
+    needs: [detect, verify, publish, control-plane, web]
+    if: >-
+      always() && needs.detect.result == 'success' && needs.verify.result == 'success' &&
+      (needs.detect.outputs.vm != 'true' || needs.publish.result == 'success') &&
+      (needs.detect.outputs.control_plane != 'true' || needs.control-plane.result == 'success') &&
+      (needs.detect.outputs.web != 'true' || needs.web.result == 'success')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Check out main source
+        uses: actions/checkout@v7.0.0
+      - name: Download VM release artifacts
+        if: needs.detect.outputs.vm == 'true'
+        uses: actions/download-artifact@v8.0.1
+        with:
+          name: microvm-release-${{ github.sha }}
+          path: dist
       - name: Create GitHub release
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          if gh release view "${GITHUB_REF_NAME}" >/dev/null 2>&1; then
-            gh release upload "${GITHUB_REF_NAME}" --clobber \
-              dist/microvm-source.zip \
-              dist/microvm-release.json
-          else
-            gh release create "${GITHUB_REF_NAME}" \
-              --verify-tag \
+          release_version="${{ needs.detect.outputs.release_version }}"
+          if gh release view "${release_version}" >/dev/null 2>&1; then
+            if [[ -f dist/microvm-release.json ]]; then
+              gh release upload "${release_version}" --clobber \
+                dist/microvm-source.zip \
+                dist/microvm-release.json
+            fi
+          elif [[ -f dist/microvm-release.json ]]; then
+            gh release create "${release_version}" \
+              --target "${GITHUB_SHA}" \
               --generate-notes \
               dist/microvm-source.zip \
               dist/microvm-release.json
+          else
+            gh release create "${release_version}" \
+              --target "${GITHUB_SHA}" \
+              --generate-notes
           fi
