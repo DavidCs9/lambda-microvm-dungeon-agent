@@ -26,8 +26,7 @@ from dungeon_agent.orchestrator.session import MicrovmSession
 from dungeon_agent.tui.app import DungeonApp
 
 DEFAULT_REGION = "us-east-2"
-# Sonnet 5 is supported via --model-id once account access is granted.
-DEFAULT_MODEL_ID = "us.anthropic.claude-sonnet-4-6"
+DEFAULT_MODEL_ID = "us.anthropic.claude-sonnet-5"
 DEFAULT_POLLY_REGION = "us-east-1"
 
 

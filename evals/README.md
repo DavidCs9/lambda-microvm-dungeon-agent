@@ -98,8 +98,8 @@ same creative action, and records structure, agency, state safety, latency, and 
 uv run --group tooling python evals/narration_models.py \
   --profile personal \
   --region us-east-2 \
+  --model-id us.anthropic.claude-sonnet-5 \
   --model-id us.anthropic.claude-sonnet-4-6 \
-  --model-id us.anthropic.claude-haiku-4-5-20251001-v1:0 \
   --max-workers 4
 ```
 

@@ -7,6 +7,7 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 GameStatus = Literal["planning", "active", "won", "lost"]
 LanguageCode = Literal["es", "en"]
 StatName = Literal["might", "agility", "wits", "charm", "resolve"]
+ObjectivePhase = Literal["discovery", "complication", "resolution"]
 
 
 class CharacterStats(BaseModel):
@@ -135,6 +136,7 @@ class StateChanges(BaseModel):
     remove_items: list[str] = Field(default_factory=list, max_length=2)
     add_facts: list[str] = Field(default_factory=list, max_length=3)
     health_delta: int = Field(default=0, ge=-2, le=1)
+    objective_phase: ObjectivePhase | None = None
     objective_complete: bool = False
 
 
@@ -174,6 +176,20 @@ class TurnResult(BaseModel):
     suggestions: list[str] = Field(min_length=1, max_length=3)
 
 
+class RecentTurn(BaseModel):
+    """Compact canonical memory for the last few turns."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    revision: int = Field(ge=1)
+    action: str = Field(min_length=1, max_length=500)
+    narration: str = Field(min_length=1, max_length=500)
+    success: bool
+    location_id: str
+    inventory: list[str]
+    facts: list[str] = Field(max_length=20)
+
+
 class WorldState(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -185,5 +201,7 @@ class WorldState(BaseModel):
     inventory: list[str]
     health: int = Field(ge=0, le=3)
     facts: list[str]
+    objective_phase: ObjectivePhase = "discovery"
+    recent_turns: list[RecentTurn] = Field(default_factory=list, max_length=6)
     status: GameStatus
     last_result: TurnResult | None = None
