@@ -6,6 +6,7 @@ from pydantic import ValidationError
 from dungeon_agent.control_plane.agents.roles import (
     AdventureArchitect,
     CharacterArchitect,
+    _has_language_leak,
     campaign_theme_seed,
 )
 from dungeon_agent.data_plane.agents.roles import DungeonMaster
@@ -195,13 +196,13 @@ def test_adventure_architect_injects_theme_seed_into_prompt() -> None:
         StructuredBedrockAgent(client, "test-model", SessionMetrics.start("test-model"))
     )
 
-    architect.create("es", theme_seed="a ferry stuck between two dawns")
+    architect.create("en", theme_seed="a ferry stuck between two dawns")
 
     request = client.converse.call_args.kwargs
     prompt = request["messages"][0]["content"][0]["text"]
     system = request["system"][0]["text"]
     assert "a ferry stuck between two dawns" in prompt
-    assert "Spanish" in prompt
+    assert "English" in prompt
     assert "silent bell/tower" in system
 
 
@@ -213,6 +214,11 @@ def test_campaign_theme_seed_is_stable_but_varies_by_campaign() -> None:
     assert first == same
     assert first != other
     assert "floating market" not in first
+
+
+def test_adventure_language_guard_catches_hybrid_output() -> None:
+    assert _has_language_leak(sample_plan(), "es")
+    assert not _has_language_leak(sample_plan(), "en")
 
 
 def test_dungeon_master_rejects_unknown_item_without_model_call() -> None:

@@ -195,6 +195,8 @@ function payloadTurnId(payload: Record<string, unknown> | undefined): string {
 const OPENING_KINDS = new Set<OpeningBlockKind>([
   "identity",
   "background",
+  "premise",
+  "objective",
   "motivation",
   "knowledge",
   "situation",

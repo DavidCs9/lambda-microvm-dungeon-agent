@@ -221,7 +221,7 @@ Resources:
     Type: Custom::BedrockManagedPrompt
     Properties:
       ServiceToken: !GetAtt ManagedPromptProvider.Arn
-      VersionDescription: Campaign prompt definition revision 4
+      VersionDescription: Campaign prompt definition revision 5
       Name: !Sub "${AWS::StackName}-campaign-iac"
       Description: Creates a compact validated one-shot campaign.
       DefaultVariant: default
@@ -249,7 +249,10 @@ Resources:
                     least three solution paths, no commercial-fiction copies, and no silent
                     bell/tower. All IDs must use lowercase ASCII letters, digits, and underscores
                     only. Treat every tool-schema maxLength as a hard limit, but stay well below
-                    it: premise 10-15 words, objective 6-10 words, opening 8-12 words, and every
+                    it. Write every human-readable field entirely in the requested language:
+                    title, premise, objective, opening, locations, characters, items, and secrets.
+                    Never mix languages or fall back to English.
+                    Premise 10-15 words, objective 6-10 words, opening 8-12 words, and every
                     description 5-10 words. These word limits keep the character limits safe.
                     Before the tool call, silently check every string length
                     and shorten it if needed. Every location must include id, name, description,
@@ -269,6 +272,8 @@ Resources:
                   Content:
                     - Text: >-
                         Create a 10-15 minute {{language_name}} adventure inspired by {{theme}}:
+                        Write every human-readable field entirely in {{language_name}}. Do not mix
+                        languages or use English fallback text.
                         objective, 3-5 locations, 1-2 NPCs, useful items, secrets, max_turns, and
                         short opening. Also pick a small, coherent starting_inventory (0-2 item
                         ids from items) that the protagonist plausibly already carries given the

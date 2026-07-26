@@ -1,0 +1,334 @@
+{
+  "schema_version": 1,
+  "purpose": "Curated creative briefs for generating materially distinct, playable fantasy one-shots.",
+  "usage": "Select one seed, then combine it with orthogonal tone, pressure, relationship, and location details at runtime.",
+  "selection_rules": [
+    "Do not reuse a seed for the same player until the catalog has been exhausted.",
+    "Do not combine seeds that share the same core mechanic or emotional stake.",
+    "Keep the seed's impossible_rule central to the objective, locations, secrets, and choices.",
+    "Every generated adventure must expose at least three materially different approaches: social, investigative, and risky/physical.",
+    "Avoid default fantasy nouns and plots unless the seed makes them necessary."
+  ],
+  "seeds": [
+    {
+      "id": "salt-memory-ledger",
+      "family": "civic-mystery",
+      "setting": "A saltworks town where every debt is written on a person's skin overnight.",
+      "impossible_rule": "A debt disappears only when the creditor publicly admits what they wanted emotionally, not financially.",
+      "pressure": "The protagonist's name appears on the ledger at sunset, owed by someone who died years ago.",
+      "human_stake": "A dockworker will be exiled unless the town learns who profited from the old debt.",
+      "playable_levers": ["reconstruct a dead person's contract", "negotiate a public confession", "destroy or protect the salt archive"],
+      "tone": "bitter, intimate, salt-stung"
+    },
+    {
+      "id": "borrowed-shadow-procession",
+      "family": "social-horror",
+      "setting": "A funeral procession crossing a city whose streetlamps cast shadows belonging to strangers.",
+      "impossible_rule": "A shadow can testify, but it cannot lie about the person it currently follows.",
+      "pressure": "The dead person's shadow walks away from the coffin toward the protagonist.",
+      "human_stake": "The family will condemn an innocent mourner unless the shadow's testimony is understood.",
+      "playable_levers": ["interview the shadow's former owners", "stage a second funeral", "follow the shadow into a litless district"],
+      "tone": "quietly uncanny, mournful"
+    },
+    {
+      "id": "three-minute-harbor",
+      "family": "temporal-rescue",
+      "setting": "A harbor that experiences the same three minutes in different decades on each pier.",
+      "impossible_rule": "Objects carried between piers keep the age they had where they were found.",
+      "pressure": "A rescue bell rings from a ship that sank forty years ago, but someone answers it now.",
+      "human_stake": "Saving one sailor may erase the life of the person who currently remembers them.",
+      "playable_levers": ["map the overlapping time windows", "trade an object across decades", "choose which version of the ship to save"],
+      "tone": "urgent, wistful, maritime"
+    },
+    {
+      "id": "unwritten-witness",
+      "family": "legal-fantasy",
+      "setting": "A courthouse where testimony becomes physically true when recorded by the clerk.",
+      "impossible_rule": "The blank page records the most important fact that every speaker is avoiding.",
+      "pressure": "The clerk has vanished, leaving one blank page and a verdict due before midnight.",
+      "human_stake": "A village child will be sentenced for a crime that the adults collectively caused.",
+      "playable_levers": ["find the missing clerk", "make the accused speak an avoided truth", "alter who is recognized as a witness"],
+      "tone": "tense, moral, procedural"
+    },
+    {
+      "id": "moonless-beekeeper",
+      "family": "ecological-fable",
+      "setting": "A valley apiary where bees pollinate memories instead of flowers.",
+      "impossible_rule": "A memory harvested by a bee can be shared, but loses one sensory detail each time.",
+      "pressure": "The last hive is carrying the memory of a disaster that the valley's leaders erased.",
+      "human_stake": "The beekeeper's daughter will lose her mother's face unless the hive is moved before dawn.",
+      "playable_levers": ["protect the hive from competing keepers", "decide which memory to preserve", "cross-pollinate two rival communities"],
+      "tone": "tender, strange, bittersweet"
+    },
+    {
+      "id": "theatre-of-missing-audience",
+      "family": "performance-intrigue",
+      "setting": "An abandoned theatre where each actor performs for the audience they most fear.",
+      "impossible_rule": "The final scene changes according to who is watching, not who is acting.",
+      "pressure": "The protagonist is cast without consent and the curtain rises on their private betrayal.",
+      "human_stake": "A troupe will be trapped in rehearsal forever unless someone refuses the role written for them.",
+      "playable_levers": ["rewrite a scene with evidence", "convince an actor to break character", "perform for an empty seat"],
+      "tone": "theatrical, claustrophobic, vulnerable"
+    },
+    {
+      "id": "river-that-keeps-receipts",
+      "family": "travel-bargain",
+      "setting": "A river ferry whose tickets are receipts for favors owed in the future.",
+      "impossible_rule": "The ferryman can cross any distance, but only toward a place where the passenger has broken a promise.",
+      "pressure": "The next ticket bears the protagonist's handwriting and a promise they do not remember making.",
+      "human_stake": "A refugee group must reach safety, but the crossing will expose one person's betrayal.",
+      "playable_levers": ["trace the promise's origin", "offer a different future favor", "walk the riverbank and bypass the ferry"],
+      "tone": "adventurous, conspiratorial"
+    },
+    {
+      "id": "museum-of-living-errors",
+      "family": "heist-with-consequences",
+      "setting": "A museum displaying mistakes that later became the foundations of great inventions.",
+      "impossible_rule": "Removing an exhibit makes the original mistake happen again somewhere nearby.",
+      "pressure": "A curator asks the protagonist to steal one exhibit before its owner comes to reclaim it.",
+      "human_stake": "A young inventor's only failure is the key to saving a district from a preventable collapse.",
+      "playable_levers": ["stage a false exhibit exchange", "learn from the failure instead of stealing it", "let the mistake recur in a controlled place"],
+      "tone": "clever, kinetic, ethically messy"
+    },
+    {
+      "id": "winter-inside-the-well",
+      "family": "survival-ritual",
+      "setting": "A dry village well containing a pocket of winter in the middle of summer.",
+      "impossible_rule": "The cold preserves whatever truth is spoken inside it, but freezes the speaker's next decision.",
+      "pressure": "The village's water source is warming, and the only replacement is guarded by a frozen confession.",
+      "human_stake": "Two siblings must choose which version of their shared childhood the village will believe.",
+      "playable_levers": ["descend with a controlled confession", "carry the winter to another source", "break the preservation before the truth is complete"],
+      "tone": "folkloric, stark, intimate"
+    },
+    {
+      "id": "the-cartographer-who-cannot-arrive",
+      "family": "road-paradox",
+      "setting": "A road that redraws its destination whenever someone says its name.",
+      "impossible_rule": "The road only stops moving when travelers describe where they are, not where they want to go.",
+      "pressure": "A cartographer has been walking for years and now maps the protagonist's home as the next destination.",
+      "human_stake": "The cartographer's partner is waiting at a place that may no longer exist.",
+      "playable_levers": ["describe the present precisely", "follow a map made from memories", "choose whether to reveal the home's name"],
+      "tone": "strange, hopeful, melancholic"
+    },
+    {
+      "id": "choir-of-unpaid-voices",
+      "family": "community-ritual",
+      "setting": "A mountain choir whose missing singers still alter the weather when remembered.",
+      "impossible_rule": "A song can summon a person only if every singer contributes a line they are ashamed of.",
+      "pressure": "A storm is assembling above the pass because one missing singer refuses to be remembered honestly.",
+      "human_stake": "Travelers stranded on both sides of the pass will freeze unless the choir stops protecting its founder.",
+      "playable_levers": ["collect unflattering memories", "sing with an outsider's voice", "silence the founding hymn"],
+      "tone": "elegiac, communal, storm-lit"
+    },
+    {
+      "id": "the-kindly-bridge-troll",
+      "family": "misunderstood-monster",
+      "setting": "A bridge where a monster charges travelers for stories it has never heard.",
+      "impossible_rule": "The toll is waived only when the story changes the teller's next action.",
+      "pressure": "The monster is being evicted by a guild that needs the bridge's tolls to maintain the road.",
+      "human_stake": "The monster's adopted child will lose both homes if the bridge is declared unsafe.",
+      "playable_levers": ["tell a story that changes a plan", "investigate the guild's road accounts", "relocate the bridge without moving it"],
+      "tone": "warm, funny, politically sharp"
+    },
+    {
+      "id": "red-thread-weather",
+      "family": "fate-and-agency",
+      "setting": "A town where red threads appear between people whenever they are about to make the same mistake.",
+      "impossible_rule": "Cutting a thread prevents the mistake but transfers its consequence to the cutter.",
+      "pressure": "A thread connects the protagonist to the town's beloved mayor, whose mistake is already underway.",
+      "human_stake": "Stopping the mayor may save the town but expose a secret that will split it.",
+      "playable_levers": ["trace who first tied the thread", "redirect the consequence", "let the mistake happen in a smaller form"],
+      "tone": "dramatic, symbolic, choice-driven"
+    },
+    {
+      "id": "orchard-of-other-people",
+      "family": "identity-mystery",
+      "setting": "An orchard bearing fruit that tastes like another person's most defining choice.",
+      "impossible_rule": "Eating a fruit grants insight but causes one of the eater's own choices to be forgotten.",
+      "pressure": "The orchard keeper offers the protagonist a fruit grown from their own future.",
+      "human_stake": "A village council will exile a teenager based on a choice they have not yet made.",
+      "playable_levers": ["identify the future's owner", "trade memories instead of eating", "protect the teenager from predictive justice"],
+      "tone": "surreal, suspenseful, humane"
+    },
+    {
+      "id": "one-room-rebellion",
+      "family": "contained-revolt",
+      "setting": "A manor whose rooms rearrange themselves to keep servants and nobles from meeting.",
+      "impossible_rule": "A room opens only when someone inside gives up a privilege they could have kept.",
+      "pressure": "The kitchen and nursery have been sealed apart during a dangerous household uprising.",
+      "human_stake": "The servants need a child heir's testimony, while the heir needs the servants' protection.",
+      "playable_levers": ["exchange privileges to open rooms", "navigate through forbidden service passages", "force a meeting in the room that should not exist"],
+      "tone": "rebellious, intimate, architectural"
+    },
+    {
+      "id": "the-last-legal-dragon",
+      "family": "bureaucratic-fantasy",
+      "setting": "A city where dragons are protected only while their paperwork remains current.",
+      "impossible_rule": "A legal name changes the physical shape of the creature that bears it.",
+      "pressure": "The last dragon's renewal form lists a human witness who has been dead for a century.",
+      "human_stake": "The dragon will be dismantled for parts unless someone proves its identity without its original witness.",
+      "playable_levers": ["audit the city's old naming records", "find a living relationship that qualifies as witness", "help the dragon choose a new shape"],
+      "tone": "wry, tender, anti-authoritarian"
+    },
+    {
+      "id": "lanterns-for-the-unborn",
+      "family": "village-omen",
+      "setting": "A lakeside village lights lanterns for children who have not yet been born.",
+      "impossible_rule": "A lantern goes dark when its future child is no longer possible, but nobody knows why.",
+      "pressure": "The protagonist's lantern is lit beside a second one bearing the name of a stranger.",
+      "human_stake": "The village wants to sacrifice a current child to restore the lost futures.",
+      "playable_levers": ["trace the lantern maker", "challenge the village's definition of possibility", "protect the unnamed stranger"],
+      "tone": "ominous, compassionate, folkloric"
+    },
+    {
+      "id": "the-sleeping-tax-collector",
+      "family": "dream-economy",
+      "setting": "A market where people pay for goods with hours of sleep and dream collectors keep the accounts.",
+      "impossible_rule": "A stolen dream becomes a real place until its owner wakes from it.",
+      "pressure": "A child's stolen nightmare has become a district where adults are disappearing.",
+      "human_stake": "The collectors will erase the child’s memory to close the account.",
+      "playable_levers": ["enter the dream district", "negotiate repayment in waking hours", "help the child change the nightmare from within"],
+      "tone": "dreamlike, eerie, protective"
+    },
+    {
+      "id": "the-farm-that-migrates",
+      "family": "rural-surrealism",
+      "setting": "A farm whose fields migrate at night, leaving crops in places that never had soil.",
+      "impossible_rule": "The land follows the person who most needs to leave it.",
+      "pressure": "The farm has moved under the city prison, and its owner refuses to explain why.",
+      "human_stake": "A harvest can feed the city, but only if the imprisoned person is released.",
+      "playable_levers": ["follow the moving field's trail", "convince the owner to name the person", "harvest without claiming ownership"],
+      "tone": "earthy, uncanny, quietly political"
+    },
+    {
+      "id": "the-quiet-revolution-radio",
+      "family": "revolutionary-mystery",
+      "setting": "A bell tower broadcasting tomorrow's news, but only in the voice of someone currently missing.",
+      "impossible_rule": "The broadcast changes when listeners collectively choose not to repeat it.",
+      "pressure": "Tomorrow's message announces a revolution that will begin with the protagonist's arrest.",
+      "human_stake": "The resistance needs the broadcast, but repeating it makes its worst prediction inevitable.",
+      "playable_levers": ["find the missing broadcaster", "spread the meaning without the words", "stage an arrest that breaks the prediction"],
+      "tone": "paranoid, hopeful, civic"
+    },
+    {
+      "id": "the-seamstress-of-borders",
+      "family": "border-fable",
+      "setting": "A tailor's shop stitching borders between countries into coats and curtains.",
+      "impossible_rule": "A sewn border can be crossed only by someone who carries a contradiction about home.",
+      "pressure": "The tailor has stitched two hostile borders together and both armies are approaching.",
+      "human_stake": "A family separated by the border can reunite only if the stitched line is not cut.",
+      "playable_levers": ["find a person who embodies the contradiction", "redesign the border as a shared route", "protect the tailor from both governments"],
+      "tone": "poetic, tense, humane"
+    },
+    {
+      "id": "the-astronomer-with-two-skies",
+      "family": "cosmic-dilemma",
+      "setting": "An observatory where two skies overlap and each predicts a different disaster.",
+      "impossible_rule": "The telescope shows the disaster a viewer is most willing to prevent, not the most likely one.",
+      "pressure": "The astronomer asks the protagonist to destroy one lens before both predictions become true.",
+      "human_stake": "Choosing one sky saves a city but abandons a smaller community erased from official maps.",
+      "playable_levers": ["test what the telescope responds to", "coordinate both communities", "break the observatory's authority"],
+      "tone": "grand, cerebral, morally uncomfortable"
+    },
+    {
+      "id": "the-ghost-who-pays-rent",
+      "family": "domestic-supernatural",
+      "setting": "A tenement where ghosts remain only while someone living remembers their unpaid rent.",
+      "impossible_rule": "A ghost can alter one household object each night, but only to solve a problem they had in life.",
+      "pressure": "The building manager plans to evict the ghosts by forgiving every debt at once.",
+      "human_stake": "Living tenants depend on the ghosts' interventions, but one ghost is endangering a family.",
+      "playable_levers": ["reconstruct the debts", "mediate between tenant and ghost", "choose which haunting to end"],
+      "tone": "warm, funny, bittersweet"
+    },
+    {
+      "id": "the-village-that-votes-in-dreams",
+      "family": "political-dream",
+      "setting": "A village where every public decision is voted on during a shared dream.",
+      "impossible_rule": "The dream counts a vote only when the voter admits what they would lose.",
+      "pressure": "The next dream will decide whether to abandon the village before a landslide, but nobody can wake early.",
+      "human_stake": "A minority family's land is the only safe route out.",
+      "playable_levers": ["enter the shared dream", "change the route rather than the vote", "make the majority experience the minority's loss"],
+      "tone": "collective, suspenseful, emotionally direct"
+    },
+    {
+      "id": "the-clock-that-forgives",
+      "family": "mechanical-morality",
+      "setting": "A clockmaker's district where one clock removes an hour from anyone who refuses forgiveness.",
+      "impossible_rule": "The missing hour returns only when forgiveness is specific and costs the forgiver something.",
+      "pressure": "The clock has taken the same hour from everyone, including the person who built it.",
+      "human_stake": "A feud is keeping the district's apprentices trapped in a repeating workday.",
+      "playable_levers": ["identify the original harm", "repair the mechanism without repairing the feud", "decide whether forgiveness should be compulsory"],
+      "tone": "clockwork, reflective, sharp"
+    },
+    {
+      "id": "the-kingdom-under-the-stairs",
+      "family": "hidden-community",
+      "setting": "A palace staircase descends into a kingdom built from everything the court has discarded.",
+      "impossible_rule": "Discarded objects remember the reasons their owners abandoned them.",
+      "pressure": "The discarded kingdom's ruler offers the protagonist a crown made from their own lost belongings.",
+      "human_stake": "The palace will collapse if the hidden kingdom returns what the court refuses to acknowledge.",
+      "playable_levers": ["negotiate a return ceremony", "recover a meaningful discarded object", "choose what should remain forgotten"],
+      "tone": "wonder-filled, subversive, personal"
+    },
+    {
+      "id": "the-wolf-with-a-village-name",
+      "family": "curse-and-consent",
+      "setting": "A forest where a wolf carries the name of the village and is hunted whenever the village panics.",
+      "impossible_rule": "Renaming the wolf changes one law of the village, chosen by whoever speaks first.",
+      "pressure": "The wolf has started speaking in the voice of a missing mayor.",
+      "human_stake": "Killing it may restore order but erase the only witness to the mayor's disappearance.",
+      "playable_levers": ["learn the wolf's chosen name", "investigate the mayor's last law", "change the village law through consent"],
+      "tone": "feral, political, suspenseful"
+    },
+    {
+      "id": "the-library-of-unmade-things",
+      "family": "metaphysical-heist",
+      "setting": "A library cataloguing inventions, relationships, and wars that were almost created.",
+      "impossible_rule": "Reading an unmade thing makes it possible but gives it one reader's regret as its motive.",
+      "pressure": "A librarian wants to release an unmade bridge to rescue a town, knowing it will be built from an old betrayal.",
+      "human_stake": "The rescue requires choosing which regret will become part of the town's future.",
+      "playable_levers": ["find the least harmful unmade bridge", "rewrite the regret's owner", "save people without making the bridge real"],
+      "tone": "philosophical, urgent, wondrous"
+    },
+    {
+      "id": "the-feast-of-reciprocal-hunger",
+      "family": "ritual-intrigue",
+      "setting": "A feast where each dish satisfies the hunger of the person who cooked it, not the person who eats it.",
+      "impossible_rule": "The table reveals a secret when someone refuses a dish offered for their benefit.",
+      "pressure": "The host has prepared a meal that could end a war, but every guest must refuse something first.",
+      "human_stake": "A captive negotiator will die if the guests keep treating sacrifice as virtue.",
+      "playable_levers": ["identify whose hunger each dish carries", "refuse publicly and name the cost", "change the feast's seating and alliances"],
+      "tone": "sensory, tense, diplomatic"
+    },
+    {
+      "id": "the-rain-archive",
+      "family": "environmental-mystery",
+      "setting": "A city where rain falls as ink containing memories of places upstream.",
+      "impossible_rule": "Reading the rain preserves a memory but makes the reader responsible for its unfinished action.",
+      "pressure": "A black storm carries the memory of a dam about to break in a forgotten settlement.",
+      "human_stake": "The city can divert the flood only by admitting it benefited from the settlement's erasure.",
+      "playable_levers": ["read and follow a memory", "expose the city's archive", "redirect the storm at a political cost"],
+      "tone": "noir, wet, investigative"
+    },
+    {
+      "id": "the-child-who-inherits-a-monster",
+      "family": "coming-of-age-fantasy",
+      "setting": "A village where every child inherits one monster from an ancestor at their thirteenth birthday.",
+      "impossible_rule": "The monster becomes gentler when its heir sets a boundary it cannot cross.",
+      "pressure": "The next heir inherits a monster the village insists was destroyed generations ago.",
+      "human_stake": "The child must choose between exile, obedience, and teaching the monster a new role.",
+      "playable_levers": ["discover the monster's original purpose", "set and enforce a boundary", "confront the ancestor's story"],
+      "tone": "tender, eerie, empowering"
+    },
+    {
+      "id": "the-bridge-of-unfinished-goodbyes",
+      "family": "journey-and-closure",
+      "setting": "A bridge that extends only when someone says goodbye to a place they are still trying to return to.",
+      "impossible_rule": "A goodbye is accepted only if the speaker names what they will carry forward.",
+      "pressure": "The bridge is one span short, and the far bank holds a city being evacuated.",
+      "human_stake": "The protagonist must help a group cross while one member refuses to abandon a lost home.",
+      "playable_levers": ["learn the group's unfinished goodbyes", "build a temporary span from carried memories", "choose who stays behind"],
+      "tone": "lyrical, urgent, human"
+    }
+  ]
+}

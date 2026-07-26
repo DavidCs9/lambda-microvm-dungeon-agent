@@ -5,6 +5,8 @@ export type LanguageCode = "en" | "es";
 export type OpeningBlockKind =
   | "identity"
   | "background"
+  | "premise"
+  | "objective"
   | "motivation"
   | "knowledge"
   | "situation"
