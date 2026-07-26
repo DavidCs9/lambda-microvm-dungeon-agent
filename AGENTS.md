@@ -12,6 +12,12 @@
 
 **Deploy lanes:** After a change, pick the minimum validation path — `web/**` → FE only (`npm run dev`); `control_plane/**` / `data_plane/**` / `plane_shared/**` or `infra/control-plane/**` → SAM sandbox deploy; MicroVM game/runtime (`Dockerfile`, guest `api/` and other non-plane `src/dungeon_agent/**`) → publish image / new `IMAGE_VERSION`. Compose only when contracts cross lanes. CI in [`.github/workflows/ci.yml`](.github/workflows/ci.yml) path-filters the same way (FE PRs skip Python/ARM64/package); require the aggregating **CI** check, not individual lane jobs. Details: [`.cursor/rules/deploy-lanes.mdc`](.cursor/rules/deploy-lanes.mdc).
 
+**Mandatory release and cost rules:**
+
+- **Never deploy manually from a laptop or terminal.** For any deployable change, create the `codex/` branch, commit, push, and open a PR with `gh pr create`. David merges the PR; the merge-triggered GitHub Actions workflow is the only deployment path. Do not run `sam package`, `sam deploy`, `aws cloudformation deploy`, image publishing, or equivalent manual release commands locally.
+- **Never invoke campaign generation or Bedrock just to test without explicit notice first.** State the expected number of model calls and cost risk, then wait for David's approval before any paid or externally mutating test. Local unit tests and static validation are safe by default.
+- When investigating runtime behavior, verify `main` and the deployed prompt-management/runtime configuration first. Do not assume an old local bundle or prompt version is live.
+
 ---
 
 # AWS Guidance
