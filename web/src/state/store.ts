@@ -165,6 +165,14 @@ function errorCodeOf(error: unknown): string | null {
 }
 
 function errorMessageOf(error: unknown): string {
+  // The HTTP gateway currently uses `quota_exceeded` for both hard quotas and
+  // its per-user rate limiter. The status is the reliable signal for the
+  // transient case, so do not let the backend code fall through to generic UI
+  // copy when a request is rate limited.
+  if (error instanceof ApiError && error.status === 429) {
+    console.warn("API rate limited");
+    return humanError("rate_limited");
+  }
   const code = errorCodeOf(error);
   if (code) {
     console.warn(`API error code: ${code}`);
