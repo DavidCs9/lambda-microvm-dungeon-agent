@@ -3,6 +3,7 @@ from collections.abc import Callable, Mapping
 from datetime import UTC, datetime
 from typing import Any, cast
 
+from dungeon_agent.control_plane.agents.roles import campaign_theme_seed
 from dungeon_agent.control_plane.workflow.runner import (
     elapsed_ms,
     mark_phase,
@@ -157,7 +158,10 @@ class DurableCampaignWorkflowStub:
         if self._adventure_architect is None or self._adventures is None:
             raise RuntimeError("campaign adventure generation is not configured")
         started = self._monotonic()
-        generated = self._adventure_architect.create(workflow_input.language)
+        generated = self._adventure_architect.create(
+            workflow_input.language,
+            theme_seed=campaign_theme_seed(str(workflow_input.campaign_id)),
+        )
         adventure = AdventurePlan.model_validate(generated.model_dump(mode="python"))
         adventure_ref = self._adventures.save_adventure(workflow_input.campaign_id, adventure)
         return (str(adventure_ref), _elapsed_ms(self._monotonic, started))

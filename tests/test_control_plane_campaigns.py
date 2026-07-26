@@ -4,6 +4,7 @@ from datetime import UTC, datetime, timedelta
 import pytest
 from pydantic import ValidationError
 
+from dungeon_agent.control_plane.agents.roles import campaign_theme_seed
 from dungeon_agent.control_plane.workflow.campaigns import DurableCampaignWorkflowStub
 from dungeon_agent.plane_shared.domain.enums import (
     CampaignPhase,
@@ -16,6 +17,7 @@ from dungeon_agent.plane_shared.domain.models import (
     CampaignEvent,
     CampaignId,
     CampaignRecord,
+    CreateCampaignWorkflowInput,
     OpeningBlock,
     OpeningDocument,
 )
@@ -26,6 +28,7 @@ from dungeon_agent.plane_shared.persistence.errors import (
     CampaignRevisionConflictError,
 )
 from dungeon_agent.plane_shared.persistence.memory import InMemoryCampaignRepository
+from tests.test_adventure import sample_plan
 
 NOW = datetime(2026, 7, 18, 21, 0, tzinfo=UTC)
 CAMPAIGN_ID: CampaignId = "cam_01J00000000000000000000000"
@@ -276,6 +279,40 @@ def test_mark_campaign_ready_persists_opening_title() -> None:
     stashed = result["opening"]
     assert isinstance(stashed, dict)
     assert stashed["title"] == opening.title
+
+
+def test_adventure_generation_uses_stable_campaign_creative_profile() -> None:
+    class AdventureArchitect:
+        theme_seed: str | None = None
+
+        def create(self, language: str, *, theme_seed: str | None = None) -> object:
+            assert language == "en"
+            self.theme_seed = theme_seed
+            return sample_plan()
+
+    class AdventureStore:
+        def save_adventure(self, campaign_id: str, adventure: object) -> str:
+            assert campaign_id == CAMPAIGN_ID
+            return ADVENTURE_REF
+
+    architect = AdventureArchitect()
+    stub = DurableCampaignWorkflowStub(
+        InMemoryCampaignRepository(),
+        adventure_architect=architect,
+        adventures=AdventureStore(),
+    )
+    workflow_input = CreateCampaignWorkflowInput(
+        campaign_id=CAMPAIGN_ID,
+        owner_id="user_demo",
+        language="en",
+        idempotency_key="create-request-001",
+        correlation_id="corr-campaign-test",
+        requested_at=NOW,
+    )
+
+    stub._generate_adventure(workflow_input)
+
+    assert architect.theme_seed == campaign_theme_seed(CAMPAIGN_ID)
 
 
 def test_emit_campaign_ready_reuses_stashed_opening() -> None:
