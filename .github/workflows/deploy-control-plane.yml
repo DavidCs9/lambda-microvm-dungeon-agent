@@ -2,14 +2,7 @@ name: Deploy control plane sandbox
 
 on:
   workflow_dispatch:
-  push:
-    branches: [main]
-    paths:
-      - "infra/control-plane/**"
-      - "src/dungeon_agent/control_plane/**"
-      - "src/dungeon_agent/data_plane/**"
-      - "src/dungeon_agent/plane_shared/**"
-      - ".github/workflows/deploy-control-plane.yml"
+  workflow_call:
 
 permissions:
   contents: read
@@ -31,8 +24,10 @@ jobs:
       CONTROL_PLANE_STACK: ${{ vars.AWS_CONTROL_PLANE_STACK }}
       BOOTSTRAP_STACK: ${{ vars.AWS_BOOTSTRAP_STACK }}
     steps:
-      - name: Check out repository
+      - name: Check out release source
         uses: actions/checkout@v7.0.0
+        with:
+          ref: ${{ github.sha }}
 
       - name: Set up uv
         uses: astral-sh/setup-uv@v8.3.2

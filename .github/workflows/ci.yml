@@ -31,6 +31,8 @@ jobs:
           filters: |
             web:
               - 'web/**'
+              - '.github/workflows/release.yml'
+              - '.github/workflows/deploy-web.yml'
             python:
               - 'src/**'
               - 'tests/**'
@@ -38,6 +40,9 @@ jobs:
               - 'scripts/**'
               - 'pyproject.toml'
               - 'uv.lock'
+              - '.github/workflows/release.yml'
+              - '.github/workflows/deploy-control-plane.yml'
+              - '.github/workflows/deploy-web.yml'
             microvm:
               - 'Dockerfile'
               - 'pyproject.toml'
@@ -49,6 +54,8 @@ jobs:
               - 'scripts/build_microvm_image.py'
               - 'src/dungeon_agent/operations/image_builder.py'
               - '.github/workflows/release.yml'
+              - '.github/workflows/deploy-control-plane.yml'
+              - '.github/workflows/deploy-web.yml'
 
   web:
     name: Frontend build

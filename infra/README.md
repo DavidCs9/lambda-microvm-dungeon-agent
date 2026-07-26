@@ -21,7 +21,7 @@ The bucket is intentionally configured for deletion because this is a disposable
 
 ## GitHub release role
 
-AWS publishing is deliberately separate from ordinary CI. The tag-driven release workflow uses
+AWS publishing is deliberately separate from ordinary CI. The merge-driven release workflow uses
 GitHub OIDC and never stores AWS access keys in GitHub.
 
 First configure the account-level GitHub Actions OIDC provider with:
@@ -47,25 +47,29 @@ AWS_PROFILE=personal AWS_REGION=us-east-2 aws cloudformation deploy \
 The trust policy uses GitHub's immutable OIDC subject format, including the repository owner and
 repository numeric IDs. It accepts only jobs using this repository's `release` environment.
 
-Create a GitHub environment named `release`, restrict its deployment branches/tags to version
-tags, and configure:
+Create a GitHub environment named `release`, restrict its deployment branch to `main`, and
+configure:
 
 - `AWS_RELEASE_ROLE_ARN` from the release stack output
 - `AWS_REGION=us-east-2`
 - `AWS_BOOTSTRAP_STACK=lambda-microvm-dungeon-agent-bootstrap`
 
-Protecting the environment with required reviewers adds a manual approval boundary after the tag
-passes verification but before AWS publishing begins.
+Protecting the environment with required reviewers adds a manual approval boundary after CI passes
+but before AWS publishing begins.
 
-## Control plane sandbox deploy (GitHub Actions)
+## Unified sandbox release (GitHub Actions)
 
 Manual `sam package` / `cloudformation deploy` from a laptop is replaced by
-[`.github/workflows/deploy-control-plane.yml`](../.github/workflows/deploy-control-plane.yml).
+[`.github/workflows/release.yml`](../.github/workflows/release.yml). Merging a PR to `main`
+starts the workflow, which compares the commit with the latest successful release and deploys
+only the changed components: MicroVM, control plane, and/or web hosting. It creates the next
+versioned GitHub Release automatically after all required lanes succeed. The component workflows
+remain reusable and can be dispatched manually when needed.
 
 It runs on:
 
-- `workflow_dispatch` (manual)
-- pushes to `main` that touch `infra/control-plane/**` or `src/dungeon_agent/control_plane/**`
+- pushes to `main` after a merge
+- `workflow_dispatch` on the component workflows for recovery
 
 ### One-time setup
 
@@ -98,7 +102,8 @@ AWS_PROFILE=personal AWS_REGION=us-east-2 aws cloudformation deploy \
 - `AWS_BOOTSTRAP_STACK=lambda-microvm-dungeon-agent-bootstrap`
 - `AWS_CONTROL_PLANE_STACK=dungeon-agent-control-plane-sandbox`
 
-4. Trigger **Deploy control plane sandbox** from the Actions tab (or merge a control-plane change to `main`).
+4. Merge changes to `main` and monitor **Release sandbox components**. The versioned release and
+   tag are created automatically after the affected deploy lanes succeed.
 
 Redeploy the GitHub deploy role template after adding new control-plane resource types. The role
 owns the Bedrock Prompt Management create, version, update, tag, read, and delete permissions used
