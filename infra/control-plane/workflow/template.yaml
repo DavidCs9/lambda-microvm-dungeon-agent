@@ -566,7 +566,7 @@ Resources:
           - idempotency-key
           - x-correlation-id
           - authorization
-        AllowMethods: [GET, POST]
+        AllowMethods: [DELETE, GET, POST]
         AllowOrigins: ["*"]
 
   ControlPlaneApiFunction:

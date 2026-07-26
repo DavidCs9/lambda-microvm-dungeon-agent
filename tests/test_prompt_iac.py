@@ -21,6 +21,7 @@ def _without_null_defaults(value: object) -> object:
 def test_managed_prompts_and_versions_are_owned_by_cloudformation() -> None:
     template = TEMPLATE.read_text(encoding="utf-8")
 
+    assert "AllowMethods: [DELETE, GET, POST]" in template
     assert template.count("Type: Custom::BedrockManagedPrompt\n") == 3
     assert "Type: AWS::Lambda::Function\n" in template
     assert "bedrock:CreatePromptVersion" in template
