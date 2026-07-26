@@ -24,15 +24,17 @@ function blocksOfKind(
 function RailShell({
   align,
   children,
+  mobile = false,
 }: {
   align: "left" | "right";
   children: ReactNode;
+  mobile?: boolean;
 }) {
   const border =
     align === "left" ? "border-r border-[var(--line)]" : "border-l border-[var(--line)]";
   return (
     <aside
-      className={`hidden min-h-0 w-52 shrink-0 overflow-y-auto bg-[var(--panel)] px-4 py-5 xl:w-60 lg:block ${border}`}
+      className={`${mobile ? "block w-full border-b border-[var(--line)] px-4 py-4 lg:hidden" : `hidden min-h-0 w-52 shrink-0 overflow-y-auto bg-[var(--panel)] px-4 py-5 xl:w-60 lg:block ${border}`} bg-[var(--panel)]`}
     >
       {children}
     </aside>
@@ -49,8 +51,10 @@ function RailTitle({ children }: { children: ReactNode }) {
 
 export function CampaignContextPanel({
   opening,
+  mobile = false,
 }: {
   opening: OpeningDocument | null | undefined;
+  mobile?: boolean;
 }) {
   const situation = useMemo(() => {
     const [block] = blocksOfKind(opening, "situation");
@@ -70,7 +74,7 @@ export function CampaignContextPanel({
   if (!situation && knowledge.length === 0 && actions.length === 0) return null;
 
   return (
-    <RailShell align="left">
+    <RailShell align="left" mobile={mobile}>
       <RailTitle>Campaña</RailTitle>
       <div className="space-y-5">
         {situation && (
@@ -122,11 +126,13 @@ export function CharacterContextPanel({
   portraitUrl,
   inventory = [],
   stats = [],
+  mobile = false,
 }: {
   opening: OpeningDocument | null | undefined;
   portraitUrl?: string | null;
   inventory?: string[];
   stats?: Array<{ label: string; value: string }>;
+  mobile?: boolean;
 }) {
   const identity = useMemo(() => {
     const [block] = blocksOfKind(opening, "identity");
@@ -147,7 +153,7 @@ export function CharacterContextPanel({
     return null;
 
   return (
-    <RailShell align="right">
+    <RailShell align="right" mobile={mobile}>
       <RailTitle>Personaje</RailTitle>
       {portraitUrl && (
         <div className="mb-5 aspect-square w-full max-w-[180px] overflow-hidden rounded-lg border border-[var(--line)] shadow-[0_0_24px_rgba(0,0,0,0.35)]">

@@ -119,13 +119,13 @@ export function OpeningScrollScreen() {
         )}
       </div>
 
-      <div className="fixed inset-x-0 bottom-0 z-20 flex flex-col items-center border-t border-[var(--line)] bg-[var(--surface-2)] px-6 pt-4 pb-[calc(env(safe-area-inset-bottom)+1rem)] backdrop-blur-sm">
+      <div className="fixed inset-x-0 bottom-0 z-20 flex max-h-[40dvh] flex-col items-center overflow-y-auto border-t border-[var(--line)] bg-[var(--surface-2)] px-5 pt-3 pb-[calc(env(safe-area-inset-bottom)+0.75rem)] backdrop-blur-sm sm:px-6 sm:pt-4">
         <VoiceToggle
           enabled={voiceOn}
           onToggle={() => setVoiceOn(toggleVoice())}
           className="mb-3"
         />
-        <EmberButton onClick={() => gameActions.continueFromOpening()} className="mt-0">
+        <EmberButton onClick={() => gameActions.continueFromOpening()} className="mt-0 w-full max-w-sm">
           Comenzar la aventura
         </EmberButton>
         <ErrorLine message={errorMessage} />
