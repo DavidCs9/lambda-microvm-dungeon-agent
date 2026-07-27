@@ -275,6 +275,9 @@ Resources:
                   - logs:CreateLogGroup
                   - logs:DeleteLogGroup
                   - logs:DescribeLogGroups
+                  - logs:DescribeLogStreams
+                  - logs:FilterLogEvents
+                  - logs:GetLogEvents
                   - logs:ListTagsForResource
                   - logs:PutRetentionPolicy
                   - logs:TagResource
@@ -287,7 +290,10 @@ Resources:
                   - sqs:UntagQueue
                   - states:CreateStateMachine
                   - states:DeleteStateMachine
+                  - states:DescribeExecution
                   - states:DescribeStateMachine
+                  - states:GetExecutionHistory
+                  - states:ListExecutions
                   - states:ListTagsForResource
                   - states:TagResource
                   - states:UntagResource

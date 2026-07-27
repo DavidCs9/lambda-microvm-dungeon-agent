@@ -224,6 +224,15 @@ def test_campaign_theme_seed_honors_selected_family() -> None:
     assert seed.startswith("Creative direction family: action.")
 
 
+def test_campaign_theme_seed_rejects_unknown_family() -> None:
+    try:
+        campaign_theme_seed("cam_01J00000000000000000000001", "stealth")  # type: ignore[arg-type]
+    except ValueError as error:
+        assert "unknown creative family" in str(error)
+    else:
+        raise AssertionError("expected ValueError for unknown family")
+
+
 def test_campaign_theme_families_are_balanced() -> None:
     assert len(_CREATIVE_PROFILE_FAMILIES) == 4
     assert {name for name, _profiles in _CREATIVE_PROFILE_FAMILIES} == {

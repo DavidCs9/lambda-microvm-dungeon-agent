@@ -319,6 +319,83 @@ async function hydratePortrait(campaignId: string): Promise<void> {
   }
 }
 
+const CAMPAIGN_POLL_MS = 2_000;
+const CAMPAIGN_POLL_ATTEMPTS = 150;
+
+async function settleCreatedCampaign(campaignId: string): Promise<void> {
+  for (let attempt = 0; attempt < CAMPAIGN_POLL_ATTEMPTS; attempt += 1) {
+    if (state.campaign?.campaignId !== campaignId) {
+      return;
+    }
+    if (state.screen === "opening" || state.campaign.status === "failed") {
+      return;
+    }
+    try {
+      const envelope = await api.getCampaign(campaignId);
+      const campaign = envelope.campaign;
+      if (state.campaign?.campaignId !== campaignId) {
+        return;
+      }
+      if (campaign.status === "ready") {
+        const openingEnvelope = await api.getCampaignOpening(campaignId);
+        const opening = parseOpening(openingEnvelope.opening);
+        if (!opening) {
+          setState({
+            campaign,
+            errorMessage: humanError("campaign_creation_failed"),
+            screen: "campaigns",
+            phaseLabel: null,
+            phaseKind: null,
+          });
+          return;
+        }
+        const portraitUrl = parsePortraitUrl(openingEnvelope.portraitUrl);
+        setState({
+          campaign,
+          opening,
+          inventory: inventoryFromOpening(opening),
+          stats: statsFromOpening(opening),
+          portraitUrl,
+          phaseLabel: null,
+          phaseKind: null,
+          screen: "opening",
+          errorMessage: null,
+        });
+        if (!portraitUrl) {
+          void hydratePortrait(campaignId);
+        }
+        return;
+      }
+      if (campaign.status === "failed") {
+        setState({
+          campaign,
+          errorMessage: humanError("campaign_creation_failed"),
+          screen: "campaigns",
+          phaseLabel: null,
+          phaseKind: null,
+        });
+        return;
+      }
+      setState({
+        campaign,
+        phaseLabel: campaign.phase,
+        phaseKind: "campaign",
+      });
+    } catch (error) {
+      console.warn("settleCreatedCampaign poll failed", campaignId, error);
+    }
+    await new Promise((resolve) => window.setTimeout(resolve, CAMPAIGN_POLL_MS));
+  }
+  if (state.campaign?.campaignId === campaignId && state.screen === "phase") {
+    setState({
+      errorMessage: humanError("dependency_unavailable"),
+      screen: "campaigns",
+      phaseLabel: null,
+      phaseKind: null,
+    });
+  }
+}
+
 function applyEvent(event: ControlPlaneEvent): void {
   const campaign = state.campaign;
   const session = state.session;
@@ -407,8 +484,11 @@ function applyEvent(event: ControlPlaneEvent): void {
           lastEventSequence: Math.max(campaign.lastEventSequence, event.sequence),
         },
         errorMessage: humanError(code),
-        screen: state.screen === "phase" ? "phase" : "campaigns",
+        screen: "campaigns",
+        phaseLabel: null,
+        phaseKind: null,
       });
+      void gameActions.loadCampaigns();
       return;
     }
     case "session.creation.started": {
@@ -722,6 +802,7 @@ export const gameActions = {
         phaseKind: "campaign",
       });
       realtime.subscribeCampaign(campaign.campaignId, campaign.lastEventSequence);
+      void settleCreatedCampaign(campaign.campaignId);
     } catch (error) {
       setState({
         errorMessage: errorMessageOf(error),
@@ -729,6 +810,7 @@ export const gameActions = {
         phaseLabel: null,
         phaseKind: null,
       });
+      void gameActions.loadCampaigns();
     }
   },
 

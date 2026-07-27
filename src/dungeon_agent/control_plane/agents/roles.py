@@ -75,6 +75,9 @@ def campaign_theme_family(campaign_id: str) -> str:
     ][0]
 
 
+_CREATIVE_PROFILES_BY_FAMILY = dict(_CREATIVE_PROFILE_FAMILIES)
+
+
 def campaign_theme_seed(campaign_id: str, family: CreativeFamily | None = None) -> str:
     """Return a stable, varied creative brief for one campaign generation."""
     digest = _campaign_digest(campaign_id)
@@ -82,9 +85,11 @@ def campaign_theme_seed(campaign_id: str, family: CreativeFamily | None = None) 
         family_index = int.from_bytes(digest[:2], "big") % len(_CREATIVE_PROFILE_FAMILIES)
         selected_family, profiles = _CREATIVE_PROFILE_FAMILIES[family_index]
     else:
-        selected_family, profiles = next(
-            (name, profiles) for name, profiles in _CREATIVE_PROFILE_FAMILIES if name == family
-        )
+        try:
+            profiles = _CREATIVE_PROFILES_BY_FAMILY[family]
+        except KeyError as error:
+            raise ValueError(f"unknown creative family: {family}") from error
+        selected_family = family
     profile = profiles[int.from_bytes(digest[2:4], "big") % len(profiles)]
     variation = digest.hex()[:8]
     return (

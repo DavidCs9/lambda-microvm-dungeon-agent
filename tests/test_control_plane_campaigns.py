@@ -323,6 +323,48 @@ def test_adventure_generation_uses_stable_campaign_creative_profile() -> None:
     assert architect.theme_seed == campaign_theme_seed(CAMPAIGN_ID)
 
 
+def test_adventure_generation_honors_selected_creative_family() -> None:
+    class AdventureArchitect:
+        theme_seed: str | None = None
+
+        def create(
+            self,
+            language: str,
+            *,
+            theme_seed: str | None = None,
+            campaign_id: str | None = None,
+            metrics: object | None = None,
+        ) -> object:
+            self.theme_seed = theme_seed
+            return sample_plan()
+
+    class AdventureStore:
+        def save_adventure(self, campaign_id: str, adventure: object) -> str:
+            return ADVENTURE_REF
+
+    architect = AdventureArchitect()
+    stub = DurableCampaignWorkflowStub(
+        InMemoryCampaignRepository(),
+        adventure_architect=architect,
+        adventures=AdventureStore(),
+    )
+    workflow_input = CreateCampaignWorkflowInput(
+        campaign_id=CAMPAIGN_ID,
+        owner_id="user_demo",
+        language="en",
+        creative_family="mystery",
+        idempotency_key="create-request-002",
+        correlation_id="corr-campaign-family",
+        requested_at=NOW,
+    )
+
+    stub._generate_adventure(workflow_input)
+
+    assert architect.theme_seed == campaign_theme_seed(CAMPAIGN_ID, "mystery")
+    assert architect.theme_seed is not None
+    assert architect.theme_seed.startswith("Creative direction family: mystery.")
+
+
 def test_emit_campaign_ready_reuses_stashed_opening() -> None:
     repository = InMemoryCampaignRepository()
     campaign = CampaignRecord(

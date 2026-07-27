@@ -39,8 +39,15 @@ body {
 
 button,
 input,
-textarea {
+textarea,
+select {
   font: inherit;
+}
+
+select,
+select option {
+  color: var(--ink);
+  background-color: var(--fog);
 }
 
 button {
