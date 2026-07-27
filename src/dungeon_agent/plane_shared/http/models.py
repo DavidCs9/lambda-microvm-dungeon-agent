@@ -9,6 +9,7 @@ from dungeon_agent.plane_shared.domain.models import (
     CampaignEvent,
     CampaignId,
     CampaignRecord,
+    CreativeFamily,
     ErrorEnvelope,
     OpeningDocument,
     SessionEvent,
@@ -29,6 +30,7 @@ class CreateSessionRequest(ContractModel):
 
 class CreateCampaignRequest(ContractModel):
     language: LanguageCode
+    creative_family: CreativeFamily | None = None
 
 
 class SubmitActionRequest(ContractModel):

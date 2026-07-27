@@ -218,6 +218,12 @@ def test_campaign_theme_seed_is_stable_but_varies_by_campaign() -> None:
     assert "floating market" not in first
 
 
+def test_campaign_theme_seed_honors_selected_family() -> None:
+    seed = campaign_theme_seed("cam_01J00000000000000000000001", "action")
+
+    assert seed.startswith("Creative direction family: action.")
+
+
 def test_campaign_theme_families_are_balanced() -> None:
     assert len(_CREATIVE_PROFILE_FAMILIES) == 4
     assert {name for name, _profiles in _CREATIVE_PROFILE_FAMILIES} == {

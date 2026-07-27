@@ -169,7 +169,9 @@ class DurableCampaignWorkflowStub:
         metrics = InvocationMetrics()
         generated = self._adventure_architect.create(
             workflow_input.language,
-            theme_seed=campaign_theme_seed(str(workflow_input.campaign_id)),
+            theme_seed=campaign_theme_seed(
+                str(workflow_input.campaign_id), workflow_input.creative_family
+            ),
             campaign_id=str(workflow_input.campaign_id),
             metrics=metrics,
         )
@@ -288,6 +290,7 @@ def _workflow_input(state: Mapping[str, object]) -> CreateCampaignWorkflowInput:
             "campaignId": state.get("campaignId"),
             "ownerId": state.get("ownerId"),
             "language": state.get("language"),
+            "creativeFamily": state.get("creativeFamily"),
             "idempotencyKey": state.get("idempotencyKey"),
             "correlationId": state.get("correlationId"),
             "requestedAt": state.get("requestedAt"),

@@ -4,6 +4,7 @@ from hashlib import sha256
 from typing import Any, cast
 
 from dungeon_agent.domain.game import AdventurePlan, LanguageCode, PlayerCharacter
+from dungeon_agent.plane_shared.domain.models import CreativeFamily
 
 _CREATIVE_PROFILE_FAMILIES = (
     (
@@ -74,15 +75,21 @@ def campaign_theme_family(campaign_id: str) -> str:
     ][0]
 
 
-def campaign_theme_seed(campaign_id: str) -> str:
+def campaign_theme_seed(campaign_id: str, family: CreativeFamily | None = None) -> str:
     """Return a stable, varied creative brief for one campaign generation."""
     digest = _campaign_digest(campaign_id)
-    family_index = int.from_bytes(digest[:2], "big") % len(_CREATIVE_PROFILE_FAMILIES)
-    family, profiles = _CREATIVE_PROFILE_FAMILIES[family_index]
+    if family is None:
+        family_index = int.from_bytes(digest[:2], "big") % len(_CREATIVE_PROFILE_FAMILIES)
+        selected_family, profiles = _CREATIVE_PROFILE_FAMILIES[family_index]
+    else:
+        selected_family, profiles = next(
+            (name, profiles) for name, profiles in _CREATIVE_PROFILE_FAMILIES if name == family
+        )
     profile = profiles[int.from_bytes(digest[2:4], "big") % len(profiles)]
     variation = digest.hex()[:8]
     return (
-        f"Creative direction family: {family}. {profile}. Creative variation key {variation}; "
+        f"Creative direction family: {selected_family}. {profile}. "
+        f"Creative variation key {variation}; "
         "use it only as a tie-breaker and do not "
         "mention it in the adventure."
     )

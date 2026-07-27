@@ -504,6 +504,27 @@ def _phase_event(sequence: int) -> SessionEvent:
     )
 
 
+def test_create_campaign_persists_and_propagates_selected_family() -> None:
+    adapter, _, _, workflows, campaigns, _ = _adapter()
+    campaigns.delete(CAMPAIGN_ID)
+
+    response = adapter(
+        _event(
+            "POST /campaigns",
+            body={"language": "es", "creativeFamily": "action"},
+            headers={"idempotency-key": "create-family-0001"},
+        )
+    )
+
+    assert response["statusCode"] == 202
+    body = _body(response)
+    assert body["campaign"]["creativeFamily"] == "action"
+    saved = campaigns.get(CAMPAIGN_ID)
+    assert saved is not None
+    assert saved.creative_family == "action"
+    assert workflows.campaign_calls[-1].creative_family == "action"
+
+
 def test_list_campaigns_returns_only_owner_campaigns() -> None:
     adapter, _, _, _, campaigns, _ = _adapter()
     other_id: CampaignId = "cam_01J00000000000000000000009"

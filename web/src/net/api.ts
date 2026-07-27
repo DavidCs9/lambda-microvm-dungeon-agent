@@ -2,6 +2,7 @@ import type {
   CampaignDeletedEnvelope,
   CampaignEnvelope,
   CampaignListEnvelope,
+  CreativeFamily,
   LanguageCode,
   OpeningEnvelope,
   SessionEnvelope,
@@ -40,9 +41,12 @@ export class ApiClient {
     this.getAccessToken = options.getAccessToken;
   }
 
-  createCampaign(language: LanguageCode = "es"): Promise<CampaignEnvelope> {
+  createCampaign(
+    language: LanguageCode = "es",
+    creativeFamily?: CreativeFamily,
+  ): Promise<CampaignEnvelope> {
     return this.request<CampaignEnvelope>("POST", "/campaigns", {
-      body: { language },
+      body: { language, ...(creativeFamily ? { creativeFamily } : {}) },
       idempotencyKey: newIdempotencyKey(),
     });
   }
