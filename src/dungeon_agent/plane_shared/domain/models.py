@@ -19,6 +19,7 @@ SessionId = Annotated[str, Field(pattern="^ses_[0-9A-HJKMNP-TV-Z]{26}$")]
 EventId = Annotated[str, Field(pattern="^evt_[0-9A-HJKMNP-TV-Z]{26}$")]
 TurnId = Annotated[str, Field(pattern="^trn_[0-9A-HJKMNP-TV-Z]{26}$")]
 CampaignId = Annotated[str, Field(pattern="^cam_[0-9A-HJKMNP-TV-Z]{26}$")]
+CreativeFamily = Literal["action", "exploration", "social", "mystery"]
 CorrelationId = Annotated[str, Field(min_length=8, max_length=100)]
 OwnerId = Annotated[str, Field(min_length=3, max_length=100)]
 IdempotencyKey = Annotated[str, Field(min_length=8, max_length=128)]
@@ -91,6 +92,7 @@ class CreateSessionWorkflowInput(_WorkflowInput):
 
 class CreateCampaignWorkflowInput(_WorkflowInput):
     campaign_id: CampaignId
+    creative_family: CreativeFamily | None = None
 
 
 class SubmitTurnCommand(ContractModel):
@@ -157,6 +159,7 @@ class CampaignGenerationMetrics(ContractModel):
 
 class CampaignRecord(_AggregateRecord):
     campaign_id: CampaignId
+    creative_family: CreativeFamily | None = None
     status: CampaignStatus
     phase: CampaignPhase
     adventure_ref: ArtifactRef | None = None

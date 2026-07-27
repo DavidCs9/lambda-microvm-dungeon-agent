@@ -1,5 +1,6 @@
 import type {
   CampaignEnvelope,
+  CreativeFamily,
   LanguageCode,
   SessionEnvelope,
   TurnAcceptedEnvelope,
@@ -39,9 +40,9 @@ export class ApiClient {
     this.playerId = playerId;
   }
 
-  createCampaign(language: LanguageCode = "es"): Promise<CampaignEnvelope> {
+  createCampaign(language: LanguageCode = "es", creativeFamily?: CreativeFamily): Promise<CampaignEnvelope> {
     return this.request<CampaignEnvelope>("POST", "/campaigns", {
-      body: { language },
+      body: { language, ...(creativeFamily ? { creativeFamily } : {}) },
       idempotencyKey: newIdempotencyKey(),
     });
   }

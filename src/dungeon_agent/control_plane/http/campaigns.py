@@ -2,6 +2,7 @@ from collections.abc import Callable
 from datetime import datetime
 from typing import Any, cast
 
+from dungeon_agent.control_plane.agents.roles import campaign_theme_family
 from dungeon_agent.control_plane.http.workflows import ensure_workflow
 from dungeon_agent.plane_shared.domain.enums import (
     CampaignPhase,
@@ -87,10 +88,12 @@ class CampaignHttpHandlers:
                 correlation_id,
             )
         try:
+            identifier = self._campaign_id_factory()
             candidate = CampaignRecord(
-                campaign_id=self._campaign_id_factory(),
+                campaign_id=identifier,
                 owner_id=identity.owner_id,
                 language=request.language,
+                creative_family=request.creative_family or campaign_theme_family(str(identifier)),
                 status=CampaignStatus.REQUESTED,
                 phase=CampaignPhase.REQUESTED,
                 revision=0,
@@ -266,6 +269,7 @@ class CampaignHttpHandlers:
                         campaign_id=campaign.campaign_id,
                         owner_id=campaign.owner_id,
                         language=campaign.language,
+                        creative_family=campaign.creative_family,
                         idempotency_key=idempotency_key,
                         correlation_id=correlation_id,
                         requested_at=campaign.created_at,

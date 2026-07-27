@@ -3,6 +3,19 @@ import { useEffect, useState } from "react";
 import { gameActions, useGameStore } from "../state/store";
 import { MENU_COPY, humanCampaignStatus } from "./copy";
 import { BackNav, Card, EmberButton, ErrorLine, QuietMeta, ScreenShell, wsStatusLabel } from "./shared";
+import type { CreativeFamily } from "../net/types";
+
+const FAMILY_OPTIONS: Array<{ value: CreativeFamily | "random"; label: string; description: string }> = [
+  { value: "random", label: "Sorpresa", description: "Una familia elegida al azar" },
+  { value: "action", label: "Acción", description: "Asedios, peligros y decisiones bajo presión" },
+  { value: "exploration", label: "Exploración", description: "Ruinas, rutas imposibles y descubrimientos" },
+  { value: "social", label: "Social", description: "Alianzas, conflictos y negociación" },
+  { value: "mystery", label: "Misterio", description: "Secretos, pistas y verdades ocultas" },
+];
+
+function familyLabel(value: CreativeFamily | null | undefined): string {
+  return FAMILY_OPTIONS.find((option) => option.value === value)?.label ?? "Sorpresa";
+}
 
 function formatDate(value: string | undefined): string {
   if (!value) return "";
@@ -21,6 +34,7 @@ export function CampaignsScreen() {
   const [resumingId, setResumingId] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [confirmId, setConfirmId] = useState<string | null>(null);
+  const [creativeFamily, setCreativeFamily] = useState<CreativeFamily | "random">("random");
 
   useEffect(() => {
     void gameActions.loadCampaigns();
@@ -32,7 +46,7 @@ export function CampaignsScreen() {
     if (locked) return;
     setBusy(true);
     try {
-      await gameActions.createCampaign();
+      await gameActions.createCampaign(creativeFamily === "random" ? undefined : creativeFamily);
     } finally {
       setBusy(false);
     }
@@ -82,6 +96,24 @@ export function CampaignsScreen() {
           Crea un mundo nuevo, abre uno ya forjado o elimina los que no quieras.
         </p>
 
+        <label className="mt-8 flex w-full max-w-md flex-col gap-2 text-left">
+          <span className="text-xs tracking-[0.2em] text-[var(--muted)] uppercase [font-family:var(--font-ui)]">
+            Estilo de aventura
+          </span>
+          <select
+            value={creativeFamily}
+            onChange={(event) => setCreativeFamily(event.target.value as CreativeFamily | "random")}
+            disabled={locked}
+            className="border border-[var(--line)] bg-transparent px-4 py-3 text-[var(--ink)] outline-none focus:border-[var(--ember)] [font-family:var(--font-ui)]"
+          >
+            {FAMILY_OPTIONS.map((option) => (
+              <option key={option.value} value={option.value}>
+                {option.label} · {option.description}
+              </option>
+            ))}
+          </select>
+        </label>
+
         <EmberButton disabled={locked} onClick={() => void onCreate()}>
           {busy ? MENU_COPY.creatingCampaign : MENU_COPY.createCampaign}
         </EmberButton>
@@ -107,7 +139,12 @@ export function CampaignsScreen() {
                 const title = campaign.openingTitle?.trim() || `…${campaign.campaignId.slice(-8)}`;
                 const ready = campaign.status === "ready";
                 const date = formatDate(campaign.createdAt);
-                const meta = [date, campaign.language, humanCampaignStatus(campaign.status)]
+                const meta = [
+                  date,
+                  familyLabel(campaign.creativeFamily),
+                  campaign.language,
+                  humanCampaignStatus(campaign.status),
+                ]
                   .filter(Boolean)
                   .join(" · ");
                 const confirming = confirmId === campaign.campaignId;

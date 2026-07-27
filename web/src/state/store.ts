@@ -3,6 +3,7 @@ import { ApiClient, ApiError } from "../net/api";
 import type {
   CampaignRecord,
   ControlPlaneEvent,
+  CreativeFamily,
   OpeningBlock,
   OpeningBlockKind,
   OpeningDocument,
@@ -688,7 +689,7 @@ export const gameActions = {
     });
   },
 
-  async createCampaign(): Promise<void> {
+  async createCampaign(creativeFamily?: CreativeFamily): Promise<void> {
     syncClients(state.playerId);
     try {
       ensureConfigured();
@@ -713,7 +714,7 @@ export const gameActions = {
         outcome: null,
         expectedRevision: 0,
       });
-      const envelope = await api.createCampaign(PLAYER_LANGUAGE);
+      const envelope = await api.createCampaign(PLAYER_LANGUAGE, creativeFamily);
       const campaign = envelope.campaign;
       setState({
         campaign,

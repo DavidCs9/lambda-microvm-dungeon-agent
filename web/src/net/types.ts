@@ -1,6 +1,7 @@
 /** Minimal camelCase shapes matching the control-plane contracts. */
 
 export type LanguageCode = "en" | "es";
+export type CreativeFamily = "action" | "exploration" | "social" | "mystery";
 
 export type OpeningBlockKind =
   | "identity"
@@ -33,6 +34,7 @@ export interface CampaignRecord {
   campaignId: string;
   ownerId: string;
   language: LanguageCode;
+  creativeFamily?: CreativeFamily | null;
   status: string;
   phase: string;
   revision: number;
