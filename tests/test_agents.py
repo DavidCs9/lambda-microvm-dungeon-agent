@@ -226,7 +226,7 @@ def test_campaign_theme_families_are_balanced() -> None:
         "social",
         "mystery",
     }
-    assert all(len(profiles) == 4 for _name, profiles in _CREATIVE_PROFILE_FAMILIES)
+    assert all(len(profiles) == 8 for _name, profiles in _CREATIVE_PROFILE_FAMILIES)
 
 
 def test_campaign_theme_family_is_stable_and_covers_all_families() -> None:
