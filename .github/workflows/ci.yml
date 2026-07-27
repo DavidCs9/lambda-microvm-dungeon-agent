@@ -13,49 +13,64 @@ concurrency:
 
 jobs:
   changes:
-    name: Detect lanes
+    name: Detect release components
     runs-on: ubuntu-latest
     outputs:
       web: ${{ steps.filter.outputs.web }}
       python: ${{ steps.filter.outputs.python }}
-      microvm: ${{ steps.filter.outputs.microvm }}
+      microvm: ${{ steps.filter.outputs.vm }}
     steps:
       - name: Check out repository
         uses: actions/checkout@v7.0.0
-      - name: Filter paths by deploy lane
-        uses: dorny/paths-filter@v3.0.2
-        id: filter
         with:
-          # Workflow-only changes keep the aggregate CI check green without
-          # activating application lanes that did not change.
-          filters: |
-            web:
-              - 'web/**'
-              - '.github/workflows/release.yml'
-              - '.github/workflows/deploy-web.yml'
-            python:
-              - 'src/**'
-              - 'tests/**'
-              - 'evals/**'
-              - 'scripts/**'
-              - 'pyproject.toml'
-              - 'uv.lock'
-              - '.github/workflows/release.yml'
-              - '.github/workflows/deploy-control-plane.yml'
-              - '.github/workflows/deploy-web.yml'
-            microvm:
-              - 'Dockerfile'
-              - 'pyproject.toml'
-              - 'uv.lock'
-              - 'src/dungeon_agent/**'
-              - '!src/dungeon_agent/control_plane/**'
-              - '!src/dungeon_agent/data_plane/**'
-              - '!src/dungeon_agent/plane_shared/**'
-              - 'scripts/build_microvm_image.py'
-              - 'src/dungeon_agent/operations/image_builder.py'
-              - '.github/workflows/release.yml'
-              - '.github/workflows/deploy-control-plane.yml'
-              - '.github/workflows/deploy-web.yml'
+          fetch-depth: 0
+      - name: Classify changed paths
+        id: filter
+        shell: bash
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          changed="$(git diff --name-only "${BASE_SHA}" "${HEAD_SHA}")"
+          vm=false
+          control_plane=false
+          web=false
+          python=false
+          while IFS= read -r path; do
+            case "${path}" in
+              web/*|infra/web/*|.github/workflows/deploy-web.yml)
+                web=true
+                ;;
+              infra/control-plane/*|src/dungeon_agent/control_plane/*|src/dungeon_agent/data_plane/*|src/dungeon_agent/plane_shared/*|.github/workflows/deploy-control-plane.yml)
+                control_plane=true
+                python=true
+                ;;
+              Dockerfile|pyproject.toml|uv.lock|src/dungeon_agent/api/*|src/dungeon_agent/domain/*|scripts/build_microvm_image.py|src/dungeon_agent/operations/image_builder.py)
+                vm=true
+                control_plane=true
+                python=true
+                ;;
+              .github/workflows/release.yml|.github/workflows/ci.yml)
+                vm=true
+                control_plane=true
+                web=true
+                python=true
+                ;;
+              src/*|tests/*|evals/*|scripts/*)
+                python=true
+                ;;
+            esac
+          done <<< "${changed}"
+          {
+            echo "vm=${vm}"
+            echo "control_plane=${control_plane}"
+            echo "web=${web}"
+            echo "python=${python}"
+          } >> "${GITHUB_OUTPUT}"
+          echo "Changed paths:"
+          echo "${changed}"
+          echo "Components: vm=${vm}, control_plane=${control_plane}, web=${web}, python=${python}"
 
   web:
     name: Frontend build
