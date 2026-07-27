@@ -13,6 +13,10 @@ _CREATIVE_PROFILE_FAMILIES = (
             "a flooded fortress whose gates require a daring coordinated assault",
             "a monster-haunted canyon where the only bridge is collapsing under a caravan",
             "a village arena challenged by a champion who fights for an impossible claim",
+            "a mountain village defending its harvest from a migrating stone colossus",
+            "a cursed tournament where each duel changes the battlefield for everyone",
+            "a rebel convoy breaking through a gate before the flood reaches the valley",
+            "a fishing fleet facing a colossal beast that has swallowed the harbor bell",
         ),
     ),
     (
@@ -22,6 +26,10 @@ _CREATIVE_PROFILE_FAMILIES = (
             "a skyship stranded on the back of a giant walking toward the horizon",
             "a jungle ruin whose terraces sink into the earth after every loud sound",
             "a volcanic island where safe paths appear only during brief tides of ash",
+            "a salt desert where ancient stairs emerge only when the wind changes direction",
+            "a floating valley whose waterfalls lead to different islands each hour",
+            "a buried observatory whose rotating halls reveal a new route at moonrise",
+            "a forest canopy settlement connected by bridges that migrate overnight",
         ),
     ),
     (
@@ -31,6 +39,10 @@ _CREATIVE_PROFILE_FAMILIES = (
             "a caravan carrying a living statue that wants to change destinations",
             "a dragon's court where three villages must negotiate a shared water right",
             "a river crossing that demands a cherished memory as its toll",
+            "a wedding feast where two rival clans need one champion to speak for both",
+            "a guild of rival mapmakers forced to share the only map of a shifting city",
+            "a village where every family owes a different favor to the same wandering healer",
+            "a ghost orchestra that will perform only after the living settle its old dispute",
         ),
     ),
     (
@@ -40,6 +52,10 @@ _CREATIVE_PROFILE_FAMILIES = (
             "a mine where the excavated ore whispers names of people still alive",
             "a harvest festival where every contestant is secretly an impostor",
             "a lighthouse whose beam reveals a different future each night",
+            "a clockmaker's workshop where one unfinished clock is aging the whole town",
+            "a border inn where travelers remember incompatible versions of the same war",
+            "a city archive whose books rewrite one citizen's past every midnight",
+            "a monastery where shadows attend lessons and the missing teacher left no body",
         ),
     ),
 )
