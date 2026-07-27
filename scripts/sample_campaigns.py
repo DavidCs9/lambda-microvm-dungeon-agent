@@ -10,7 +10,6 @@ from pathlib import Path
 from typing import Any
 
 import boto3
-from boto3.dynamodb.types import TypeSerializer
 from botocore.config import Config
 from botocore.exceptions import BotoCoreError, ClientError
 
@@ -86,9 +85,8 @@ def campaign_document(owner_id: str, language: str, created_at: str, identifier:
     )
 
 
-def serialized(item: dict[str, Any]) -> dict[str, Any]:
-    serializer = TypeSerializer()
-    return {key: serializer.serialize(value) for key, value in item.items()}
+def native_item(item: dict[str, Any]) -> dict[str, Any]:
+    return item
 
 
 def seed_campaign(
@@ -107,7 +105,7 @@ def seed_campaign(
         {
             "Put": {
                 "TableName": table_name,
-                "Item": serialized(
+                "Item": native_item(
                     {
                         "PK": f"CAMPAIGN#{identifier}",
                         "SK": "METADATA",
@@ -122,13 +120,12 @@ def seed_campaign(
                         "document": document,
                     }
                 ),
-                "ConditionExpression": "attribute_not_exists(PK)",
             }
         },
         {
             "Put": {
                 "TableName": table_name,
-                "Item": serialized(
+                "Item": native_item(
                     {
                         "PK": f"OWNER#{owner_id}",
                         "SK": f"IDEMPOTENCY#{idempotency_key}",
@@ -137,7 +134,6 @@ def seed_campaign(
                         "expiresAt": expires_at,
                     }
                 ),
-                "ConditionExpression": "attribute_not_exists(PK)",
             }
         },
     ]
