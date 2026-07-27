@@ -4,9 +4,11 @@ import pytest
 from pydantic import ValidationError
 
 from dungeon_agent.control_plane.agents.roles import (
+    _CREATIVE_PROFILE_FAMILIES,
     AdventureArchitect,
     CharacterArchitect,
     _has_language_leak,
+    campaign_theme_family,
     campaign_theme_seed,
 )
 from dungeon_agent.data_plane.agents.roles import DungeonMaster
@@ -214,6 +216,25 @@ def test_campaign_theme_seed_is_stable_but_varies_by_campaign() -> None:
     assert first == same
     assert first != other
     assert "floating market" not in first
+
+
+def test_campaign_theme_families_are_balanced() -> None:
+    assert len(_CREATIVE_PROFILE_FAMILIES) == 4
+    assert {name for name, _profiles in _CREATIVE_PROFILE_FAMILIES} == {
+        "action",
+        "exploration",
+        "social",
+        "mystery",
+    }
+    assert all(len(profiles) == 4 for _name, profiles in _CREATIVE_PROFILE_FAMILIES)
+
+
+def test_campaign_theme_family_is_stable_and_covers_all_families() -> None:
+    campaign_ids = [f"cam_01J0000000000000000000{i:02d}" for i in range(64)]
+    families = {campaign_theme_family(identifier) for identifier in campaign_ids}
+
+    assert len(families) == 4
+    assert campaign_theme_family(campaign_ids[0]) == campaign_theme_family(campaign_ids[0])
 
 
 def test_adventure_language_guard_catches_hybrid_output() -> None:

@@ -5,34 +5,69 @@ from typing import Any, cast
 
 from dungeon_agent.domain.game import AdventurePlan, LanguageCode, PlayerCharacter
 
-_CREATIVE_PROFILES = (
-    "a village that loses one street from its map every sunrise",
-    "a lighthouse whose beam reveals a different future each night",
-    "a traveling theatre where the actors have forgotten the final scene",
-    "a river crossing that demands a cherished memory as its toll",
-    "a mine where the excavated ore whispers names of people still alive",
-    "a city archive whose books are rewriting the town's history",
-    "a harvest festival where every contestant is secretly an impostor",
-    "a caravan carrying a living statue that wants to change destinations",
-    "a mountain monastery where the shadows are attending lessons without bodies",
-    "a ruined observatory tracking a star that is moving toward the village",
-    "a coastal village whose tide leaves behind objects from tomorrow",
-    "a forest path that rearranges itself around whoever tells the truth",
-    "a court where a polite monster is accused of a crime it did not commit",
-    "a bridge that appears only when two enemies agree on one thing",
-    "a clockmaker's workshop where one unfinished clock is aging the whole town",
-    "a border inn sheltering travelers who each remember a different war",
+_CREATIVE_PROFILE_FAMILIES = (
+    (
+        "action",
+        (
+            "a mountain pass where a warband's siege engine awakens a stone giant",
+            "a flooded fortress whose gates require a daring coordinated assault",
+            "a monster-haunted canyon where the only bridge is collapsing under a caravan",
+            "a village arena challenged by a champion who fights for an impossible claim",
+        ),
+    ),
+    (
+        "exploration",
+        (
+            "a glacier cave where shifting ice redraws the route to an underground garden",
+            "a skyship stranded on the back of a giant walking toward the horizon",
+            "a jungle ruin whose terraces sink into the earth after every loud sound",
+            "a volcanic island where safe paths appear only during brief tides of ash",
+        ),
+    ),
+    (
+        "social",
+        (
+            "a bridge that appears only when two enemies agree on one thing",
+            "a caravan carrying a living statue that wants to change destinations",
+            "a dragon's court where three villages must negotiate a shared water right",
+            "a river crossing that demands a cherished memory as its toll",
+        ),
+    ),
+    (
+        "mystery",
+        (
+            "a village that loses one street from its map every sunrise",
+            "a mine where the excavated ore whispers names of people still alive",
+            "a harvest festival where every contestant is secretly an impostor",
+            "a lighthouse whose beam reveals a different future each night",
+        ),
+    ),
 )
 ADVENTURE_THEME_SEED = "a fresh fantasy situation with an unusual constraint"
 
 
+def _campaign_digest(campaign_id: str) -> bytes:
+    return sha256(campaign_id.encode("utf-8")).digest()
+
+
+def campaign_theme_family(campaign_id: str) -> str:
+    """Return a stable, balanced creative family for one campaign generation."""
+    digest = _campaign_digest(campaign_id)
+    return _CREATIVE_PROFILE_FAMILIES[
+        int.from_bytes(digest[:2], "big") % len(_CREATIVE_PROFILE_FAMILIES)
+    ][0]
+
+
 def campaign_theme_seed(campaign_id: str) -> str:
     """Return a stable, varied creative brief for one campaign generation."""
-    digest = sha256(campaign_id.encode("utf-8")).digest()
-    profile = _CREATIVE_PROFILES[int.from_bytes(digest[:2], "big") % len(_CREATIVE_PROFILES)]
+    digest = _campaign_digest(campaign_id)
+    family_index = int.from_bytes(digest[:2], "big") % len(_CREATIVE_PROFILE_FAMILIES)
+    family, profiles = _CREATIVE_PROFILE_FAMILIES[family_index]
+    profile = profiles[int.from_bytes(digest[2:4], "big") % len(profiles)]
     variation = digest.hex()[:8]
     return (
-        f"{profile}. Creative variation key {variation}; use it only as a tie-breaker and do not "
+        f"Creative direction family: {family}. {profile}. Creative variation key {variation}; "
+        "use it only as a tie-breaker and do not "
         "mention it in the adventure."
     )
 
