@@ -4,7 +4,6 @@ version = "0.1.0"
 description = "A stateful AI-agent backend lab for AWS Lambda MicroVMs"
 readme = "README.md"
 requires-python = ">=3.14"
-license = "MIT"
 authors = [{ name = "DavidCs9" }]
 dependencies = [
   "fastapi>=0.116,<1",
