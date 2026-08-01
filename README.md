@@ -19,7 +19,6 @@ world and protagonist once; each play session forks that campaign into an isolat
 that owns dice and world mutations.
 
 [![CI](https://github.com/DavidCs9/lambda-microvm-dungeon-agent/actions/workflows/ci.yml/badge.svg)](https://github.com/DavidCs9/lambda-microvm-dungeon-agent/actions/workflows/ci.yml)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
 ## How this started
 
@@ -186,7 +185,3 @@ MicroVM tokens, `.env`, and session state out of git. Don't casually enable gene
 execution or open egress.
 
 See [CONTRIBUTING.md](CONTRIBUTING.md), [SECURITY.md](SECURITY.md), [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md).
-
-## License
-
-MIT
