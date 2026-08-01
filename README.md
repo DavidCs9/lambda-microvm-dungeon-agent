@@ -180,8 +180,7 @@ uv run --group tooling python -m scripts.benchmark_microvm
 
 ## Status
 
-Personal experimental lab — see the disclaimer at the top. Not a production service. Keep secrets,
-MicroVM tokens, `.env`, and session state out of git. Don't casually enable generated-code
-execution or open egress.
-
-See [CONTRIBUTING.md](CONTRIBUTING.md), [SECURITY.md](SECURITY.md), [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md).
+Personal experimental lab — see the disclaimer at the top. Not a production service, not an
+open-source community project, and not looking for external contributions. Keep secrets, MicroVM
+tokens, `.env`, and session state out of git. Don't casually enable generated-code execution or
+open egress. Lab security notes: [docs/security.md](docs/security.md).
