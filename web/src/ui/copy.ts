@@ -12,6 +12,7 @@ const ERROR_COPY: Record<string, string> = {
   revision_conflict: "La mesa avanzó mientras escribías. Recarga e inténtalo de nuevo.",
   session_conflict: "La mesa no acepta esa acción ahora. Espera un momento e inténtalo de nuevo.",
   rate_limited: "Demasiadas invocaciones seguidas. Espera un momento.",
+  quota_exceeded: "Has llegado al límite de campañas. Elimina una para forjar otra.",
 };
 
 export function humanError(code: string | null | undefined): string {

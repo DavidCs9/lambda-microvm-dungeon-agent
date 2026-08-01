@@ -1,0 +1,166 @@
+name: Diagnose campaign failures
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  diagnose:
+    name: Dump recent campaign failure signals
+    runs-on: ubuntu-latest
+    environment: sandbox
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      AWS_REGION: ${{ vars.AWS_REGION }}
+      CONTROL_PLANE_STACK: ${{ vars.AWS_CONTROL_PLANE_STACK }}
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v7.0.0
+
+      - name: Configure short-lived AWS credentials
+        uses: aws-actions/configure-aws-credentials@v6.2.2
+        with:
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
+
+      - name: Collect campaign diagnostics
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/diagnose
+          START_MS=$(( ($(date +%s) - 7200) * 1000 ))
+
+          aws cloudformation describe-stacks \
+            --stack-name "${CONTROL_PLANE_STACK}" \
+            --query 'Stacks[0].Outputs' \
+            --output json > /tmp/diagnose/stack-outputs.json
+
+          aws cloudformation list-stack-resources \
+            --stack-name "${CONTROL_PLANE_STACK}" \
+            --output json > /tmp/diagnose/stack-resources.json
+
+          API_FN="$(jq -r '
+            .StackResourceSummaries[]
+            | select(.LogicalResourceId=="ControlPlaneApiFunction")
+            | .PhysicalResourceId
+          ' /tmp/diagnose/stack-resources.json)"
+          STUB_FN="$(jq -r '
+            .StackResourceSummaries[]
+            | select(.LogicalResourceId=="WorkflowTaskFunction")
+            | .PhysicalResourceId
+          ' /tmp/diagnose/stack-resources.json)"
+          SM_ARN="$(jq -r '
+            .[] | select(.OutputKey=="CreateCampaignStateMachineArn") | .OutputValue
+          ' /tmp/diagnose/stack-outputs.json)"
+          echo "api_fn=${API_FN}" | tee /tmp/diagnose/resolved.txt
+          echo "stub_fn=${STUB_FN}" | tee -a /tmp/diagnose/resolved.txt
+          echo "sm_arn=${SM_ARN}" | tee -a /tmp/diagnose/resolved.txt
+
+          # Best-effort log reads (role may deny these today).
+          for group in \
+            "/aws/lambda/${CONTROL_PLANE_STACK}-workflow-stub" \
+            "/aws/lambda/${CONTROL_PLANE_STACK}-workflow-monitor" \
+            "/aws/vendedlogs/states/${CONTROL_PLANE_STACK}-create-campaign" \
+            "/aws/lambda/${API_FN}"; do
+            safe="$(echo "${group}" | tr '/:' '__')"
+            aws logs filter-log-events \
+              --log-group-name "${group}" \
+              --start-time "${START_MS}" \
+              --filter-pattern '?ERROR ?Error ?Exception ?failed ?creativeFamily ?Validation' \
+              --limit 50 \
+              --output json > "/tmp/diagnose/logs-${safe}.json" \
+              2> "/tmp/diagnose/logs-${safe}.err" || true
+          done
+
+          aws stepfunctions list-executions \
+            --state-machine-arn "${SM_ARN}" \
+            --status-filter FAILED \
+            --max-results 10 \
+            --output json > /tmp/diagnose/failed-executions.json \
+            2> /tmp/diagnose/failed-executions.err || true
+
+          if [[ -s /tmp/diagnose/failed-executions.json ]]; then
+            jq -r '.executions[].executionArn // empty' /tmp/diagnose/failed-executions.json \
+              | head -5 \
+              | while read -r arn; do
+                  safe="$(echo "${arn}" | tr '/:' '__')"
+                  aws stepfunctions describe-execution \
+                    --execution-arn "${arn}" \
+                    --output json > "/tmp/diagnose/execution-${safe}.json" \
+                    2> "/tmp/diagnose/execution-${safe}.err" || true
+                  aws stepfunctions get-execution-history \
+                    --execution-arn "${arn}" \
+                    --reverse-order \
+                    --max-results 20 \
+                    --output json > "/tmp/diagnose/history-${safe}.json" \
+                    2> "/tmp/diagnose/history-${safe}.err" || true
+                done
+          fi
+
+          # Safe Lambda probes: validation only, no Bedrock / no durable writes with valid body.
+          python3 - <<'PY'
+          import json, subprocess, pathlib
+          out = pathlib.Path("/tmp/diagnose")
+          api = (out / "resolved.txt").read_text().splitlines()[0].split("=", 1)[1]
+
+          def invoke(name, payload, dest):
+              pathlib.Path("/tmp/payload.json").write_text(json.dumps(payload))
+              result = subprocess.run(
+                  [
+                      "aws", "lambda", "invoke",
+                      "--function-name", name,
+                      "--cli-binary-format", "raw-in-base64-out",
+                      "--payload", "file:///tmp/payload.json",
+                      str(dest),
+                  ],
+                  capture_output=True,
+                  text=True,
+              )
+              (dest.with_suffix(dest.suffix + ".invoke.json")).write_text(result.stdout + result.stderr)
+
+          base_event = {
+              "version": "2.0",
+              "routeKey": "POST /campaigns",
+              "rawPath": "/campaigns",
+              "headers": {
+                  "content-type": "application/json",
+                  "idempotency-key": "diagnose-invalid-family-0001",
+                  "x-correlation-id": "corr-diagnose-0001",
+              },
+              "requestContext": {
+                  "requestId": "diagnose-request-1",
+                  "authorizer": {"jwt": {"claims": {"sub": "diagnose_owner_001"}}},
+              },
+              "isBase64Encoded": False,
+          }
+
+          invalid = dict(base_event)
+          invalid["body"] = json.dumps({"language": "es", "creativeFamily": "not-a-family"})
+          invoke(api, invalid, out / "http-invalid-family.json")
+
+          valid_shape = dict(base_event)
+          valid_shape["routeKey"] = "GET /campaigns"
+          valid_shape["rawPath"] = "/campaigns"
+          valid_shape.pop("body", None)
+          invoke(api, valid_shape, out / "http-list-campaigns.json")
+          PY
+
+          echo '==== resolved ===='
+          cat /tmp/diagnose/resolved.txt
+          echo '==== http invalid family ===='
+          cat /tmp/diagnose/http-invalid-family.json || true
+          echo '==== http list ===='
+          cat /tmp/diagnose/http-list-campaigns.json || true
+          echo '==== log errors (first lines) ===='
+          head -n 5 /tmp/diagnose/logs-*.err 2>/dev/null || true
+          echo '==== failed executions err ===='
+          cat /tmp/diagnose/failed-executions.err 2>/dev/null || true
+
+      - name: Upload diagnostics
+        uses: actions/upload-artifact@v4
+        with:
+          name: campaign-family-diagnostics
+          path: /tmp/diagnose

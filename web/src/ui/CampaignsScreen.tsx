@@ -104,7 +104,7 @@ export function CampaignsScreen() {
             value={creativeFamily}
             onChange={(event) => setCreativeFamily(event.target.value as CreativeFamily | "random")}
             disabled={locked}
-            className="border border-[var(--line)] bg-transparent px-4 py-3 text-[var(--ink)] outline-none focus:border-[var(--ember)] [font-family:var(--font-ui)]"
+            className="border border-[var(--line)] bg-[var(--fog)] px-4 py-3 text-[var(--ink)] outline-none focus:border-[var(--ember)] [font-family:var(--font-ui)]"
           >
             {FAMILY_OPTIONS.map((option) => (
               <option key={option.value} value={option.value}>

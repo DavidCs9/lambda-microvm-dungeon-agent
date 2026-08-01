@@ -89,17 +89,25 @@ class CampaignHttpHandlers:
             )
         try:
             identifier = self._campaign_id_factory()
+            creative_family = request.creative_family or campaign_theme_family(str(identifier))
             candidate = CampaignRecord(
                 campaign_id=identifier,
                 owner_id=identity.owner_id,
                 language=request.language,
-                creative_family=request.creative_family or campaign_theme_family(str(identifier)),
+                creative_family=creative_family,
                 status=CampaignStatus.REQUESTED,
                 phase=CampaignPhase.REQUESTED,
                 revision=0,
                 last_event_sequence=0,
                 created_at=now,
                 updated_at=now,
+            )
+            logger.info(
+                "campaign_create_requested",
+                correlation_id=correlation_id,
+                campaign_id=str(identifier),
+                creative_family=creative_family,
+                family_selected=request.creative_family is not None,
             )
             persisted = self._store.create(candidate, idempotency_key)
             campaign = self._ensure_workflow(
