@@ -1,8 +1,22 @@
 # Lambda MicroVM Dungeon Agent
 
-A personal lab: an AI one-shot RPG where a browser client talks to a sandbox AWS backend.
-Campaigns generate a world and protagonist once; each play session forks that campaign into an
-isolated Lambda MicroVM that owns dice and world mutations.
+> **Personal lab — not production code.**
+>
+> This repo is a one-dev sandbox for experimentation and learning. It is **not** a product, **not**
+> a sample of how I write production systems, and **not** a claim that a dungeon game needs this
+> much architecture.
+>
+> Parts of the design are deliberately overbuilt so I can practice real concepts hands-on — control
+> plane vs data plane, Lambda MicroVMs, SAM deploy lanes, Bedrock agents, and so on. I also
+> vibe-code here on purpose: exploring AI-assisted coding and training my own judgment of what the
+> tools get right and wrong.
+>
+> If you're a recruiter or another engineer browsing: read the curiosity and the experiments, not
+> the ceremony. For how I'd ship something for real users, ask me — this isn't that.
+
+An AI one-shot RPG where a browser client talks to a sandbox AWS backend. Campaigns generate a
+world and protagonist once; each play session forks that campaign into an isolated Lambda MicroVM
+that owns dice and world mutations.
 
 [![CI](https://github.com/DavidCs9/lambda-microvm-dungeon-agent/actions/workflows/ci.yml/badge.svg)](https://github.com/DavidCs9/lambda-microvm-dungeon-agent/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
@@ -12,7 +26,8 @@ isolated Lambda MicroVM that owns dice and world mutations.
 Weekend experiment to poke AWS Lambda MicroVMs: launch an isolated VM, hit a small FastAPI guest
 over authenticated HTTPS, keep state across the lifecycle, measure latency. A tiny dungeon made
 the infra test less boring. The dungeon was fun, so the lab grew into campaigns, a web client,
-Bedrock architects, Polly narration, and deploy lanes. Still one-dev, still a lab.
+Bedrock architects, Polly narration, and deploy lanes — plus some intentional over-engineering so
+the infra lessons stuck. Still one-dev, still a lab.
 
 ## What you play
 
@@ -141,9 +156,9 @@ MicroVM image via GitHub OIDC. Manual image/benchmark entrypoints:
 
 ## Status
 
-Experimental public lab, not a production service. Do not add generated-code execution without
-egress limits and a dedicated security look. Never commit credentials, MicroVM tokens, `.env`, or
-session state.
+Personal experimental lab — see the disclaimer at the top. Not a production service. Do not add
+generated-code execution without egress limits and a dedicated security look. Never commit
+credentials, MicroVM tokens, `.env`, or session state.
 
 See [CONTRIBUTING.md](CONTRIBUTING.md), [SECURITY.md](SECURITY.md), [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md).
 
